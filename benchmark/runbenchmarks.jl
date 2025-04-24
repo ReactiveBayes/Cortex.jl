@@ -45,7 +45,24 @@ end
 function load_results(output_dir, branch)
     filename = joinpath(output_dir, "benchmark_$(branch).json")
     if isfile(filename)
-        return JSON.parsefile(filename)
+        # Load the JSON data
+        data = JSON.parsefile(filename)
+        
+        # Convert back to BenchmarkGroup
+        group = BenchmarkGroup()
+        for (name, trial_data) in data
+            # Convert trial data back to Trial object
+            trial = BenchmarkTools.Trial(
+                time = trial_data["time"],
+                memory = trial_data["memory"],
+                gctime = trial_data["gctime"],
+                allocs = trial_data["allocs"],
+                samples = trial_data["samples"],
+                evals = trial_data["evals"]
+            )
+            group[name] = trial
+        end
+        return group
     end
     return nothing
 end
