@@ -1,6 +1,61 @@
+# Julia specific files
 *.jl.*.cov
 *.jl.cov
 *.jl.mem
-/Manifest*.toml
-/docs/Manifest*.toml
-/docs/build/
+/Manifest.toml
+/Project.toml
+/Manifest.toml.old
+/Project.toml.old
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# Documentation build
+docs/build/
+docs/site/
+
+# Environment and package directories
+.env
+.venv
+env/
+venv/
+ENV/
+.julia/
+packages/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# Benchmark results
+benchmark/Manifest.toml
+benchmark/results/
+benchmark/*.csv
+benchmark/*.json
+
+# Test coverage
+coverage/
+*.lcov
