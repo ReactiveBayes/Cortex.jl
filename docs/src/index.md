@@ -9,7 +9,3 @@ Cortex is a simple, efficient and modular framework for running message passing 
 
 ```@index
 ```
-
-```@autodocs
-Modules = [Cortex]
-```
