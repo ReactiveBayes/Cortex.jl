@@ -57,13 +57,13 @@ function compare_benchmarks(current_results, compare_results)
         if haskey(compare_results, name)
             compare = compare_results[name]
             
-            # Calculate statistics
-            current_time = current.time
-            compare_time = compare.time
+            # Get statistics using proper BenchmarkTools API
+            current_time = minimum(current).time
+            compare_time = minimum(compare).time
             time_diff = (current_time - compare_time) / compare_time * 100
             
-            current_memory = current.memory
-            compare_memory = compare.memory
+            current_memory = minimum(current).memory
+            compare_memory = minimum(compare).memory
             memory_diff = (current_memory - compare_memory) / compare_memory * 100
             
             comparison[name] = Dict(
