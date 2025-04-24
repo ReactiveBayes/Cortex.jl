@@ -6,3 +6,5 @@
 [![Coverage](https://codecov.io/gh/ReactiveBayes/Cortex.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/ReactiveBayes/Cortex.jl)
 [![PkgEval](https://JuliaCI.github.io/NanosoldierReports/pkgeval_badges/C/Cortex.svg)](https://JuliaCI.github.io/NanosoldierReports/pkgeval_badges/C/Cortex.html)
 [![Aqua](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
+
+This package implements a simple, efficient and modular framework for running message passing algorithms on graphs, with a focus on message-passing based Bayesian inference. This is a successor to the [ReactiveMP.jl](https://github.com/ReactiveBayes/ReactiveMP.jl) package. Read the official [documentation](https://ReactiveBayes.github.io/Cortex.jl/stable/) for more details.

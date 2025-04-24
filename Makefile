@@ -47,7 +47,7 @@ docs: deps-docs ## Build the documentation
 	julia --project=docs/ docs/make.jl
 
 docs-serve: deps-docs ## Serve documentation locally for preview in browser
-	julia --project=docs/ docs/serve.jl
+	julia --project=docs/ -e 'using LiveServer; LiveServer.servedocs(launch_browser=true, port=5678)'
 
 docs-clean: ## Clean the documentation build directory
 	rm -rf docs/build
