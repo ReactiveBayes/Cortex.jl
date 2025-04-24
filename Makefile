@@ -30,7 +30,6 @@ help:
 	@echo '  ${YELLOW}deps${RESET}                 Install project dependencies'
 	@echo '  ${YELLOW}deps-docs${RESET}            Install documentation dependencies'
 	@echo '  ${YELLOW}deps-scripts${RESET}         Install script dependencies'
-	@echo '  ${YELLOW}deps-benchmark${RESET}       Install benchmark dependencies'
 	@echo '  ${YELLOW}test${RESET}                 Run project tests'
 	@echo '  ${YELLOW}format${RESET}               Format Julia code'
 	@echo '  ${YELLOW}check-format${RESET}         Check Julia code formatting (does not modify files)'
@@ -63,9 +62,6 @@ deps-docs: ## Install documentation dependencies
 deps-scripts: ## Install script dependencies
 	julia --project=scripts/ -e 'using Pkg; Pkg.instantiate()'
 
-deps-benchmark: ## Install benchmark dependencies
-	julia --project=benchmark/ -e 'using Pkg; Pkg.instantiate()'
-
 test: deps ## Run project tests
 	julia --project -e 'using Pkg; Pkg.test()'
 
@@ -75,11 +71,11 @@ format: deps-scripts ## Format Julia code
 check-format: deps-scripts ## Check Julia code formatting (does not modify files)
 	julia --project=scripts/ scripts/formatter.jl
 
-benchmark: deps-benchmark ## Run project benchmarks
-	julia --project=benchmark/ benchmark/runbenchmarks.jl
+benchmark: deps-scripts ## Run project benchmarks
+	julia --project=scripts/ scripts/bench.jl
 
-benchmark-compare: deps-benchmark ## Run project benchmarks with comparison
-	julia --project=benchmark/ benchmark/runbenchmarks.jl --compare-branch $(branch)
+benchmark-compare: deps-scripts ## Run project benchmarks with comparison
+	julia --project=scripts/ scripts/bench.jl --compare-branch $(branch)
 
 clean: docs-clean ## Clean all generated files
 	rm -rf .julia/compiled 
