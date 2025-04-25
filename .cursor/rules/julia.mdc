@@ -1,7 +1,7 @@
 ---
-description: 
+description: You need this for writing Julia code
 globs: 
-alwaysApply: true
+alwaysApply: false
 ---
 
 You are an expert in Julia language programming, data science, and numerical computing.

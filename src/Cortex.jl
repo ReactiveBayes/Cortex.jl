@@ -1,5 +1,5 @@
 module Cortex
 
-include("core.jl")
+include("value.jl")
 
 end
