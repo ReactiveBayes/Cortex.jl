@@ -3,9 +3,7 @@
 *.jl.cov
 *.jl.mem
 /Manifest.toml
-/Project.toml
 /Manifest.toml.old
-/Project.toml.old
 
 # Build artifacts
 *.o
@@ -19,6 +17,7 @@
 # Documentation build
 docs/build/
 docs/site/
+docs/Manifest.toml
 
 # Environment and package directories
 .env
