@@ -1,7 +1,7 @@
 name = "Cortex"
 uuid = "39612bbb-57ff-4bee-a8f8-6b0371679005"
 authors = ["Bagaev Dmitry <bvdmitri@gmail.com> and contributors"]
-version = "1.0.0-DEV"
+version = "0.1"
 
 [compat]
 julia = "1.10"
