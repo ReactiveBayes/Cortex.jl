@@ -29,4 +29,5 @@ Cortex.DualPendingGroup
 Cortex.is_pending_in
 Cortex.is_pending_out
 Cortex.set_pending!(::Cortex.DualPendingGroup, ::Int)
+Cortex.add_element!(::Cortex.DualPendingGroup)
 ```
