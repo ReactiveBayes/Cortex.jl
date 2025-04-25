@@ -147,6 +147,7 @@ end
 const _mask_inbound::UInt64 = UInt64(0b1000)
 const _mask_left::UInt64 = UInt64(0b0100)
 const _mask_right::UInt64 = UInt64(0b0010)
+const _mask_inbound_all::UInt64 = UInt64(0x8888888888888888)
 
 function DualPendingGroup(len::Int)
     len <= 1 && throw(ArgumentError("Length must be at least 2"))
@@ -175,6 +176,20 @@ function is_pending_in(dpg::DualPendingGroup, k::Int)
     i, o = dpg_index_offset(k)
     mask = _mask_inbound << o
     return (dpg.groups[i] & mask) == mask
+end
+
+function is_pending_in_all(dpg::DualPendingGroup)
+    ngroups = length(dpg.groups)
+    for k in 1:(ngroups - 1)
+        @inbounds chunk = dpg.groups[k]
+        if (chunk & _mask_inbound_all) != _mask_inbound_all
+            return false
+        end
+    end
+    @inbounds lastchunk = dpg.groups[ngroups]
+    o = dpg_offset(dpg.len + 1)
+    lastmask = (_mask_inbound_all & (~(~UInt64(0) << (o))))
+    return (lastchunk & lastmask) == lastmask
 end
 
 """

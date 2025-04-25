@@ -260,3 +260,24 @@ end
         @test is_pending_out(dpg, i)
     end
 end
+
+@testitem "DualPendingGroup should implement is_pending_in_all" begin
+    import Cortex: DualPendingGroup, is_pending_in_all, set_pending!
+
+    ns = [2, 3, 10, 100, 1000]
+
+    @testset for n in ns, k in 1:n
+        dpg = DualPendingGroup(n)
+        @test !is_pending_in_all(dpg)
+
+        for i in 1:n
+            if i != k
+                set_pending!(dpg, i)
+                @test !is_pending_in_all(dpg)
+            end
+        end
+
+        set_pending!(dpg, k)
+        @test is_pending_in_all(dpg)
+    end
+end
