@@ -195,7 +195,7 @@ end
     end
 end
 
-@testitem "DualPendingGroup handles redundant pending operations" setup = [DualPendingGroupTestUtils] begin
+@testitem "DualPendingGroup handles redundant pending operations #1" setup = [DualPendingGroupTestUtils] begin
     using .DualPendingGroupTestUtils
     import Cortex: is_pending_in, is_pending_out, set_pending!
 
@@ -213,6 +213,91 @@ end
         @test !is_pending_out(dpg, 2)
         @test !is_pending_in(dpg, 3)
         @test !is_pending_out(dpg, 3)
+    end
+end
+
+@testitem "DualPendingGroup handles redundant pending operations #2" setup = [DualPendingGroupTestUtils] begin
+    using .DualPendingGroupTestUtils
+    import Cortex: is_pending_in, is_pending_out, set_pending!
+
+    # This test verifies that DualPendingGroup correctly handles redundant pending operations
+    # across different group sizes (3, 17, and 100). It tests several scenarios:
+    # 1. Setting elements 3:n as pending should not affect outbound pending state of elements 1-2
+    # 2. Repeatedly setting elements as pending in different patterns shouldn't change the state
+    # 3. When element 1 is set pending, element 2 becomes outbound pending
+    # 4. When both elements 1 and 2 are pending, both become outbound pending
+    # 5. The test ensures that redundant pending operations don't corrupt the internal state
+    #    by testing with both forward and reverse iteration patterns
+    with_dual_pending_group_of_length([3, 17, 100]) do dpg, n
+        @test !is_pending_out(dpg, 1)
+        @test !is_pending_out(dpg, 2)
+
+        for i in 3:n
+            set_pending!(dpg, i)
+        end
+
+        @test !is_pending_out(dpg, 1)
+        @test !is_pending_out(dpg, 2)
+
+        # Forward iteration pattern, 3:n are pending
+        for i in 3:n
+            for k in i:n
+                set_pending!(dpg, k)
+            end
+        end
+
+        # Since 1 and 2 are not pending, the pending state should not change
+        @test !is_pending_out(dpg, 1)
+        @test !is_pending_out(dpg, 2)
+
+        # Reverse iteration pattern, n:-1:3 are pending
+        for i in n:-1:3
+            for k in n:-1:i
+                set_pending!(dpg, k)
+            end
+        end
+
+        # Since 1 and 2 are not pending, the pending state should not change
+        @test !is_pending_out(dpg, 1)
+        @test !is_pending_out(dpg, 2)
+
+        # Set element 1 as pending
+        set_pending!(dpg, 1)
+
+        # Element 1 should remain outbound pending, element 2 should become outbound pending
+        @test !is_pending_out(dpg, 1)
+        @test is_pending_out(dpg, 2)
+
+        # Set element 2 as pending
+        set_pending!(dpg, 2)
+
+        # Both elements should be outbound pending
+        @test is_pending_out(dpg, 1)
+        @test is_pending_out(dpg, 2)
+
+        # Set all elements as pending
+        for i in 1:n
+            for k in i:n
+                set_pending!(dpg, k)
+            end
+        end
+
+        # All elements should be outbound pending
+        for i in 1:n
+            @test is_pending_out(dpg, i)
+        end
+
+        # Reverse iteration pattern, n:-1:1 are pending
+        for i in n:-1:1
+            for k in n:-1:i
+                set_pending!(dpg, k)
+            end
+        end
+
+        # All elements should still be outbound pending
+        for i in 1:n
+            @test is_pending_out(dpg, i)
+        end
     end
 end
 
