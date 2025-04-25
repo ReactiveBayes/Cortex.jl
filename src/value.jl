@@ -166,19 +166,27 @@ Add a new element to the DualPendingGroup. The new element is initialized with a
 Returns the index of the newly added element.
 """
 function add_element!(dpg::DualPendingGroup)
+    for chunk in dpg.groups
+        if chunk != UInt64(0)
+            error(
+                "Cannot add an element to a DualPendingGroup since some elements have non-zero pending states. Make sure to add elements before using `set_pending!`."
+            )
+        end
+    end
+
     # Calculate if we need to add a new chunk
     new_len = dpg.len + 1
     nrequiredbits = 4 * new_len
     nintegers = div(nrequiredbits, 64) + 1
-    
+
     # If we need more chunks, resize the array
     if nintegers > length(dpg.groups)
         push!(dpg.groups, UInt64(0))
     end
-    
+
     # Update the length
     dpg.len = new_len
-    
+
     return new_len
 end
 
@@ -285,7 +293,7 @@ function mark_next_left(dpg::DualPendingGroup, k::Int)
     # If we reached the last element, there is nothing to mark
     k == dpg.len && return false
     i, o = dpg_index_offset(k)
-    
+
     _ml = k == 1 ? UInt64(0) : _mask_left << o
     _mi = _mask_inbound << o
     _m = _ml | _mi
@@ -329,11 +337,11 @@ function mark_next_right(dpg::DualPendingGroup, k::Int)
     # Access groups directly
     # If both `i` and `r` are true, then we need to mark the previous `r`
     if (dpg.groups[i] & _m) == _m
-        i_prev, o_prev = dpg_index_offset(k - 1) 
+        i_prev, o_prev = dpg_index_offset(k - 1)
 
         # First check if the previous `r` has already been marked using direct access
         # If it has, then we do not need to mark it again and can return false
-        _mask_right_prev = _mask_right << o_prev 
+        _mask_right_prev = _mask_right << o_prev
         if (dpg.groups[i_prev] & _mask_right_prev) == _mask_right_prev
             return false
         end

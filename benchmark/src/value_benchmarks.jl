@@ -44,7 +44,7 @@ DualPendingBenchmarks = BenchmarkGroup()
 
 SUITE["DualPending"] = DualPendingBenchmarks
 
-for n in [10, 100, 1000, 10_000]
+for n in [10, 100, 1000, 10_000, 100_000]
     DualPendingBenchmarks["allocating DualPendingGroup", n] = @benchmarkable begin
         Cortex.DualPendingGroup($n)
     end
