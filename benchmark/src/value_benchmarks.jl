@@ -45,6 +45,10 @@ DualPendingBenchmarks = BenchmarkGroup()
 SUITE["DualPending"] = DualPendingBenchmarks
 
 for n in [10, 100, 1000, 10_000]
+    DualPendingBenchmarks["allocating DualPendingGroup", n] = @benchmarkable begin
+        Cortex.DualPendingGroup($n)
+    end
+
     DualPendingBenchmarks["set all-but-one pending", n] = @benchmarkable begin
         for i in 1:($n)
             i != target && Cortex.set_pending!(dpg, i)
