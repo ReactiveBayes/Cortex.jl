@@ -8,3 +8,7 @@
 [![Aqua](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
 
 This package implements a simple, efficient and modular framework for running message passing algorithms on graphs, with a focus on message-passing based Bayesian inference. This is a successor to the [ReactiveMP.jl](https://github.com/ReactiveBayes/ReactiveMP.jl) package. Read the official [documentation](https://ReactiveBayes.github.io/Cortex.jl/stable/) for more details.
+
+> [!NOTE]
+> This package is currently a work in progress. The API may change without notice until the first stable release.
+
