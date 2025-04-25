@@ -315,12 +315,16 @@ end
     end
 end
 
-@testitem "It should not be possible to add an element to DualPendingGroup if it has been touched with `set_pending!`" setup = [DualPendingGroupTestUtils] begin
+@testitem "It should not be possible to add an element to DualPendingGroup if it has been touched with `set_pending!`" setup = [
+    DualPendingGroupTestUtils
+] begin
     using .DualPendingGroupTestUtils
     import Cortex: DualPendingGroup, add_element!, set_pending!
 
     with_dual_pending_group_of_length([3, 17, 100]) do dpg, _
         set_pending!(dpg, 1)
-        @test_throws "Cannot add an element to a DualPendingGroup since some elements have non-zero pending states. Make sure to add elements before using `set_pending!`." add_element!(dpg)
+        @test_throws "Cannot add an element to a DualPendingGroup since some elements have non-zero pending states. Make sure to add elements before using `set_pending!`." add_element!(
+            dpg
+        )
     end
 end
