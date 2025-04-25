@@ -150,17 +150,43 @@ const _mask_right::UInt64 = UInt64(0b0010)
 const _mask_inbound_all::UInt64 = UInt64(0x8888888888888888)
 
 function DualPendingGroup(len::Int)
-    len <= 1 && throw(ArgumentError("Length must be at least 2"))
+    len < 0 && throw(ArgumentError("Length must be non-negative"))
+    # Each element requires 4 bits. Calculate total bits needed.
     nrequiredbits = 4 * len
-    nintegers = div(nrequiredbits, 64) + 1
+    # A single UInt64 can hold 64 / 4 = 16 elements.
+    nintegers = len == 0 ? 1 : (div(nrequiredbits, 64) + 1)
     groups = zeros(UInt64, nintegers)
     return DualPendingGroup(len, groups)
+end
+
+"""
+    add_element!(dpg::DualPendingGroup)
+
+Add a new element to the DualPendingGroup. The new element is initialized with all pending states set to false.
+Returns the index of the newly added element.
+"""
+function add_element!(dpg::DualPendingGroup)
+    # Calculate if we need to add a new chunk
+    new_len = dpg.len + 1
+    nrequiredbits = 4 * new_len
+    nintegers = div(nrequiredbits, 64) + 1
+    
+    # If we need more chunks, resize the array
+    if nintegers > length(dpg.groups)
+        push!(dpg.groups, UInt64(0))
+    end
+    
+    # Update the length
+    dpg.len = new_len
+    
+    return new_len
 end
 
 Base.length(dpg::DualPendingGroup) = dpg.len
 
 # Returns the index of the chunk for the value at index k
 dpg_index(k::Int) = (((k << 2) - 1) >> 6) + 1
+
 # Returns the offset within the chunk for the value at index k
 dpg_offset(k::Int) = (((k << 2) - 1) & 63) - 3
 
@@ -180,15 +206,17 @@ end
 
 function is_pending_in_all(dpg::DualPendingGroup)
     ngroups = length(dpg.groups)
+    # Iterate through all but the last chunk
     for k in 1:(ngroups - 1)
         @inbounds chunk = dpg.groups[k]
         if (chunk & _mask_inbound_all) != _mask_inbound_all
             return false
         end
     end
+    # Check the last chunk partially
     @inbounds lastchunk = dpg.groups[ngroups]
     o = dpg_offset(dpg.len + 1)
-    lastmask = (_mask_inbound_all & (~(~UInt64(0) << (o))))
+    lastmask = (_mask_inbound_all & (~(~UInt64(0) << o)))
     return (lastchunk & lastmask) == lastmask
 end
 
@@ -220,7 +248,7 @@ function set_pending!(dpg::DualPendingGroup, k::Int)
     # Get the index and offset for the current value
     i, o = dpg_index_offset(k)
 
-    # Set the inbound pending bit for the current value
+    # Set the inbound pending bit for the current value using direct access
     dpg.groups[i] |= (_mask_inbound << o)
 
     # Propagate pending state to the right (higher indices)
@@ -262,18 +290,19 @@ function mark_next_left(dpg::DualPendingGroup, k::Int)
     _mi = _mask_inbound << o
     _m = _ml | _mi
 
+    # Access groups directly
     # If both `i` and `l` are true, then we need to mark the next `l`
     if (dpg.groups[i] & _m) == _m
         i_next, o_next = dpg_index_offset(k + 1)
 
-        # First check if the next `l` has already been marked
+        # First check if the next `l` has already been marked using direct access
         # If it has, then we do not need to mark it again and can return false
         _mask_left_next = _mask_left << o_next
         if (dpg.groups[i_next] & _mask_left_next) == _mask_left_next
             return false
         end
 
-        # If the next `l` has not been marked, then mark it and return true
+        # If the next `l` has not been marked, then mark it and return true using direct access
         dpg.groups[i_next] |= (_mask_left << o_next)
         return true
     end
@@ -297,19 +326,20 @@ function mark_next_right(dpg::DualPendingGroup, k::Int)
     _mi = _mask_inbound << o
     _m = _mr | _mi
 
+    # Access groups directly
     # If both `i` and `r` are true, then we need to mark the previous `r`
     if (dpg.groups[i] & _m) == _m
-        i_next, o_next = dpg_index_offset(k - 1)
+        i_prev, o_prev = dpg_index_offset(k - 1) 
 
-        # First check if the previous `r` has already been marked
+        # First check if the previous `r` has already been marked using direct access
         # If it has, then we do not need to mark it again and can return false
-        _mask_right_next = _mask_right << o_next
-        if (dpg.groups[i_next] & _mask_right_next) == _mask_right_next
+        _mask_right_prev = _mask_right << o_prev 
+        if (dpg.groups[i_prev] & _mask_right_prev) == _mask_right_prev
             return false
         end
 
-        # If the previous `r` has not been marked, then mark it and return true
-        dpg.groups[i_next] |= (_mask_right << o_next)
+        # If the previous `r` has not been marked, then mark it and return true using direct access
+        dpg.groups[i_prev] |= (_mask_right << o_prev)
         return true
     end
 

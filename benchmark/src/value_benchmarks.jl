@@ -49,6 +49,13 @@ for n in [10, 100, 1000, 10_000]
         Cortex.DualPendingGroup($n)
     end
 
+    DualPendingBenchmarks["allocating DualPendingGroup via add_element!", n] = @benchmarkable begin
+        dpg = Cortex.DualPendingGroup(0)
+        for _ in 1:($n)
+            Cortex.add_element!(dpg)
+        end
+    end
+
     DualPendingBenchmarks["set all-but-one pending", n] = @benchmarkable begin
         for i in 1:($n)
             i != target && Cortex.set_pending!(dpg, i)
