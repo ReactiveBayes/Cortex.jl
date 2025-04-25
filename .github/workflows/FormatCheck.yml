@@ -1,4 +1,4 @@
-name: CI
+name: Format Check
 on:
   push:
     branches:
@@ -19,6 +19,7 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: write    # Needed to push commits
+      issues: write  # Needed to create PRs and write comments
       pull-requests: write  # Needed to create PRs and write comments
     steps:
       - uses: actions/checkout@v4
