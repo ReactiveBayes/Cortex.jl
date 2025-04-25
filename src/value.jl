@@ -19,7 +19,7 @@ If the value is not yet computed, it is represented as [`UndefValue()`](@ref).
 
 See also: [`is_pending`](@ref), [`is_computed`](@ref)
 """
-mutable struct Value 
+mutable struct Value
     value::Any
     is_pending::Bool
     is_computed::Bool
@@ -85,4 +85,192 @@ end
 
 function Base.show(io::IO, value::Value)
     print(io, "Value(", value.value, ", pending=", value.is_pending, ", computed=", value.is_computed, ")")
+end
+
+"""
+    DualPendingGroup
+
+A data structure designed to efficiently track and manage dual pending states in a message-passing style system.
+
+# Concept
+Each value in the group maintains two distinct pending states:
+- Inbound pending: directly set from outside (like receiving a message)
+- Outbound pending: automatically determined based on other values' states (like sending a message)
+
+# Behavior
+The dual pending states follow these rules:
+- Inbound pending is explicitly set for each value
+- Outbound pending for a value becomes true when ALL OTHER values are inbound pending
+- A value's outbound state cannot be directly set, it is derived from others' inbound states
+
+# Example
+Consider a group of 3 values [A, B, C] with their states as (inbound, outbound):
+```
+Initial: 
+A: (false, false), B: (false, false), C: (false, false)
+
+Set A and B inbound pending:
+A: (true, false), B: (true, false), C: (false, true)
+
+Set C inbound pending:
+A: (true, true), B: (true, true), C: (true, true)
+```
+
+This structure is particularly useful in message-passing algorithms where each node needs to track both 
+incoming and outgoing message states, similar to variable nodes in factor graphs.
+"""
+mutable struct DualPendingGroup
+    # The actual implementation operates on a series of chunks, each chunk is a UInt64
+    # Inside of the chunk, we divide regions of 4 bits for each Value
+    # UInt64 = [ 0000 ] [ 0100 ] [ 1100 ] ... and so on
+    # The first bit is the `b` (inbound pending) state of the actual value
+    # The second bit, which is `l`, reflects the `b` state of the previous value (undef for the first value)
+    # The third bit, which is `r`, reflects the `b` state of the next value (undef for the last value)
+    # The fourth bit is reserved
+    #    l     r  l     r  l     r  
+    # ----| = |----| = |----| = |---- 
+    #       |        |        |
+    #      i        i        i
+    # The outbound pending state `o` is computed as true, when both `l` and `r` are true
+    # - for the first and last values, we assume that there is an imaginary value that is always true
+    # The `o` is set to true, when the value is set to inbound pending
+    len::Int
+    groups::Vector{UInt64}
+end
+
+const _mask_inbound::UInt64 = UInt64(0b1000)
+const _mask_left::UInt64 = UInt64(0b0100)
+const _mask_right::UInt64 = UInt64(0b0010)
+
+function DualPendingGroup(len::Int)
+    len <= 1 && throw(ArgumentError("Length must be at least 2"))
+    nrequiredbits = 4 * len
+    nintegers = div(nrequiredbits, 64) + 1
+    groups = zeros(UInt64, nintegers)
+    return DualPendingGroup(len, groups)
+end
+
+Base.length(dpg::DualPendingGroup) = dpg.len
+
+# Returns the index of the chunk for the value at index k
+dpg_index(k::Int) = (((k << 2) - 1) >> 6) + 1
+# Returns the offset within the chunk for the value at index k
+dpg_offset(k::Int) = (((k << 2) - 1) & 63) - 3
+
+# Returns the index of the chunk for the value at index k and the offset within the chunk
+dpg_index_offset(k::Int) = (dpg_index(k), dpg_offset(k))
+
+"""
+    is_pending_in(dpg::DualPendingGroup, i::Int)
+
+Check if the value at index i has its inbound pending state set.
+"""
+function is_pending_in(dpg::DualPendingGroup, k::Int)
+    i, o = dpg_index_offset(k)
+    mask = _mask_inbound << o
+    return (dpg.groups[i] & mask) == mask
+end
+
+"""
+    is_pending_out(dpg::DualPendingGroup, i::Int)
+
+Check if the value at index i has its outbound pending state set.
+The outbound state is true when all other values are inbound pending.
+"""
+function is_pending_out(dpg::DualPendingGroup, k::Int)
+    i, o = dpg_index_offset(k)
+
+    _ml = k == 1 ? UInt64(0) : _mask_left << o
+    _mr = k == dpg.len ? UInt64(0) : _mask_right << o
+
+    mask = _ml | _mr
+
+    return (dpg.groups[i] & mask) == mask
+end
+
+"""
+    set_pending!(dpg::DualPendingGroup, i::Int)
+
+Set the inbound pending state for value i and update outbound states accordingly.
+When a value is set to inbound pending, we need to check if this causes any other
+values to become outbound pending (when all their other values are inbound pending).
+"""
+function set_pending!(dpg::DualPendingGroup, k::Int)
+    # Get the index and offset for the current value
+    i, o = dpg_index_offset(k)
+
+    # Set the inbound pending bit for the current value
+    dpg.groups[i] |= (_mask_inbound << o)
+
+    # Propagate pending state to the right (higher indices)
+    # This handles the case where setting this value to pending
+    # causes values to its right to become outbound pending
+    lk_index = k
+    lk_marking = true
+    while lk_marking
+        lk_marking = mark_next_left(dpg, lk_index)
+        lk_index += 1
+    end
+
+    # Propagate pending state to the left (lower indices)
+    # This handles the case where setting this value to pending
+    # causes values to its left to become outbound pending
+    rk_index = k
+    rk_marking = true
+    while rk_marking
+        rk_marking = mark_next_right(dpg, rk_index)
+        rk_index -= 1
+    end
+
+    return dpg
+end
+
+# marks the next left value as pending, returns true if it was marked, false otherwise
+# also returns false if the value has been marked already
+function mark_next_left(dpg::DualPendingGroup, k::Int)
+    k == dpg.len && return false
+    i, o = dpg_index_offset(k)
+    
+    _ml = k == 1 ? UInt64(0) : _mask_left << o
+    _mi = _mask_inbound << o
+    _m = _ml | _mi
+
+    if (dpg.groups[i] & _m) == _m
+        i_next, o_next = dpg_index_offset(k + 1)
+
+        _mask_left_next = _mask_left << o_next
+        if (dpg.groups[i_next] & _mask_left_next) == _mask_left_next
+            return false
+        end
+
+        dpg.groups[i_next] |= (_mask_left << o_next)
+        return true
+    end
+
+    return false
+end
+
+# marks the previous right value as pending, returns true if it was marked, false otherwise
+# also returns false if the value has been marked already
+function mark_next_right(dpg::DualPendingGroup, k::Int)
+    k == 1 && return false
+    i, o = dpg_index_offset(k)
+
+    _mr = k == dpg.len ? UInt64(0) : _mask_right << o
+    _mi = _mask_inbound << o
+    _m = _mr | _mi
+
+    if (dpg.groups[i] & _m) == _m
+        i_next, o_next = dpg_index_offset(k - 1)
+
+        _mask_right_next = _mask_right << o_next
+        if (dpg.groups[i_next] & _mask_right_next) == _mask_right_next
+            return false
+        end
+
+        dpg.groups[i_next] |= (_mask_right << o_next)
+        return true
+    end
+
+    return false
 end

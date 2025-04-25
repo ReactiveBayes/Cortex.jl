@@ -40,4 +40,35 @@ for n in [10, 100, 1000, 10_000, 100_000]
     end
 end
 
+DualPendingBenchmarks = BenchmarkGroup()
+
+SUITE["DualPending"] = DualPendingBenchmarks
+
+for n in [10, 100, 1000, 10_000]
+    DualPendingBenchmarks["set all-but-one pending", n] = @benchmarkable begin
+        for i in 1:$n
+            i != target && Cortex.set_pending!(dpg, i)
+        end
+    end setup = begin
+        dpg = Cortex.DualPendingGroup($n)
+        target = $n ÷ 2  # Use middle index as target
+    end
+
+    DualPendingBenchmarks["sequential pending update", n] = @benchmarkable begin
+        for i in 2:$n
+            Cortex.set_pending!(dpg, i)
+        end
+    end setup = begin
+        dpg = Cortex.DualPendingGroup($n)
+    end
+
+    DualPendingBenchmarks["full group pending", n] = @benchmarkable begin
+        for i in 1:$n
+            Cortex.set_pending!(dpg, i)
+        end
+    end setup = begin
+        dpg = Cortex.DualPendingGroup($n)
+    end
+end
+
 
