@@ -123,10 +123,16 @@ mutable struct DualPendingGroup
     # The actual implementation operates on a series of chunks, each chunk is a UInt64
     # Inside of the chunk, we divide regions of 4 bits for each Value
     # UInt64 = [ 0000 ] [ 0100 ] [ 1100 ] ... and so on
-    # The first bit is the `b` (inbound pending) state of the actual value
-    # The second bit, which is `l`, reflects the `b` state of the previous value (undef for the first value)
-    # The third bit, which is `r`, reflects the `b` state of the next value (undef for the last value)
-    # The fourth bit is reserved
+    # The first bit is the `i` (inbound pending) state of the actual value
+    # The second bit, which is `l`, reflects the combination of the `i` and `l` states of the previous value
+    #     - if `i` of the previous value is false, then `l` is false
+    #     - if `l` of the previous value is false, then `l` is false
+    #     - if both `i` and `l` of the previous value are true, then `l` is true
+    # The third bit, which is `r`, reflects the combination of the `i` and `r` states of the next value
+    #     - if `i` of the next value is false, then `r` is false
+    #     - if `r` of the next value is false, then `r` is false
+    #     - if both `i` and `r` of the next value are true, then `r` is true
+    # The fourth bit is reserved and is not used currently
     #    l     r  l     r  l     r  
     # ----| = |----| = |----| = |---- 
     #       |        |        |
@@ -225,9 +231,15 @@ function set_pending!(dpg::DualPendingGroup, k::Int)
     return dpg
 end
 
-# marks the next left value as pending, returns true if it was marked, false otherwise
-# also returns false if the value has been marked already
+# Marks the next `l`, returns true if it was marked, false otherwise
+# the rules are the following:
+# - if current `i` is false, then next `l` should not be marked
+# - if current `l` is false, then next `l` should not be marked
+# - if both current `i` and `l` are true, then next `l` should be marked as `true`
+# The first index is special and does not check its current `l` state as there is no previous `l`
+# Also returns false if the value has been marked already
 function mark_next_left(dpg::DualPendingGroup, k::Int)
+    # If we reached the last element, there is nothing to mark
     k == dpg.len && return false
     i, o = dpg_index_offset(k)
     
@@ -235,23 +247,33 @@ function mark_next_left(dpg::DualPendingGroup, k::Int)
     _mi = _mask_inbound << o
     _m = _ml | _mi
 
+    # If both `i` and `l` are true, then we need to mark the next `l`
     if (dpg.groups[i] & _m) == _m
         i_next, o_next = dpg_index_offset(k + 1)
 
+        # First check if the next `l` has already been marked
+        # If it has, then we do not need to mark it again and can return false
         _mask_left_next = _mask_left << o_next
         if (dpg.groups[i_next] & _mask_left_next) == _mask_left_next
             return false
         end
 
+        # If the next `l` has not been marked, then mark it and return true
         dpg.groups[i_next] |= (_mask_left << o_next)
         return true
     end
 
+    # Either one of `i` or `l` is false, so we do not need to mark anything
     return false
 end
 
-# marks the previous right value as pending, returns true if it was marked, false otherwise
-# also returns false if the value has been marked already
+# Marks the next `r`, returns true if it was marked, false otherwise
+# The rules are the following:
+# - if current `i` is false, then previous `r` should not be marked
+# - if current `r` is false, then previous `r` should not be marked
+# - if both current `i` and `r` are true, then previous `r` should be marked as `true`
+# The last index is special and does not check its current `r` state as there is no next `r`
+# Also returns false if the value has been marked already
 function mark_next_right(dpg::DualPendingGroup, k::Int)
     k == 1 && return false
     i, o = dpg_index_offset(k)
@@ -260,17 +282,22 @@ function mark_next_right(dpg::DualPendingGroup, k::Int)
     _mi = _mask_inbound << o
     _m = _mr | _mi
 
+    # If both `i` and `r` are true, then we need to mark the previous `r`
     if (dpg.groups[i] & _m) == _m
         i_next, o_next = dpg_index_offset(k - 1)
 
+        # First check if the previous `r` has already been marked
+        # If it has, then we do not need to mark it again and can return false
         _mask_right_next = _mask_right << o_next
         if (dpg.groups[i_next] & _mask_right_next) == _mask_right_next
             return false
         end
 
+        # If the previous `r` has not been marked, then mark it and return true
         dpg.groups[i_next] |= (_mask_right << o_next)
         return true
     end
 
+    # Either one of `i` or `r` is false, so we do not need to mark anything
     return false
 end

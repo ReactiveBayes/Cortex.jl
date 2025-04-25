@@ -88,7 +88,7 @@ end
 end
 
 # Internal implementational detail test
-@testitem "Group index and offsets are correct" begin 
+@testitem "Group index and offsets are correct" begin
     import Cortex: dpg_index, dpg_offset
 
     @test dpg_index(1) == 1
@@ -108,10 +108,9 @@ end
 
     @test dpg_index(32) == 2
     @test dpg_offset(32) == 60
-    
+
     @test dpg_index(33) == 3
     @test dpg_offset(33) == 0
-    
 end
 
 @testitem "DualPendingGroup handles inbound pending states" begin
@@ -191,7 +190,7 @@ end
 @testitem "DualPendingGroup works with large vectors #1" begin
     import Cortex: DualPendingGroup, is_pending_in, is_pending_out, set_pending!
 
-    n = 100 # Large enough to exceed standard sizes of packed bits
+    n = 200 # Large enough to exceed standard sizes of packed bits
 
     # For each index, verify that setting all other indices to pending
     # makes this index outbound pending
