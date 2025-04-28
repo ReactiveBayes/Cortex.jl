@@ -1,7 +1,7 @@
 
 @testmodule GraphUtils begin
     import Cortex
-    import Cortex: AbstractVariable, Value, getname, getindex, getdisplayname, getmarginal
+    import Cortex: AbstractVariable, Value, get_name, get_index, get_display_name, get_marginal
 
     export Variable
 
@@ -13,15 +13,29 @@
         Variable(name::Symbol, index::Any = nothing) = new(name, index, Value())
     end
 
-    Cortex.getname(v::Variable) = v.name
-    Cortex.getindex(v::Variable) = v.index
-    Cortex.getdisplayname(v::Variable) =
-        isnothing(v.index) ? string(v.name) : string(v.name, "[", join(v.index, ", "), "]")
-    Cortex.getmarginal(v::Variable) = v.marginal
+    # Required by the `AbstractVariable` interface
+    function Cortex.get_name(v::Variable)
+        return v.name
+    end
+
+    # Required by the `AbstractVariable` interface
+    function Cortex.get_index(v::Variable)
+        return v.index
+    end
+
+    # Required by the `AbstractVariable` interface
+    function Cortex.get_display_name(v::Variable)
+        return isnothing(v.index) ? string(v.name) : string(v.name, "[", join(v.index, ", "), "]")
+    end
+
+    # Required by the `AbstractVariable` interface
+    function Cortex.get_marginal(v::Variable)
+        return v.marginal
+    end
 end
 
 @testitem "`IncorrectVariableImplementation` should have a readable error message" begin
-    import Cortex: AbstractVariable, InterfaceNotImplementedError, getname, getindex, getdisplayname, getmarginal
+    import Cortex: AbstractVariable, InterfaceNotImplementedError
 
     @test_throws "An object of type `String` does not implement the method `keys`, which is required by the interface of `AbstractDict`." throw(
         InterfaceNotImplementedError("oops", AbstractDict, :keys)
@@ -35,31 +49,40 @@ end
 end
 
 @testitem "An incorrect implementation of AbstractVariable should throw an error on required methods" begin
-    import Cortex: AbstractVariable, InterfaceNotImplementedError, getname, getindex, getdisplayname, getmarginal
+    import Cortex: AbstractVariable, InterfaceNotImplementedError, get_name, get_index, get_display_name, get_marginal
 
     # No methods implemented
     struct IncorrectVariableImplementation <: AbstractVariable end
 
-    @test_throws InterfaceNotImplementedError getname(IncorrectVariableImplementation())
-    @test_throws InterfaceNotImplementedError getindex(IncorrectVariableImplementation())
-    @test_throws InterfaceNotImplementedError getdisplayname(IncorrectVariableImplementation())
-    @test_throws InterfaceNotImplementedError getmarginal(IncorrectVariableImplementation())
+    @test_throws InterfaceNotImplementedError get_name(IncorrectVariableImplementation())
+    @test_throws InterfaceNotImplementedError get_index(IncorrectVariableImplementation())
+    @test_throws InterfaceNotImplementedError get_display_name(IncorrectVariableImplementation())
+    @test_throws InterfaceNotImplementedError get_marginal(IncorrectVariableImplementation())
 end
 
-@testitem "Variable implementation of `AbstractVariable` from `GraphUtils`" setup = [GraphUtils] begin
+@testitem "Check correctness of `Variable` implementation of `AbstractVariable` from `GraphUtils`" setup = [GraphUtils] begin
     using .GraphUtils
 
-    import Cortex: Value, getname, getindex, getdisplayname, getmarginal
+    import Cortex: Value, get_name, get_index, get_display_name, get_marginal
 
-    v = Variable(:x, 1)
-    @test getname(v) == :x
-    @test getindex(v) == 1
-    @test getdisplayname(v) == "x[1]"
-    @test getmarginal(v) isa Value
-end
+    @testset let v = Variable(:x)
+        @test get_name(v) == :x
+        @test get_index(v) === nothing
+        @test get_display_name(v) == "x"
+        @test get_marginal(v) isa Value
+    end
 
-@testitem "VariableData show method" begin
-    import Cortex: VariableData
+    @testset let v = Variable(:x, 1)
+        @test get_name(v) == :x
+        @test get_index(v) === 1
+        @test get_display_name(v) == "x[1]"
+        @test get_marginal(v) isa Value
+    end
 
-    @test repr(VariableData()) == "VariableData(marginal=Value(#undef, pending=false, computed=false))"
+    @testset let v = Variable(:x, (1, 2, 3))
+        @test get_name(v) == :x
+        @test get_index(v) === (1, 2, 3)
+        @test get_display_name(v) == "x[1, 2, 3]"
+        @test get_marginal(v) isa Value
+    end
 end
