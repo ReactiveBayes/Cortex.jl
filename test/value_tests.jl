@@ -413,3 +413,28 @@ end
         )
     end
 end
+
+@testitem "It should be possible to resize! a DualPendingGroup after creation before adding elements" setup = [DualPendingGroupTestUtils] begin
+    using .DualPendingGroupTestUtils
+    import Cortex: DualPendingGroup, resize!, set_pending!, is_pending_in, is_pending_out
+
+    dpg = DualPendingGroup(0)
+    resize!(dpg, 10)
+
+    @test length(dpg) == 10
+
+    for i in 1:9
+        set_pending!(dpg, i)
+        @test is_pending_in(dpg, i)
+        @test !is_pending_out(dpg, i)
+    end
+
+    @test is_pending_out(dpg, 10)
+    set_pending!(dpg, 10)
+    @test is_pending_in(dpg, 10)
+    
+    for i in 1:9
+        @test is_pending_out(dpg, i)
+    end
+    
+end

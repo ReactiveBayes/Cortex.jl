@@ -5,7 +5,7 @@ A placeholder value that represents a value that is not yet computed.
 """
 struct UndefValue end
 
-Base.show(io::IO, value::UndefValue) = print(io, "#undef")
+Base.show(io::IO, ::UndefValue) = print(io, "#undef")
 
 """
     Value([ value ])
@@ -149,13 +149,27 @@ const _mask_left::UInt64 = UInt64(0b0100)
 const _mask_right::UInt64 = UInt64(0b0010)
 const _mask_inbound_all::UInt64 = UInt64(0x8888888888888888)
 
-function DualPendingGroup(len::Int)
+function dpg_check_untouched(dpg::DualPendingGroup)
+    for chunk in dpg.groups
+        if chunk != UInt64(0)
+            error(
+                "Cannot add an element to a DualPendingGroup since some elements have non-zero pending states. Make sure to add elements before using `set_pending!`."
+            )
+        end
+    end
+    return nothing
+end
+
+function dpg_compute_required_ngroups(len::Int)
     len < 0 && throw(ArgumentError("Length must be non-negative"))
     # Each element requires 4 bits. Calculate total bits needed.
-    nrequiredbits = 4 * len
     # A single UInt64 can hold 64 / 4 = 16 elements.
-    nintegers = len == 0 ? 1 : (div(nrequiredbits, 64) + 1)
-    groups = zeros(UInt64, nintegers)
+    nintegers = iszero(len) ? 0 : div((4len) - 1, 64) + 1
+    return nintegers
+end
+
+function DualPendingGroup(len::Int)
+    groups = zeros(UInt64, dpg_compute_required_ngroups(len))
     return DualPendingGroup(len, groups)
 end
 
@@ -166,21 +180,14 @@ Add a new element to the DualPendingGroup. The new element is initialized with a
 Returns the index of the newly added element.
 """
 function add_element!(dpg::DualPendingGroup)
-    for chunk in dpg.groups
-        if chunk != UInt64(0)
-            error(
-                "Cannot add an element to a DualPendingGroup since some elements have non-zero pending states. Make sure to add elements before using `set_pending!`."
-            )
-        end
-    end
+    dpg_check_untouched(dpg)
 
     # Calculate if we need to add a new chunk
     new_len = dpg.len + 1
-    nrequiredbits = 4 * new_len
-    nintegers = div(nrequiredbits, 64) + 1
+    new_ngroups = dpg_compute_required_ngroups(new_len)
 
     # If we need more chunks, resize the array
-    if nintegers > length(dpg.groups)
+    if new_ngroups > length(dpg.groups)
         push!(dpg.groups, UInt64(0))
     end
 
@@ -188,6 +195,18 @@ function add_element!(dpg::DualPendingGroup)
     dpg.len = new_len
 
     return new_len
+end
+
+import Base: resize!
+
+function Base.resize!(dpg::DualPendingGroup, new_len::Int)
+    dpg_check_untouched(dpg)
+
+    new_ngroups = dpg_compute_required_ngroups(new_len)
+    resize!(dpg.groups, new_ngroups)
+    fill!(dpg.groups, UInt64(0))
+    dpg.len = new_len
+    return dpg.len
 end
 
 Base.length(dpg::DualPendingGroup) = dpg.len
