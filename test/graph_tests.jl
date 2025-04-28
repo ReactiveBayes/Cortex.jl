@@ -1,9 +1,18 @@
 
 @testmodule GraphUtils begin
     import Cortex
-    import Cortex: AbstractVariable, Value, get_name, get_index, get_display_name, get_marginal
+    import Cortex:
+        AbstractVariable,
+        Value,
+        get_name,
+        get_index,
+        get_display_name,
+        get_marginal,
+        AbstractFactor,
+        get_function,
+        get_display_name
 
-    export Variable
+    export Variable, Factor
 
     struct Variable <: AbstractVariable
         name::Symbol
@@ -31,6 +40,20 @@
     # Required by the `AbstractVariable` interface
     function Cortex.get_marginal(v::Variable)
         return v.marginal
+    end
+
+    struct Factor <: AbstractFactor
+        fn::Any
+
+        Factor(fn::Any) = new(fn)
+    end
+
+    function Cortex.get_function(f::Factor)
+        return f.fn
+    end
+
+    function Cortex.get_display_name(f::Factor)
+        return string(f.fn)
     end
 end
 
@@ -84,5 +107,26 @@ end
         @test get_index(v) === (1, 2, 3)
         @test get_display_name(v) == "x[1, 2, 3]"
         @test get_marginal(v) isa Value
+    end
+end
+
+@testitem "Check correctness of `Factor` implementation of `AbstractFactor` from `GraphUtils`" setup = [GraphUtils] begin
+    using .GraphUtils
+
+    import Cortex: get_function, get_display_name
+
+    @testset let f = Factor(Float64)
+        @test get_function(f) == Float64
+        @test get_display_name(f) == "Float64"
+    end
+
+    struct SomeDistributionToTestCorrectnessOfFactor
+        mean
+        variance
+    end
+
+    @testset let f = Factor(SomeDistributionToTestCorrectnessOfFactor)
+        @test get_function(f) == SomeDistributionToTestCorrectnessOfFactor
+        @test occursin("SomeDistributionToTestCorrectnessOfFactor", get_display_name(f))
     end
 end
