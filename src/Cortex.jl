@@ -1,6 +1,6 @@
 module Cortex
 
 include("value.jl")
-include("graph.jl")
+include("model.jl")
 
 end
