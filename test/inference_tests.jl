@@ -102,14 +102,14 @@ end
 
     # A message from f1 to v2 depends on a message from v1 to f1
     Cortex.add_dependency!(
-        Cortex.get_edge_message_to_variable(model, v2, f1), 
+        Cortex.get_edge_message_to_variable(model, v2, f1),
         Cortex.get_edge_message_to_factor(model, v1, f1),
         Cortex.MessageToFactor(v1, f1)
     )
 
     # A message from f2 to v2 depends on a message from v3 to f2
     Cortex.add_dependency!(
-        Cortex.get_edge_message_to_variable(model, v2, f2), 
+        Cortex.get_edge_message_to_variable(model, v2, f2),
         Cortex.get_edge_message_to_factor(model, v3, f2),
         Cortex.MessageToFactor(v3, f2)
     )
@@ -126,8 +126,7 @@ end
         Cortex.get_edge_message_to_variable(model, v2, f2),
         Cortex.MessageToVariable(v2, f2)
     )
-    
-    
+
     # We set pending messages from v1 to f1 and v3 to f2
     # Since they are direct dependencies of messages to v2, they shouldxw be added to the inference round
     Cortex.set_pending!(Cortex.get_edge_message_to_factor(model, v1, f1))
@@ -142,7 +141,6 @@ end
 
     @test inference_steps[2].slot == Cortex.get_edge_message_to_factor(model, v3, f2)
     @test inference_steps[2].dependency == Cortex.MessageToFactor(v3, f2)
-        
 end
 
 @testitem "An inference in a simple IID model" setup = [ModelUtils] begin
@@ -172,9 +170,8 @@ end
 
     # Connections between the observed outcomes and the likelihoods
     add_edge!(model.graph, o1, f1, Edge())
-    add_edge!(model.graph, o2, f2, Edge())    
+    add_edge!(model.graph, o2, f2, Edge())
 
     # Assume the prior has been computed already
     @test "This test has not been completed"
-    
 end

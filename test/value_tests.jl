@@ -49,13 +49,13 @@ end
     JET.@test_opt is_pending(Value([1, 2, 3]))
 
     @test @inferred(set_value!(Value(), 1)) isa Value
-    @test @inferred(set_value!(Value(1), [ 4, 5, 6 ])) isa Value
+    @test @inferred(set_value!(Value(1), [4, 5, 6])) isa Value
     @test @inferred(set_value!(Value([1, 2, 3]), 2)) isa Value
 
     JET.@test_opt set_value!(Value(), 1)
     JET.@test_opt set_value!(Value(1), 2)
     JET.@test_opt set_value!(Value([1, 2, 3]), [4, 5, 6])
-    JET.@test_opt set_value!(Value(1), [ 1, 2 ])
+    JET.@test_opt set_value!(Value(1), [1, 2])
     JET.@test_opt set_value!(Value([1, 2, 3]), 2)
 end
 
