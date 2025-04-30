@@ -92,7 +92,7 @@ Must return the marginal distribution or value associated with the given variabl
 - `variable`: The variable whose marginal is requested.
 
 # Returns
-A `Cortex.Value` object representing the marginal distribution or value for the variable.
+A `Cortex.Slot` object representing the marginal distribution or value for the variable.
 """
 function get_variable_marginal(model, variable)
     throw(CortexModelInterfaceNotImplementedError(:get_variable_marginal, model, (variable,)))
@@ -109,7 +109,7 @@ Must return the local marginal distribution or value associated with the given f
 - `factor`: The factor whose local marginal is requested.
 
 # Returns
-A `Cortex.Value` object representing the local marginal distribution or value for the factor.
+A `Cortex.Slot` object representing the local marginal distribution or value for the factor.
 """
 function get_factor_local_marginal(model, factor)
     throw(CortexModelInterfaceNotImplementedError(:get_factor_local_marginal, model, (factor,)))
@@ -126,7 +126,7 @@ Must return the message sent along the edge to the variable node.
 - `edge`: The edge for which the message is requested.
 
 # Returns
-A `Cortex.Value` object representing the message sent to the variable node along the edge.
+A `Cortex.Slot` object representing the message sent to the variable node along the edge.
 """
 function get_edge_message_to_variable(model, variable, factor)
     throw(CortexModelInterfaceNotImplementedError(:get_edge_message_to_variable, model, (variable, factor)))
@@ -144,7 +144,7 @@ Must return the message sent along the edge to the factor node.
 - `factor`: The factor node of the edge.
 
 # Returns
-A `Cortex.Value` object representing the message sent to the factor node along the edge.
+A `Cortex.Slot` object representing the message sent to the factor node along the edge.
 """
 function get_edge_message_to_factor(model, variable, factor)
     throw(CortexModelInterfaceNotImplementedError(:get_edge_message_to_factor, model, (variable, factor)))
@@ -182,22 +182,4 @@ A collection of nodes that are neighbors of the given variable.
 """
 function get_variable_neighbors(model, variable)
     throw(CortexModelInterfaceNotImplementedError(:get_variable_neighbors, model, (variable,)))
-end
-
-"""
-    get_dependencies_for_message_to_variable(model, variable, factor)
-
-A part of the interface of `CortexModel`.
-Must return the dependencies of the given variable for the message sent to the factor.
-
-# Arguments
-- `model`: The model object.
-- `variable`: The variable node of the edge.
-- `factor`: The factor node of the edge.
-
-# Returns
-A iterator of `Dependency` objects that represent required dependencies for the message `factor -> variable` to be computed.
-"""
-function get_dependencies_for_message_to_variable(model, variable, factor)
-    throw(CortexModelInterfaceNotImplementedError(:get_dependencies_for_message_to_variable, model, (variable, factor)))
 end

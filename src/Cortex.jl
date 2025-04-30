@@ -1,7 +1,8 @@
 module Cortex
 
+include("utils.jl")
 include("value.jl")
-include("dependencies.jl")
+include("slot.jl")
 
 include("model.jl")
 include("inference.jl")

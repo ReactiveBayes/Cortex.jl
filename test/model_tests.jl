@@ -19,8 +19,7 @@ end
         get_variable_marginal,
         get_factor_local_marginal,
         get_edge_message_to_variable,
-        get_edge_message_to_factor,
-        get_dependencies_for_message_to_variable
+        get_edge_message_to_factor
 
     struct IncorrectlyImplementedCortexModel end
 
@@ -51,10 +50,6 @@ end
     @test_throws CortexModelInterfaceNotImplementedError(
         :get_edge_message_to_factor, IncorrectlyImplementedCortexModel(), (1, 2)
     ) get_edge_message_to_factor(IncorrectlyImplementedCortexModel(), 1, 2)
-
-    @test_throws CortexModelInterfaceNotImplementedError(
-        :get_dependencies_for_message_to_variable, IncorrectlyImplementedCortexModel(), (1, 2)
-    ) get_dependencies_for_message_to_variable(IncorrectlyImplementedCortexModel(), 1, 2)
      
 end
 
@@ -62,7 +57,7 @@ end
     using Reexport
 
     import Cortex
-    import Cortex: Value
+    import Cortex: Value, Slot
 
     export Variable, Factor, Edge, Model
     export make_empty_model
@@ -72,9 +67,9 @@ end
     struct Variable
         name::Any
         index::Any
-        marginal::Value
+        marginal::Slot
 
-        Variable(name, index...) = new(name, index, Value())
+        Variable(name, index...) = new(name, index, Slot())
     end
 
     struct Factor
@@ -82,18 +77,17 @@ end
     end
 
     struct Edge
-        message_to_variable::Value
-        message_to_factor::Value
+        message_to_variable::Slot
+        message_to_factor::Slot
 
-        Edge() = new(Value(), Value())
+        Edge() = new(Slot(), Slot())
     end
 
-    struct Model{G, D}
+    struct Model{G}
         graph::G
-        dependencies::D
     end
 
-    Model() = Model(BipartiteFactorGraphs.BipartiteFactorGraph(Variable, Factor, Edge), BeliefPropagationDependencies())
+    Model() = Model(BipartiteFactorGraphs.BipartiteFactorGraph(Variable, Factor, Edge))
 
     function Cortex.get_variable_display_name(model::Model, vi)
         v = BipartiteFactorGraphs.get_variable_data(model.graph, vi)
@@ -142,15 +136,6 @@ end
         return BipartiteFactorGraphs.neighbors(model.graph, vi)
     end
 
-    function Cortex.get_dependencies_for_message_to_variable(model::Model, vi, fi)
-        return resolve_dependencies(model, model.dependencies, vi, fi)
-    end
-
-    struct BeliefPropagationDependencies end
-
-    function resolve_dependencies(model::Model, dependencies::BeliefPropagationDependencies, vi, fi)
-        error("Not implemented")
-    end
 end
 
 @testitem "ModelUtils: The `Model` function should return an empty model" setup=[ModelUtils] begin
@@ -196,10 +181,10 @@ end
         @test Cortex.get_factor_display_name(model, f) == "Factor(identity)"
         @test Cortex.get_edge_display_name(model, v, f) == "Edge(x[1] --- Factor(identity))"
 
-        @test Cortex.get_variable_marginal(model, v) isa Cortex.Value
-        @test_broken Cortex.get_factor_local_marginal(model, f) isa Cortex.Value
-        @test Cortex.get_edge_message_to_variable(model, v, f) isa Cortex.Value
-        @test Cortex.get_edge_message_to_factor(model, v, f) isa Cortex.Value
+        @test Cortex.get_variable_marginal(model, v) isa Cortex.Slot
+        @test_broken Cortex.get_factor_local_marginal(model, f) isa Cortex.Slot
+        @test Cortex.get_edge_message_to_variable(model, v, f) isa Cortex.Slot
+        @test Cortex.get_edge_message_to_factor(model, v, f) isa Cortex.Slot
 
         @test Cortex.get_variable_neighbors(model, v) == [f]
         @test Cortex.get_factor_neighbors(model, f) == [v]

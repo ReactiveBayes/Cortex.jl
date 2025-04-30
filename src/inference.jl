@@ -1,16 +1,4 @@
 
-module InferenceStepType
-const MessageToVariable::UInt8 = 0x1
-const MessageToFactor::UInt8 = 0x2
-end
-
-struct InferenceStep
-    message::Value
-    type::UInt8
-    variable::Int
-    factor::Int
-end
-
 struct InferenceRound{M}
     model::M
     variable::Int
@@ -22,25 +10,41 @@ end
 
 function process_inference_round(processor::P, round::InferenceRound) where {P}
     vi = round.variable
+    # In order to compute a posterior over a variable, we need to compute all messages pointing to it
+    # from its neighboring factors
     for fi in get_variable_neighbors(round.model, vi)
-        message = Cortex.get_edge_message_to_variable(round.model, vi, fi)
-        # First we check if the required messages are pending and not computed
-        # If they are, we need to process them
-        if is_pending(message) && !is_computed(message)
-            processor(round, InferenceStep(message, InferenceStepType.MessageToVariable, vi, fi))
-        else 
-
+        # First we check if directly required slots are pending and not computed
+        slot = Cortex.get_edge_message_to_variable(round.model, vi, fi)
+        if is_pending(slot) && !is_computed(slot)
+            # If they are, we need to process them
+            processor(round, MessageToVariable(vi, fi))
+        else
+            # If they are not, we need to check if any of the dependencies of the slot are pending
+            for dependency in slot.dependencies
+                if is_pending(round.model, dependency) && !is_computed(round.model, dependency)
+                    # If they are, we need to process them
+                    # Here we also manually dispatch on the type of dependency in order to avoid 
+                    # expensive runtime dispatch
+                    if dependency.type == DependencyType.MessageToFactor
+                        processor(round, dependency.wrapped::MessageToFactor)
+                    elseif dependency.type == DependencyType.MessageToVariable
+                        processor(round, dependency.wrapped::MessageToVariable)
+                    else
+                        processor(round, dependency.wrapped::AbstractDependency)
+                    end
+                end
+            end
         end
     end
 end
 
 struct InferenceRoundCollector
-    steps::Vector{InferenceStep}
+    steps::Vector{AbstractDependency}
 
-    InferenceRoundCollector() = new(InferenceStep[])
+    InferenceRoundCollector() = new(AbstractDependency[])
 end
 
-function (collector::InferenceRoundCollector)(::InferenceRound, step::InferenceStep)
+function (collector::InferenceRoundCollector)(::InferenceRound, step::AbstractDependency)
     push!(collector.steps, step)
 end
 
@@ -49,5 +53,3 @@ function Base.collect(round::InferenceRound)
     process_inference_round(collector, round)
     return collector.steps
 end
-
-

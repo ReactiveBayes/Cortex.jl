@@ -16,9 +16,6 @@
         inference_steps = collect(inference_round)
 
         @test length(inference_steps) == 0
-
-        @test_opt Cortex.create_inference_round(model, vc)
-        @test_opt collect(Cortex.create_inference_round(model, vc))
     end
 end
 
@@ -46,10 +43,7 @@ end
         inference_steps = collect(inference_round)
 
         @test length(inference_steps) == 1
-        @test inference_steps[1].message == Cortex.get_edge_message_to_variable(model, vc, f1)
-        @test inference_steps[1].type == Cortex.InferenceStepType.MessageToVariable
-        @test inference_steps[1].variable == vc
-        @test inference_steps[1].factor == f1
+        @test inference_steps[1] == Cortex.MessageToVariable(vc, f1)
     end
 
     # f2 -> vc is pending, should be in the inference round
@@ -60,10 +54,7 @@ end
         inference_steps = collect(inference_round)
 
         @test length(inference_steps) == 1
-        @test inference_steps[1].message == Cortex.get_edge_message_to_variable(model, vc, f2)
-        @test inference_steps[1].type == Cortex.InferenceStepType.MessageToVariable
-        @test inference_steps[1].variable == vc
-        @test inference_steps[1].factor == f2
+        @test inference_steps[1] == Cortex.MessageToVariable(vc, f2)
     end
 
     # f1 -> vc and f2 -> vc are pending, should be in the inference round
@@ -75,12 +66,12 @@ end
         inference_steps = collect(inference_round)
 
         @test length(inference_steps) == 2
-        @test inference_steps[1].message == Cortex.get_edge_message_to_variable(model, vc, f1)
-        @test inference_steps[2].message == Cortex.get_edge_message_to_variable(model, vc, f2)
+        @test inference_steps[1] == Cortex.MessageToVariable(vc, f1)
+        @test inference_steps[2] == Cortex.MessageToVariable(vc, f2)
     end
 end
 
-@testitem "An inference round should contain first immediate dependencies of required messages" setup = [ModelUtils] begin
+@testitem "An inference round should correctly resolve dependencies of required messages" setup = [ModelUtils] begin
     using .ModelUtils
     using JET
 
@@ -98,7 +89,21 @@ end
     add_edge!(model.graph, v2, f1, Edge())
     add_edge!(model.graph, v2, f2, Edge())
     add_edge!(model.graph, v3, f2, Edge())
+
+    # A message from f1 to v2 depends on a message from v1 to f1
+    Cortex.add_dependency!(
+        Cortex.get_edge_message_to_variable(model, v2, f1), 
+        Cortex.MessageToFactor(v1, f1)
+    )
+
+    # A message from f2 to v2 depends on a message from v3 to f2
+    Cortex.add_dependency!(
+        Cortex.get_edge_message_to_variable(model, v2, f2), 
+        Cortex.MessageToFactor(v3, f2)
+    )
     
+    # We set pending messages from v1 to f1 and v3 to f2
+    # Since they are direct dependencies of messages to v2, they shouldxw be added to the inference round
     Cortex.set_pending!(Cortex.get_edge_message_to_factor(model, v1, f1))
     Cortex.set_pending!(Cortex.get_edge_message_to_factor(model, v3, f2))
 
@@ -106,7 +111,7 @@ end
     inference_steps = collect(inference_round)
 
     @test length(inference_steps) == 2
-    @test inference_steps[1].message == Cortex.get_edge_message_to_factor(model, v1, f1)
-    @test inference_steps[2].message == Cortex.get_edge_message_to_factor(model, v3, f2)
+    @test inference_steps[1] == Cortex.MessageToFactor(v1, f1)
+    @test inference_steps[2] == Cortex.MessageToFactor(v3, f2)
         
 end

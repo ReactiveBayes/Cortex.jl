@@ -79,8 +79,8 @@ end
 
     @test @inferred(mapreduce(i -> foo(i)::Int, +, collection)) == 29
 
-    @show @benchmark mapreduce(foo, +, $collection; init = 0)
-    @show @benchmark sum(Iterators.map(foo, $collection))
+    # @show @benchmark mapreduce(foo, +, $collection; init = 0)
+    # @show @benchmark sum(Iterators.map(foo, $collection))
 
     struct Wrapper
         type::UInt8
@@ -117,6 +117,6 @@ end
 
     wrapped_collection = map(Wrapper, collection)
 
-    @show @benchmark mapreduce(foo, +, $wrapped_collection; init = 0)
-    @show @benchmark sum(Iterators.map(foo, $wrapped_collection))
+    # @show @benchmark mapreduce(foo, +, $wrapped_collection; init = 0)
+    # @show @benchmark sum(Iterators.map(foo, $wrapped_collection))
 end
