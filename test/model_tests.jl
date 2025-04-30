@@ -50,7 +50,6 @@ end
     @test_throws CortexModelInterfaceNotImplementedError(
         :get_edge_message_to_factor, IncorrectlyImplementedCortexModel(), (1, 2)
     ) get_edge_message_to_factor(IncorrectlyImplementedCortexModel(), 1, 2)
-     
 end
 
 @testmodule ModelUtils begin
@@ -136,9 +135,53 @@ end
         return BipartiteFactorGraphs.neighbors(model.graph, vi)
     end
 
+    export BeliefPropagation
+    export resolve_dependencies!
+
+    struct BeliefPropagation end
+
+    function resolve_dependencies!(model::Model, ::BeliefPropagation)
+        # For each variable
+        for vi in variables(model.graph)
+            for fi in neighbors(model.graph, vi)
+                # for a marginal of a variable, we add a dependency on the message to the variable from each of its neighbors
+                Cortex.add_dependency!(
+                    Cortex.get_variable_marginal(model, vi),
+                    Cortex.get_edge_message_to_variable(model, vi, fi),
+                    Cortex.MessageToVariable(vi, fi)
+                )
+
+                # And for each individual edge, we add a dependency on the message from the factor to the variable
+                for e_fi in neighbors(model.graph, vi)
+                    if fi !== e_fi
+                        Cortex.add_dependency!(
+                            Cortex.get_edge_message_to_factor(model, vi, fi),
+                            Cortex.get_edge_message_to_variable(model, vi, e_fi),
+                            Cortex.MessageToVariable(vi, e_fi)
+                        )
+                    end
+                end
+            end
+        end
+
+        # For each factor, we add a dependency on the inbound messages from its neighbors (excluding self-references)
+        for fi in factors(model.graph)
+            for vi in neighbors(model.graph, fi)
+                for e_vi in neighbors(model.graph, fi)
+                    if vi !== e_vi
+                        Cortex.add_dependency!(
+                            Cortex.get_edge_message_to_variable(model, vi, fi),
+                            Cortex.get_edge_message_to_factor(model, e_vi, fi),
+                            Cortex.MessageToFactor(e_vi, fi)
+                        )
+                    end
+                end
+            end
+        end
+    end
 end
 
-@testitem "ModelUtils: The `Model` function should return an empty model" setup=[ModelUtils] begin
+@testitem "ModelUtils: The `Model` function should return an empty model" setup = [ModelUtils] begin
     using BipartiteFactorGraphs
     using .ModelUtils
 
@@ -149,7 +192,7 @@ end
     end
 end
 
-@testitem "ModelUtils: It should be possible to add variables, nodes and edges to the model" setup=[ModelUtils] begin
+@testitem "ModelUtils: It should be possible to add variables, nodes and edges to the model" setup = [ModelUtils] begin
     using BipartiteFactorGraphs
     using .ModelUtils
 
@@ -167,14 +210,14 @@ end
     end
 end
 
-@testitem "The test model should properly implement the Cortex model interface" setup=[ModelUtils] begin
+@testitem "The test model should properly implement the Cortex model interface" setup = [ModelUtils] begin
     using BipartiteFactorGraphs
     using .ModelUtils
 
     @testset let model = Model()
         v = add_variable!(model.graph, Variable("x", 1))
         f = add_factor!(model.graph, Factor(identity))
-        
+
         add_edge!(model.graph, v, f, Edge())
 
         @test Cortex.get_variable_display_name(model, v) == "x[1]"
@@ -189,4 +232,56 @@ end
         @test Cortex.get_variable_neighbors(model, v) == [f]
         @test Cortex.get_factor_neighbors(model, f) == [v]
     end
+end
+
+@testitem "The BeliefPropagation algorithm should properly resolve dependencies #1" setup = [ModelUtils] begin
+    using BipartiteFactorGraphs
+    using .ModelUtils
+
+    model = Model()
+
+    v1 = add_variable!(model.graph, Variable(:v1))
+    v2 = add_variable!(model.graph, Variable(:v1))
+    v3 = add_variable!(model.graph, Variable(:v1))
+
+    f1 = add_factor!(model.graph, Factor(:f1))
+    f2 = add_factor!(model.graph, Factor(:f2))
+
+    add_edge!(model.graph, v1, f1, Edge())
+    add_edge!(model.graph, v2, f1, Edge())
+    add_edge!(model.graph, v2, f2, Edge())
+    add_edge!(model.graph, v3, f2, Edge())
+    
+    resolve_dependencies!(model, BeliefPropagation())
+
+    v1_marginal = Cortex.get_variable_marginal(model, v1)
+    @test length(v1_marginal.dependencies) == 1
+    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v1, f1), v1_marginal.dependencies)
+
+    v2_marginal = Cortex.get_variable_marginal(model, v2)
+    @test length(v2_marginal.dependencies) == 2
+    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v2, f1), v2_marginal.dependencies)
+    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v2, f2), v2_marginal.dependencies)
+
+    v3_marginal = Cortex.get_variable_marginal(model, v3)
+    @test length(v3_marginal.dependencies) == 1
+    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v3, f2), v3_marginal.dependencies) 
+
+    message_from_f1_to_v2 = Cortex.get_edge_message_to_variable(model, v2, f1)
+    @test length(message_from_f1_to_v2.dependencies) == 1
+    @test any(d -> d[1] === Cortex.get_edge_message_to_factor(model, v1, f1), message_from_f1_to_v2.dependencies)
+
+    message_from_f2_to_v2 = Cortex.get_edge_message_to_variable(model, v2, f2)
+    @test length(message_from_f2_to_v2.dependencies) == 1
+    @test any(d -> d[1] === Cortex.get_edge_message_to_factor(model, v3, f2), message_from_f2_to_v2.dependencies)
+
+    message_from_v2_to_f1 = Cortex.get_edge_message_to_factor(model, v2, f1)
+    @test length(message_from_v2_to_f1.dependencies) == 1
+    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v2, f2), message_from_v2_to_f1.dependencies)
+
+    message_from_v2_to_f2 = Cortex.get_edge_message_to_factor(model, v2, f2)
+    @test length(message_from_v2_to_f2.dependencies) == 1
+    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v2, f1), message_from_v2_to_f2.dependencies)
+    
+
 end

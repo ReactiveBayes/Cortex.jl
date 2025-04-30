@@ -41,14 +41,19 @@ unset_pending!(slot::Slot) = unset_pending!(slot.value)
 
 function set_value!(slot::Slot, @nospecialize(value))
     set_value!(slot.value, value)
+    # If a slot receives a new value, we need to check if all of its dependents can be marked as pending
     for dependent in slot.dependents
-        set_pending!(dependent)
+        # They can be marked as pending if all of their dependencies are computed (including the current slot)
+        if all((t) -> is_computed(t[1]::Slot)::Bool, dependent.dependencies)
+            set_pending!(dependent)
+        end
     end
 end
 
 add_dependency!(to::Slot, from::Slot, dependency::AbstractDependency) = add_dependency!(to, from, Dependency(dependency))
 
 function add_dependency!(to::Slot, from::Slot, dependency::Dependency)
+    # TODO: check performance if we remove this condition
     if to === from 
         throw(ArgumentError("A slot cannot be a dependency of itself"))
     end

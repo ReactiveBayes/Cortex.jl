@@ -147,3 +147,40 @@ end
         @test !is_computed(slot2)
     end
 end
+
+@testitem "If a slot depends on several other slots, it should only be marked as pending if all of its dependencies are pending" begin
+    import Cortex: Slot, AbstractDependency, add_dependency!, set_value!, is_pending, is_computed
+
+    slot1 = Slot()
+    slot2 = Slot()
+    slot3 = Slot()
+
+    struct SomeCustomHugeDependency <: AbstractDependency end
+
+    dep = SomeCustomHugeDependency()
+    add_dependency!(slot1, slot2, dep)
+    add_dependency!(slot1, slot3, dep)
+
+    @test !is_pending(slot1)
+    @test !is_pending(slot2)
+    @test !is_pending(slot3)
+    @test !is_computed(slot1)
+    @test !is_computed(slot2)
+    @test !is_computed(slot3)
+
+    set_value!(slot2, 1)
+
+    @test !is_pending(slot1)
+    @test !is_pending(slot2)
+    @test !is_pending(slot3)
+
+    @test !is_computed(slot1)
+    @test is_computed(slot2)
+    @test !is_computed(slot3)
+
+    set_value!(slot3, 1)
+
+    @test is_pending(slot1)
+    @test is_computed(slot2)
+    @test is_computed(slot3)
+end
