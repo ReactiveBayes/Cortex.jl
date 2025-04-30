@@ -183,3 +183,21 @@ A collection of nodes that are neighbors of the given variable.
 function get_variable_neighbors(model, variable)
     throw(CortexModelInterfaceNotImplementedError(:get_variable_neighbors, model, (variable,)))
 end
+
+"""
+    get_dependencies_for_message_to_variable(model, variable, factor)
+
+A part of the interface of `CortexModel`.
+Must return the dependencies of the given variable for the message sent to the factor.
+
+# Arguments
+- `model`: The model object.
+- `variable`: The variable node of the edge.
+- `factor`: The factor node of the edge.
+
+# Returns
+A iterator of `Dependency` objects that represent required dependencies for the message `factor -> variable` to be computed.
+"""
+function get_dependencies_for_message_to_variable(model, variable, factor)
+    throw(CortexModelInterfaceNotImplementedError(:get_dependencies_for_message_to_variable, model, (variable, factor)))
+end

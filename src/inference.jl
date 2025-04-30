@@ -1,5 +1,4 @@
 
-
 module InferenceStepType
 const MessageToVariable::UInt8 = 0x1
 const MessageToFactor::UInt8 = 0x2
@@ -30,7 +29,7 @@ function process_inference_round(processor::P, round::InferenceRound) where {P}
         if is_pending(message) && !is_computed(message)
             processor(round, InferenceStep(message, InferenceStepType.MessageToVariable, vi, fi))
         else 
-            
+
         end
     end
 end

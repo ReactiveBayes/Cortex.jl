@@ -81,6 +81,7 @@ function set_value!(value::Value, @nospecialize(val))
     value.value = val
     value.is_pending = false
     value.is_computed = true
+    return value
 end
 
 function Base.show(io::IO, value::Value)
