@@ -19,7 +19,7 @@ end
         get_variable_marginal,
         get_factor_local_marginal,
         get_edge_message_to_variable,
-        get_edge_message_to_node
+        get_edge_message_to_factor
 
     struct IncorrectlyImplementedCortexModel end
 
@@ -44,23 +44,27 @@ end
     ) get_factor_local_marginal(IncorrectlyImplementedCortexModel(), 1)
 
     @test_throws CortexModelInterfaceNotImplementedError(
-        :get_edge_message_to_variable, IncorrectlyImplementedCortexModel(), (1 => 2,)
-    ) get_edge_message_to_variable(IncorrectlyImplementedCortexModel(), 1 => 2)
+        :get_edge_message_to_variable, IncorrectlyImplementedCortexModel(), (1, 2)
+    ) get_edge_message_to_variable(IncorrectlyImplementedCortexModel(), 1, 2)
 
     @test_throws CortexModelInterfaceNotImplementedError(
-        :get_edge_message_to_node, IncorrectlyImplementedCortexModel(), (1 => 2,)
-    ) get_edge_message_to_node(IncorrectlyImplementedCortexModel(), 1 => 2)
+        :get_edge_message_to_factor, IncorrectlyImplementedCortexModel(), (1, 2)
+    ) get_edge_message_to_factor(IncorrectlyImplementedCortexModel(), 1, 2)
 end
 
 @testmodule ModelUtils begin
-    import BipartiteFactorGraphs, Cortex
+    using Reexport
+
+    import Cortex
     import Cortex: Value
 
     export Variable, Factor, Edge, Model
     export make_empty_model
 
+    @reexport using BipartiteFactorGraphs
+
     struct Variable
-        name::String
+        name::Any
         index::Any
         marginal::Value
 
@@ -73,7 +77,7 @@ end
 
     struct Edge
         message_to_variable::Value
-        message_to_node::Value
+        message_to_factor::Value
 
         Edge() = new(Value(), Value())
     end
@@ -118,11 +122,18 @@ end
         return e.message_to_variable
     end
 
-    function Cortex.get_edge_message_to_node(model::Model, vi, fi)
+    function Cortex.get_edge_message_to_factor(model::Model, vi, fi)
         e = BipartiteFactorGraphs.get_edge_data(model.graph, vi, fi)
-        return e.message_to_node
+        return e.message_to_factor
     end
-    
+
+    function Cortex.get_factor_neighbors(model::Model, fi)
+        return BipartiteFactorGraphs.neighbors(model.graph, fi)
+    end
+
+    function Cortex.get_variable_neighbors(model::Model, vi)
+        return BipartiteFactorGraphs.neighbors(model.graph, vi)
+    end
 end
 
 @testitem "ModelUtils: The `Model` function should return an empty model" setup=[ModelUtils] begin
@@ -171,6 +182,9 @@ end
         @test Cortex.get_variable_marginal(model, v) isa Cortex.Value
         @test_broken Cortex.get_factor_local_marginal(model, f) isa Cortex.Value
         @test Cortex.get_edge_message_to_variable(model, v, f) isa Cortex.Value
-        @test Cortex.get_edge_message_to_node(model, v, f) isa Cortex.Value
+        @test Cortex.get_edge_message_to_factor(model, v, f) isa Cortex.Value
+
+        @test Cortex.get_variable_neighbors(model, v) == [f]
+        @test Cortex.get_factor_neighbors(model, f) == [v]
     end
 end
