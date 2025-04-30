@@ -43,7 +43,7 @@ end
     @test is_computed(slot)
 
     JET.@test_opt set_value!(slot, 1)
-    
+
     @test slot.value.value == 1
 
     set_pending!(slot)
@@ -95,6 +95,55 @@ end
     struct SomeCustomCircularDependency <: AbstractDependency end
 
     slot = Slot()
-    
+
     @test_throws "A slot cannot be a dependency of itself" add_dependency!(slot, slot, SomeCustomCircularDependency())
+end
+
+@testitem "When a slot is updated, all dependents should be set to pending" begin
+    import Cortex: Slot, AbstractDependency, add_dependency!, set_value!, is_pending, is_computed
+
+    struct SomeCustomPendingDependency <: AbstractDependency end
+
+    @testset "slot1 depends on slot2, setting value to slot2 should set slot1 to pending" begin
+        slot1 = Slot()
+        slot2 = Slot()
+
+        dep = SomeCustomPendingDependency()
+        add_dependency!(slot1, slot2, dep)
+
+        @test !is_pending(slot1)
+        @test !is_computed(slot1)
+
+        @test !is_pending(slot2)
+        @test !is_computed(slot2)
+
+        set_value!(slot2, 1)
+
+        @test !is_pending(slot2)
+        @test is_computed(slot2)
+
+        @test is_pending(slot1)
+        @test !is_computed(slot1)
+    end
+
+    @testset "slot1 depends on slot2, setting value to slot1 should NOT set slot2 to pending" begin
+        slot1 = Slot()
+        slot2 = Slot()
+
+        dep = SomeCustomPendingDependency()
+        add_dependency!(slot1, slot2, dep)
+
+        @test !is_pending(slot1)
+        @test !is_computed(slot1)
+
+        @test !is_pending(slot2)
+        @test !is_computed(slot2)
+
+        set_value!(slot1, 1)
+
+        @test !is_pending(slot1)
+        @test is_computed(slot1)
+        @test !is_pending(slot2)
+        @test !is_computed(slot2)
+    end
 end

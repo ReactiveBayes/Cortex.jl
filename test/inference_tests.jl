@@ -32,6 +32,11 @@ end
         add_edge!(model.graph, vc, f1, Edge())
         add_edge!(model.graph, vc, f2, Edge())
 
+        vm = Cortex.get_variable_marginal(model, vc)
+
+        Cortex.add_dependency!(vm, Cortex.get_edge_message_to_variable(model, vc, f1), Cortex.MessageToVariable(vc, f1))
+        Cortex.add_dependency!(vm, Cortex.get_edge_message_to_variable(model, vc, f2), Cortex.MessageToVariable(vc, f2))
+
         return model, f1, f2, vc
     end
 
@@ -43,7 +48,8 @@ end
         inference_steps = collect(inference_round)
 
         @test length(inference_steps) == 1
-        @test inference_steps[1] == Cortex.MessageToVariable(vc, f1)
+        @test inference_steps[1].slot == Cortex.get_edge_message_to_variable(model, vc, f1)
+        @test inference_steps[1].dependency == Cortex.MessageToVariable(vc, f1)
     end
 
     # f2 -> vc is pending, should be in the inference round
@@ -54,7 +60,8 @@ end
         inference_steps = collect(inference_round)
 
         @test length(inference_steps) == 1
-        @test inference_steps[1] == Cortex.MessageToVariable(vc, f2)
+        @test inference_steps[1].slot == Cortex.get_edge_message_to_variable(model, vc, f2)
+        @test inference_steps[1].dependency == Cortex.MessageToVariable(vc, f2)
     end
 
     # f1 -> vc and f2 -> vc are pending, should be in the inference round
@@ -66,8 +73,11 @@ end
         inference_steps = collect(inference_round)
 
         @test length(inference_steps) == 2
-        @test inference_steps[1] == Cortex.MessageToVariable(vc, f1)
-        @test inference_steps[2] == Cortex.MessageToVariable(vc, f2)
+        @test inference_steps[1].slot == Cortex.get_edge_message_to_variable(model, vc, f1)
+        @test inference_steps[1].dependency == Cortex.MessageToVariable(vc, f1)
+
+        @test inference_steps[2].slot == Cortex.get_edge_message_to_variable(model, vc, f2)
+        @test inference_steps[2].dependency == Cortex.MessageToVariable(vc, f2)
     end
 end
 
@@ -103,6 +113,20 @@ end
         Cortex.get_edge_message_to_factor(model, v3, f2),
         Cortex.MessageToFactor(v3, f2)
     )
+
+    # A marginal for v2 depends on a message f1 to v2 and a message f2 to v2
+    Cortex.add_dependency!(
+        Cortex.get_variable_marginal(model, v2),
+        Cortex.get_edge_message_to_variable(model, v2, f1),
+        Cortex.MessageToVariable(v2, f1)
+    )
+
+    Cortex.add_dependency!(
+        Cortex.get_variable_marginal(model, v2),
+        Cortex.get_edge_message_to_variable(model, v2, f2),
+        Cortex.MessageToVariable(v2, f2)
+    )
+    
     
     # We set pending messages from v1 to f1 and v3 to f2
     # Since they are direct dependencies of messages to v2, they shouldxw be added to the inference round
@@ -113,8 +137,11 @@ end
     inference_steps = collect(inference_round)
 
     @test length(inference_steps) == 2
-    @test inference_steps[1] == Cortex.MessageToFactor(v1, f1)
-    @test inference_steps[2] == Cortex.MessageToFactor(v3, f2)
+    @test inference_steps[1].slot == Cortex.get_edge_message_to_factor(model, v1, f1)
+    @test inference_steps[1].dependency == Cortex.MessageToFactor(v1, f1)
+
+    @test inference_steps[2].slot == Cortex.get_edge_message_to_factor(model, v3, f2)
+    @test inference_steps[2].dependency == Cortex.MessageToFactor(v3, f2)
         
 end
 
