@@ -21,16 +21,17 @@ function process_inference_round(processor::P, round::InferenceRound) where {P}
         else
             # If they are not, we need to check if any of the dependencies of the slot are pending
             for dependency in slot.dependencies
-                if is_pending(round.model, dependency) && !is_computed(round.model, dependency)
+                slot, dependency_wrapper = dependency
+                if is_pending(round.model, dependency_wrapper) && !is_computed(round.model, dependency_wrapper)
                     # If they are, we need to process them
                     # Here we also manually dispatch on the type of dependency in order to avoid 
                     # expensive runtime dispatch
-                    if dependency.type == DependencyType.MessageToFactor
-                        processor(round, dependency.wrapped::MessageToFactor)
-                    elseif dependency.type == DependencyType.MessageToVariable
-                        processor(round, dependency.wrapped::MessageToVariable)
+                    if dependency_wrapper.type == DependencyType.MessageToFactor
+                        processor(round, dependency_wrapper.wrapped::MessageToFactor)
+                    elseif dependency_wrapper.type == DependencyType.MessageToVariable
+                        processor(round, dependency_wrapper.wrapped::MessageToVariable)
                     else
-                        processor(round, dependency.wrapped::AbstractDependency)
+                        processor(round, dependency_wrapper.wrapped::AbstractDependency)
                     end
                 end
             end

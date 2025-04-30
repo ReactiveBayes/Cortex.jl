@@ -63,9 +63,10 @@ end
 
 struct Slot
     value::Value
-    dependencies::Vector{Dependency}
+    dependencies::Vector{Tuple{Slot, Dependency}}
+    dependents::Vector{Slot}
 
-    Slot() = new(Value(), Dependency[])
+    Slot() = new(Value(), Tuple{Slot, Dependency}[], Slot[])
 end
 
 is_pending(slot::Slot)::Bool = is_pending(slot.value)::Bool
@@ -75,5 +76,12 @@ set_value!(slot::Slot, value) = set_value!(slot.value, value)
 set_pending!(slot::Slot) = set_pending!(slot.value)
 unset_pending!(slot::Slot) = unset_pending!(slot.value)
 
-add_dependency!(slot::Slot, dependency::AbstractDependency) = push!(slot.dependencies, Dependency(dependency))
-add_dependency!(slot::Slot, dependency::Dependency) = push!(slot.dependencies, dependency)
+add_dependency!(to::Slot, from::Slot, dependency::AbstractDependency) = add_dependency!(to, from, Dependency(dependency))
+
+function add_dependency!(to::Slot, from::Slot, dependency::Dependency)
+    if to === from 
+        throw(ArgumentError("A slot cannot be a dependency of itself"))
+    end
+    push!(to.dependencies, (from, dependency))
+    push!(from.dependents, to)
+end
