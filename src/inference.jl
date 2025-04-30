@@ -13,7 +13,7 @@ function process_inference_round(processor::P, round::InferenceRound) where {P}
     for md in round.marginal.dependencies
         processed = process_dependency(processor, round, md)
         # If the dependency cannot be processed, we try its first direct dependency
-        if !processed 
+        if !processed
             slot, _ = md
             for sd in slot.dependencies
                 process_dependency(processor, round, sd)
@@ -24,7 +24,7 @@ end
 
 function process_dependency(processor::P, round::InferenceRound, t::Tuple{Slot, Dependency}) where {P}
     slot, dependency = t
-    if !is_computed(slot) && is_pending(slot)   
+    if !is_computed(slot) && is_pending(slot)
         if dependency.type == DependencyType.MessageToFactor
             processor(round, slot, dependency.wrapped::MessageToFactor)
         elseif dependency.type == DependencyType.MessageToVariable
@@ -49,7 +49,9 @@ struct InferenceRoundCollector{M}
     InferenceRoundCollector(::Type{M}) where {M} = new{M}(CollectedInferenceStep{M}[])
 end
 
-function (collector::InferenceRoundCollector{M})(round::InferenceRound{M}, slot::Slot, dependency::AbstractDependency) where {M}
+function (collector::InferenceRoundCollector{M})(
+    round::InferenceRound{M}, slot::Slot, dependency::AbstractDependency
+) where {M}
     push!(collector.steps, CollectedInferenceStep{M}(round, slot, dependency))
 end
 

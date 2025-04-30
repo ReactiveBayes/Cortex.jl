@@ -50,11 +50,13 @@ function set_value!(slot::Slot, @nospecialize(value))
     end
 end
 
-add_dependency!(to::Slot, from::Slot, dependency::AbstractDependency) = add_dependency!(to, from, Dependency(dependency))
+add_dependency!(to::Slot, from::Slot, dependency::AbstractDependency) = add_dependency!(
+    to, from, Dependency(dependency)
+)
 
 function add_dependency!(to::Slot, from::Slot, dependency::Dependency)
     # TODO: check performance if we remove this condition
-    if to === from 
+    if to === from
         throw(ArgumentError("A slot cannot be a dependency of itself"))
     end
     push!(to.dependencies, (from, dependency))

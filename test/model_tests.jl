@@ -251,7 +251,7 @@ end
     add_edge!(model.graph, v2, f1, Edge())
     add_edge!(model.graph, v2, f2, Edge())
     add_edge!(model.graph, v3, f2, Edge())
-    
+
     resolve_dependencies!(model, BeliefPropagation())
 
     v1_marginal = Cortex.get_variable_marginal(model, v1)
@@ -265,7 +265,7 @@ end
 
     v3_marginal = Cortex.get_variable_marginal(model, v3)
     @test length(v3_marginal.dependencies) == 1
-    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v3, f2), v3_marginal.dependencies) 
+    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v3, f2), v3_marginal.dependencies)
 
     message_from_f1_to_v2 = Cortex.get_edge_message_to_variable(model, v2, f1)
     @test length(message_from_f1_to_v2.dependencies) == 1
@@ -282,6 +282,4 @@ end
     message_from_v2_to_f2 = Cortex.get_edge_message_to_factor(model, v2, f2)
     @test length(message_from_v2_to_f2.dependencies) == 1
     @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v2, f1), message_from_v2_to_f2.dependencies)
-    
-
 end

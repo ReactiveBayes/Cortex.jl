@@ -23,7 +23,10 @@ struct CortexModelInterfaceNotImplementedError <: Exception
 end
 
 function Base.showerror(io::IO, e::CortexModelInterfaceNotImplementedError)
-    print(io, "The method `$(e.method)` is not implemented for the model object of type `$(typeof(e.model))`. The arguments passed to the method were: ")
+    print(
+        io,
+        "The method `$(e.method)` is not implemented for the model object of type `$(typeof(e.model))`. The arguments passed to the method were: "
+    )
     foreach(e.args) do arg
         print(io, arg, " (", typeof(arg), ")")
     end
