@@ -1,20 +1,28 @@
 name = "Cortex"
 uuid = "39612bbb-57ff-4bee-a8f8-6b0371679005"
 authors = ["Bagaev Dmitry <bvdmitri@gmail.com> and contributors"]
-version = "0.1"
+version = "0.1.0"
+
+[deps]
+BipartiteFactorGraphs = "b30351d1-6332-4c89-82f4-633fdf76981a"
 
 [compat]
-julia = "1.10"
 Aqua = "0.8"
+BenchmarkTools = "1.6"
+BipartiteFactorGraphs = "1.0.0"
 JET = "0.9, 0.10"
+Reexport = "1.2"
 Test = "1.10"
 TestItemRunner = "1.1"
+julia = "1.10"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
 
 [targets]
-test = ["Aqua", "JET", "Test", "TestItemRunner"]
+test = ["Aqua", "BenchmarkTools", "JET", "Reexport", "Test", "TestItemRunner"]
