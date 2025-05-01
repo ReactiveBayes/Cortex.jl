@@ -28,6 +28,8 @@ Here are some basic examples demonstrating how to use signals.
 
 ### Creating Signals and Checking Properties
 
+Signals can be created with or without an initial value. We can inspect their initial state, including value, label, computed status, and age.
+
 Create signals:
 ```@example signal_examples
 import Cortex
@@ -71,6 +73,8 @@ Cortex.is_computed(s3) # false
 
 ### Setting Values
 
+Use [`Cortex.set_value!`](@ref) to update a signal's value. This marks the signal as computed and updates its age.
+
 Setting a value updates the age and computed status:
 ```@example signal_examples
 Cortex.set_value!(s3, 99.0)
@@ -85,6 +89,8 @@ Cortex.is_computed(s3) # true
 ```
 
 ### Adding Dependencies
+
+Signals can depend on other signals. Use [`Cortex.add_dependency!`](@ref) to create these links. This populates the `dependencies` list of the dependent signal and the `listeners` list of the dependency.
 
 Adding dependencies links signals:
 ```@example signal_examples
@@ -108,6 +114,8 @@ length(Cortex.get_listeners(s2))           # 1
 
 ### Pending State
 
+A signal becomes pending ([`Cortex.is_pending`](@ref) returns `true`) when its dependencies are updated in a way that satisfies the pending criteria (all weak computed, all strong older and computed). Adding a computed dependency can also immediately mark a signal as pending.
+
 Updating a dependency can mark listeners as pending:
 ```@example signal_examples
 @test Cortex.is_pending(s_derived) == true # hide
@@ -118,7 +126,7 @@ Cortex.is_pending(s_derived) # true
 
 ### Computing Signal Values
 
-To compute a signal, use the [`Cortex.compute!`](@ref) function. 
+To compute a signal, use the [`Cortex.compute!`](@ref) function, providing a strategy (often a simple function) to calculate the new value based on dependencies. Computing a signal typically clears its pending state.
 
 !!! note
     By default, `compute!` throws an `ArgumentError` if called on a signal that is not pending ([`is_pending`](@ref) returns `false`). You can override this check using the `force=true` keyword argument.
@@ -165,7 +173,7 @@ Cortex.get_value(signal_to_be_computed) # 42
 
 ### Custom Compute Strategies
 
-You can define custom types and methods to implement more complex computation logic beyond simple functions.
+You can define custom types and methods to implement more complex computation logic beyond simple functions. This allows strategies to hold their own state or parameters.
 
 First, define a struct for your strategy:
 
@@ -175,7 +183,7 @@ struct CustomStrategy
 end
 ```
 
-Then, implement the [`Cortex.compute_value!`](@ref) method:
+Then, implement the [`Cortex.compute_value!`](@ref) method for your strategy type:
 
 ```@example signal_examples
 function Cortex.compute_value!(strategy::CustomStrategy, signal::Cortex.Signal, dependencies)
@@ -206,6 +214,8 @@ Cortex.get_value(signal_to_be_computed) # 126
 
 
 ### Non-Listening Dependencies
+
+Using `listen=false` in [`Cortex.add_dependency!`](@ref) creates a dependency relationship, but prevents the dependent signal from being automatically notified (and potentially marked pending) when the dependency's value changes.
 
 Using `listen=false` creates a dependency without automatic notifications:
 ```@example signal_examples

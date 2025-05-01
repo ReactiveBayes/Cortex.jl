@@ -221,8 +221,11 @@ function add_dependency!(
 
     # If a new dependency has been added and this new dependency has already been computed,
     # we immediately notify the current signal `s` as if it was already subscribed to the changes
-    if check_computed && is_computed(dependency)
+    is_dependency_computed = is_computed(dependency)
+    if check_computed && is_dependency_computed
         check_and_set_pending!(dependency, signal)
+    elseif check_computed && !is_dependency_computed
+        signal.is_pending = false
     end
 
     return nothing

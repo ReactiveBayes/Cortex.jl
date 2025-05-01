@@ -800,13 +800,52 @@ end
     end
 end
 
+@testitem "Edge Case: Adding a computed signal and then uncomputed should unset pending state" begin
+    import Cortex: Signal, add_dependency!, set_value!, is_pending
+
+    @testset "Case: check_computed = true" begin
+        s1 = Signal(1)
+        s2 = Signal()
+
+        derived = Signal()
+
+        add_dependency!(derived, s1)
+
+        # Since s1 is computed, derived should be pending
+        @test is_pending(derived)
+
+        add_dependency!(derived, s2)
+
+        # Since s2 is not computed, derived should not be pending
+        @test !is_pending(derived)
+    end
+
+    @testset "Case: check_computed = false" begin
+        s1 = Signal(1)
+        s2 = Signal()
+
+        derived = Signal()
+
+        add_dependency!(derived, s1; check_computed = true)
+
+        # Since s1 is computed, derived should be pending
+        @test is_pending(derived)
+
+        add_dependency!(derived, s2; check_computed = false)
+
+        # Since s2 is not computed, but we don't check if it is computed,
+        # derived should remain pending
+        @test is_pending(derived)
+    end
+end
+
 @testitem "Signal Representation" begin
     import Cortex: Signal, set_value!, add_dependency!, UndefLabel
 
     @testset "Uninitialized Signal" begin
         s_no_label = Signal()
         @test repr(s_no_label) == "Signal(value=#undef, label=undef, pending=false)"
-        
+
         s_label = Signal(label = :test)
         @test repr(s_label) == "Signal(value=#undef, label=:test, pending=false)"
     end
@@ -814,14 +853,14 @@ end
     @testset "Initialized Signal" begin
         s_int = Signal(123)
         @test repr(s_int) == "Signal(value=123, label=undef, pending=false)"
-        
+
         s_str_label = Signal("test"; label = "a label")
         @test repr(s_str_label) == "Signal(value=\"test\", label=\"a label\", pending=false)"
     end
 
     @testset "Pending Signal" begin
         s1 = Signal(1)
-        s_pending = Signal(label=:pending_sig)
+        s_pending = Signal(label = :pending_sig)
         add_dependency!(s_pending, s1)
         # s_pending becomes pending immediately because s1 is computed
         @test repr(s_pending) == "Signal(value=#undef, label=:pending_sig, pending=true)"
@@ -895,7 +934,7 @@ end
 
         # s3 is no longer pending
         @test_throws ArgumentError compute!(strategy, s3) # Should throw error without force=true
-        @test compute!(strategy, s3; force=true) === nothing # Should run with force=true
+        @test compute!(strategy, s3; force = true) === nothing # Should run with force=true
         @test get_value(s3) == 3 # Value remains the same as deps didn't change
         @test !is_pending(s3) # Still not pending
 
@@ -910,7 +949,7 @@ end
         @test get_value(s3) == 30
     end
 
-    @testset "Pyramid of Signals" begin 
+    @testset "Pyramid of Signals" begin
         s01 = Signal(1)
         s02 = Signal(2)
 
@@ -952,6 +991,6 @@ end
 
         @test is_computed(s3)
         @test !is_pending(s3)
-        @test get_value(s3) == (1+2) + (3+4) # 3 + 7 = 10
+        @test get_value(s3) == (1 + 2) + (3 + 4) # 3 + 7 = 10
     end
 end
