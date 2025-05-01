@@ -1,9 +1,3 @@
-"""
-    UndefValue
-
-A placeholder value that represents a value that is not yet computed.
-"""
-struct UndefValue end
 
 Base.show(io::IO, ::UndefValue) = print(io, "#undef")
 
