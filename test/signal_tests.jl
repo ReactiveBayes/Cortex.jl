@@ -10,6 +10,39 @@
     @test get_value(s) == 100
 end
 
+@testitem "Signal Type and Metadata" begin
+    import Cortex: Signal, get_type, get_metadata, UndefMetadata
+
+    @testset "Default Values" begin
+        s = Signal(42)
+        @test get_type(s) === 0x00
+        @test get_metadata(s) === UndefMetadata()
+        s_empty = Signal()
+        @test get_type(s_empty) === 0x00
+        @test get_metadata(s_empty) === UndefMetadata()
+    end
+
+    @testset "Custom Type" begin
+        s = Signal(42; type = 0x05)
+        @test get_type(s) === 0x05
+        @test get_metadata(s) === UndefMetadata()
+    end
+
+    @testset "Custom Metadata" begin
+        meta = Dict("info" => "extra data")
+        s = Signal(42; metadata = meta)
+        @test get_type(s) === 0x00
+        @test get_metadata(s) === meta
+    end
+
+    @testset "Custom Type and Metadata" begin
+        meta = (:a, 1)
+        s = Signal(42; type = 0xff, metadata = meta)
+        @test get_type(s) === 0xff
+        @test get_metadata(s) === meta
+    end
+end
+
 @testitem "Setting Value Updates Age" begin
     import Cortex: Signal, set_value!, get_age
 
@@ -43,11 +76,13 @@ end
 end
 
 @testitem "Empty Signal Creation" begin
-    import Cortex: Signal, UndefValue, get_value, get_age, get_dependencies, get_listeners
+    import Cortex: Signal, UndefValue, get_value, get_age, get_dependencies, get_listeners, get_type, get_metadata, UndefMetadata
 
     s = Signal()
     @test get_value(s) === UndefValue()
-    @test get_age(s) == 0 # Test constructor assignment
+    @test get_age(s) == 0
+    @test get_type(s) === 0x00
+    @test get_metadata(s) === UndefMetadata()
     @test isempty(get_dependencies(s))
     @test isempty(get_listeners(s))
 end
@@ -775,46 +810,100 @@ end
     end
 end
 
+@testitem "Edge Case: Adding a computed signal and then uncomputed should unset pending state" begin
+    import Cortex: Signal, add_dependency!, set_value!, is_pending
+
+    @testset "Case: check_computed = true" begin
+        s1 = Signal(1)
+        s2 = Signal()
+
+        derived = Signal()
+
+        add_dependency!(derived, s1)
+
+        # Since s1 is computed, derived should be pending
+        @test is_pending(derived)
+
+        add_dependency!(derived, s2)
+
+        # Since s2 is not computed, derived should not be pending
+        @test !is_pending(derived)
+    end
+
+    @testset "Case: check_computed = false" begin
+        s1 = Signal(1)
+        s2 = Signal()
+
+        derived = Signal()
+
+        add_dependency!(derived, s1; check_computed = true)
+
+        # Since s1 is computed, derived should be pending
+        @test is_pending(derived)
+
+        add_dependency!(derived, s2; check_computed = false)
+
+        # Since s2 is not computed, but we don't check if it is computed,
+        # derived should remain pending
+        @test is_pending(derived)
+    end
+end
+
 @testitem "Signal Representation" begin
-    import Cortex: Signal, set_value!, add_dependency!
+    import Cortex: Signal, set_value!, add_dependency!, get_type, get_metadata, UndefMetadata
 
     @testset "Uninitialized Signal" begin
-        s = Signal()
-        @test repr(s) == "Signal(value=#undef, pending=false)"
+        s_no_meta = Signal()
+        @test repr(s_no_meta) == "Signal(value=#undef, pending=false)"
+        
+        s_meta = Signal(metadata = :test)
+        @test repr(s_meta) == "Signal(value=#undef, pending=false, metadata=:test)"
+
+        s_type = Signal(type = 0x01)
+        @test repr(s_type) == "Signal(value=#undef, pending=false, type=0x01)"
+        
+        s_both = Signal(type = 0xab, metadata = [1,2])
+        @test repr(s_both) == "Signal(value=#undef, pending=false, type=0xab, metadata=[1, 2])"
     end
 
     @testset "Initialized Signal" begin
         s_int = Signal(123)
         @test repr(s_int) == "Signal(value=123, pending=false)"
-
-        s_str = Signal("test")
-        @test repr(s_str) == "Signal(value=\"test\", pending=false)" # Check quoting
+        
+        s_str_meta = Signal("test"; metadata = "some info")
+        @test repr(s_str_meta) == "Signal(value=\"test\", pending=false, metadata=\"some info\")"
     end
 
     @testset "Pending Signal" begin
         s1 = Signal(1)
-        s_pending = Signal()
+        s_pending = Signal(type = 0x1f, metadata = ("meta", 1.0))
         add_dependency!(s_pending, s1)
-        # s_pending becomes pending immediately because s1 is computed
-        @test repr(s_pending) == "Signal(value=#undef, pending=true)"
+        @test repr(s_pending) == "Signal(value=#undef, pending=true, type=0x1f, metadata=(\"meta\", 1.0))"
 
-        # Set value, pending should become false
         set_value!(s_pending, 50)
-        @test repr(s_pending) == "Signal(value=50, pending=false)"
+        @test repr(s_pending) == "Signal(value=50, pending=false, type=0x1f, metadata=(\"meta\", 1.0))"
 
-        # Update dependency, pending should become true again
         set_value!(s1, 2)
-        @test repr(s_pending) == "Signal(value=50, pending=true)"
+        @test repr(s_pending) == "Signal(value=50, pending=true, type=0x1f, metadata=(\"meta\", 1.0))"
     end
 end
 
 @testitem "Signal JET Coverage" begin
-    import Cortex: Signal
+    import Cortex: Signal, UndefMetadata
     import JET
 
+    # Test default constructors
     JET.@test_opt Cortex.Signal()
     JET.@test_opt Cortex.Signal(1)
     JET.@test_opt Cortex.Signal("1")
+    # Test constructors with keywords
+    JET.@test_opt Cortex.Signal(type=0x01)
+    JET.@test_opt Cortex.Signal(metadata=:meta)
+    JET.@test_opt Cortex.Signal(metadata=UndefMetadata())
+    JET.@test_opt Cortex.Signal(1; type=0x02, metadata="meta")
+    JET.@test_opt Cortex.Signal(1; metadata=UndefMetadata())
+    
+    # Test getters
     JET.@test_opt Cortex.is_pending(Cortex.Signal())
     JET.@test_opt Cortex.is_pending(Cortex.Signal(1))
     JET.@test_opt Cortex.is_pending(Cortex.Signal("1"))
@@ -841,4 +930,93 @@ end
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); weak = true)
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); check_computed = false)
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
+    JET.@test_opt Cortex.get_type(Cortex.Signal())
+    JET.@test_opt Cortex.get_metadata(Cortex.Signal())
+    JET.@test_opt Cortex.get_metadata(Cortex.Signal(metadata=123))
+    JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
+end
+
+@testitem "A Signal Can Be Computed With A Lambda Function" begin
+    import Cortex: Signal, compute!, add_dependency!, set_value!, get_value, is_pending, is_computed
+
+    @testset "Basic Case" begin
+        s1 = Signal(1)
+        s2 = Signal(2)
+        s3 = Signal()
+
+        add_dependency!(s3, s1)
+        add_dependency!(s3, s2)
+
+        @test is_pending(s3)
+        @test !is_computed(s3)
+
+        strategy = (_, deps) -> sum(get_value, deps)
+
+        compute!(strategy, s3)
+
+        @test is_computed(s3)
+        @test !is_pending(s3) # compute! should unset pending
+        @test get_value(s3) == 3
+
+        # s3 is no longer pending
+        @test_throws ArgumentError compute!(strategy, s3) # Should throw error without force=true
+        @test compute!(strategy, s3; force = true) === nothing # Should run with force=true
+        @test get_value(s3) == 3 # Value remains the same as deps didn't change
+        @test !is_pending(s3) # Still not pending
+
+        set_value!(s1, 10)
+        set_value!(s2, 20)
+        @test is_pending(s3) # Now pending again
+
+        compute!(strategy, s3)
+
+        @test is_computed(s3)
+        @test !is_pending(s3)
+        @test get_value(s3) == 30
+    end
+
+    @testset "Pyramid of Signals" begin
+        s01 = Signal(1)
+        s02 = Signal(2)
+
+        s11 = Signal(3)
+        s12 = Signal(4)
+
+        s21 = Signal()
+        s22 = Signal()
+
+        add_dependency!(s21, s01)
+        add_dependency!(s21, s02)
+
+        add_dependency!(s22, s11)
+        add_dependency!(s22, s12)
+
+        s3 = Signal()
+
+        add_dependency!(s3, s21)
+        add_dependency!(s3, s22)
+
+        @test is_pending(s21)
+        @test is_pending(s22)
+        @test !is_computed(s21)
+        @test !is_computed(s22)
+        @test !is_pending(s3)
+        @test !is_computed(s3)
+
+        strategy = (_, deps) -> sum(get_value, deps)
+
+        compute!(strategy, s21)
+        compute!(strategy, s22)
+
+        @test !is_pending(s21)
+        @test !is_pending(s22)
+        @test is_pending(s3) # s3 becomes pending after its deps are computed
+        @test !is_computed(s3)
+
+        compute!(strategy, s3)
+
+        @test is_computed(s3)
+        @test !is_pending(s3)
+        @test get_value(s3) == (1 + 2) + (3 + 4) # 3 + 7 = 10
+    end
 end

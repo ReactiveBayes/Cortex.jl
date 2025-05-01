@@ -9,8 +9,8 @@
         f2 = add_factor!(model.graph, Factor(:right))
         vc = add_variable!(model.graph, Variable(:center))
 
-        add_edge!(model.graph, vc, f1, Edge())
-        add_edge!(model.graph, vc, f2, Edge())
+        add_edge!(model.graph, vc, f1, Edge(vc, f1))
+        add_edge!(model.graph, vc, f2, Edge(vc, f2))
 
         inference_round = Cortex.create_inference_round(model, vc)
         inference_steps = collect(inference_round)
@@ -29,20 +29,20 @@ end
         f2 = add_factor!(model.graph, Factor(:right))
         vc = add_variable!(model.graph, Variable(:center))
 
-        add_edge!(model.graph, vc, f1, Edge())
-        add_edge!(model.graph, vc, f2, Edge())
+        add_edge!(model.graph, vc, f1, Edge(vc, f1))
+        add_edge!(model.graph, vc, f2, Edge(vc, f2))
 
         vm = Cortex.get_variable_marginal(model, vc)
 
-        Cortex.add_dependency!(vm, Cortex.get_edge_message_to_variable(model, vc, f1), Cortex.MessageToVariable(vc, f1))
-        Cortex.add_dependency!(vm, Cortex.get_edge_message_to_variable(model, vc, f2), Cortex.MessageToVariable(vc, f2))
+        Cortex.add_dependency!(vm, Cortex.get_edge_message_to_variable(model, vc, f1))
+        Cortex.add_dependency!(vm, Cortex.get_edge_message_to_variable(model, vc, f2))
 
         return model, f1, f2, vc
     end
 
     # f1 -> vc is pending, should be in the inference round
     @testset let (model, f1, f2, vc) = make_small_node_variable_node_model()
-        Cortex.set_pending!(Cortex.get_edge_message_to_variable(model, vc, f1))
+        Cortex.set_value!(Cortex.get_edge_message_to_variable(model, vc, f1), 1.0)
 
         inference_round = Cortex.create_inference_round(model, vc)
         inference_steps = collect(inference_round)
@@ -54,7 +54,7 @@ end
 
     # f2 -> vc is pending, should be in the inference round
     @testset let (model, f1, f2, vc) = make_small_node_variable_node_model()
-        Cortex.set_pending!(Cortex.get_edge_message_to_variable(model, vc, f2))
+        Cortex.set_value!(Cortex.get_edge_message_to_variable(model, vc, f2), 1.0)
 
         inference_round = Cortex.create_inference_round(model, vc)
         inference_steps = collect(inference_round)
@@ -66,8 +66,8 @@ end
 
     # f1 -> vc and f2 -> vc are pending, should be in the inference round
     @testset let (model, f1, f2, vc) = make_small_node_variable_node_model()
-        Cortex.set_pending!(Cortex.get_edge_message_to_variable(model, vc, f1))
-        Cortex.set_pending!(Cortex.get_edge_message_to_variable(model, vc, f2))
+        Cortex.set_value!(Cortex.get_edge_message_to_variable(model, vc, f1), 1.0)
+        Cortex.set_value!(Cortex.get_edge_message_to_variable(model, vc, f2), 1.0)
 
         inference_round = Cortex.create_inference_round(model, vc)
         inference_steps = collect(inference_round)

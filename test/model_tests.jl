@@ -56,7 +56,7 @@ end
     using Reexport
 
     import Cortex
-    import Cortex: Value, Slot
+    import Cortex: Value, Signal
 
     export Variable, Factor, Edge, Model
     export make_empty_model
@@ -66,9 +66,9 @@ end
     struct Variable
         name::Any
         index::Any
-        marginal::Slot
+        marginal::Signal
 
-        Variable(name, index...) = new(name, index, Slot())
+        Variable(name, index...) = new(name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal))
     end
 
     struct Factor
@@ -76,10 +76,14 @@ end
     end
 
     struct Edge
-        message_to_variable::Slot
-        message_to_factor::Slot
+        message_to_variable::Signal
+        message_to_factor::Signal
 
-        Edge() = new(Slot(), Slot())
+        function Edge(vi, f)
+            message_to_variable = Signal(type = Cortex.InferenceSignalTypes.MessageToVariable, metadata = (vi, f))
+            message_to_factor = Signal(type = Cortex.InferenceSignalTypes.MessageToFactor, metadata = (vi, f))
+            return new(message_to_variable, message_to_factor)
+        end
     end
 
     struct Model{G}
@@ -146,9 +150,7 @@ end
             for fi in neighbors(model.graph, vi)
                 # for a marginal of a variable, we add a dependency on the message to the variable from each of its neighbors
                 Cortex.add_dependency!(
-                    Cortex.get_variable_marginal(model, vi),
-                    Cortex.get_edge_message_to_variable(model, vi, fi),
-                    Cortex.MessageToVariable(vi, fi)
+                    Cortex.get_variable_marginal(model, vi), Cortex.get_edge_message_to_variable(model, vi, fi)
                 )
 
                 # And for each individual edge, we add a dependency on the message from the factor to the variable
@@ -156,8 +158,7 @@ end
                     if fi !== e_fi
                         Cortex.add_dependency!(
                             Cortex.get_edge_message_to_factor(model, vi, fi),
-                            Cortex.get_edge_message_to_variable(model, vi, e_fi),
-                            Cortex.MessageToVariable(vi, e_fi)
+                            Cortex.get_edge_message_to_variable(model, vi, e_fi)
                         )
                     end
                 end
@@ -171,8 +172,7 @@ end
                     if vi !== e_vi
                         Cortex.add_dependency!(
                             Cortex.get_edge_message_to_variable(model, vi, fi),
-                            Cortex.get_edge_message_to_factor(model, e_vi, fi),
-                            Cortex.MessageToFactor(e_vi, fi)
+                            Cortex.get_edge_message_to_factor(model, e_vi, fi)
                         )
                     end
                 end
@@ -199,7 +199,7 @@ end
     @testset let model = Model()
         v = add_variable!(model.graph, Variable("x"))
         f = add_factor!(model.graph, Factor(identity))
-        e = add_edge!(model.graph, v, f, Edge())
+        e = add_edge!(model.graph, v, f, Edge(v, f))
 
         @test length(variables(model.graph)) == 1
         @test length(factors(model.graph)) == 1
@@ -218,16 +218,16 @@ end
         v = add_variable!(model.graph, Variable("x", 1))
         f = add_factor!(model.graph, Factor(identity))
 
-        add_edge!(model.graph, v, f, Edge())
+        add_edge!(model.graph, v, f, Edge(v, f))
 
         @test Cortex.get_variable_display_name(model, v) == "x[1]"
         @test Cortex.get_factor_display_name(model, f) == "Factor(identity)"
         @test Cortex.get_edge_display_name(model, v, f) == "Edge(x[1] --- Factor(identity))"
 
-        @test Cortex.get_variable_marginal(model, v) isa Cortex.Slot
-        @test_broken Cortex.get_factor_local_marginal(model, f) isa Cortex.Slot
-        @test Cortex.get_edge_message_to_variable(model, v, f) isa Cortex.Slot
-        @test Cortex.get_edge_message_to_factor(model, v, f) isa Cortex.Slot
+        @test Cortex.get_variable_marginal(model, v) isa Cortex.Signal
+        @test_broken Cortex.get_factor_local_marginal(model, f) isa Cortex.Signal
+        @test Cortex.get_edge_message_to_variable(model, v, f) isa Cortex.Signal
+        @test Cortex.get_edge_message_to_factor(model, v, f) isa Cortex.Signal
 
         @test Cortex.get_variable_neighbors(model, v) == [f]
         @test Cortex.get_factor_neighbors(model, f) == [v]
@@ -241,45 +241,52 @@ end
     model = Model()
 
     v1 = add_variable!(model.graph, Variable(:v1))
-    v2 = add_variable!(model.graph, Variable(:v1))
-    v3 = add_variable!(model.graph, Variable(:v1))
+    v2 = add_variable!(model.graph, Variable(:v2))
+    v3 = add_variable!(model.graph, Variable(:v3))
 
     f1 = add_factor!(model.graph, Factor(:f1))
     f2 = add_factor!(model.graph, Factor(:f2))
 
-    add_edge!(model.graph, v1, f1, Edge())
-    add_edge!(model.graph, v2, f1, Edge())
-    add_edge!(model.graph, v2, f2, Edge())
-    add_edge!(model.graph, v3, f2, Edge())
+    add_edge!(model.graph, v1, f1, Edge(v1, f1))
+    add_edge!(model.graph, v2, f1, Edge(v2, f1))
+    add_edge!(model.graph, v2, f2, Edge(v2, f2))
+    add_edge!(model.graph, v3, f2, Edge(v3, f2))
 
     resolve_dependencies!(model, BeliefPropagation())
 
     v1_marginal = Cortex.get_variable_marginal(model, v1)
-    @test length(v1_marginal.dependencies) == 1
-    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v1, f1), v1_marginal.dependencies)
+    v1_marginal_deps = Cortex.get_dependencies(v1_marginal)
+    @test length(v1_marginal_deps) == 1
+    @test any(d -> d === Cortex.get_edge_message_to_variable(model, v1, f1), v1_marginal_deps)
 
     v2_marginal = Cortex.get_variable_marginal(model, v2)
-    @test length(v2_marginal.dependencies) == 2
-    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v2, f1), v2_marginal.dependencies)
-    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v2, f2), v2_marginal.dependencies)
+    v2_marginal_deps = Cortex.get_dependencies(v2_marginal)
+    @test length(v2_marginal_deps) == 2
+    @test any(d -> d === Cortex.get_edge_message_to_variable(model, v2, f1), v2_marginal_deps)
+    @test any(d -> d === Cortex.get_edge_message_to_variable(model, v2, f2), v2_marginal_deps)
 
     v3_marginal = Cortex.get_variable_marginal(model, v3)
-    @test length(v3_marginal.dependencies) == 1
-    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v3, f2), v3_marginal.dependencies)
+    v3_marginal_deps = Cortex.get_dependencies(v3_marginal)
+    @test length(v3_marginal_deps) == 1
+    @test any(d -> d === Cortex.get_edge_message_to_variable(model, v3, f2), v3_marginal_deps)
 
     message_from_f1_to_v2 = Cortex.get_edge_message_to_variable(model, v2, f1)
-    @test length(message_from_f1_to_v2.dependencies) == 1
-    @test any(d -> d[1] === Cortex.get_edge_message_to_factor(model, v1, f1), message_from_f1_to_v2.dependencies)
+    message_from_f1_to_v2_deps = Cortex.get_dependencies(message_from_f1_to_v2)
+    @test length(message_from_f1_to_v2_deps) == 1
+    @test any(d -> d === Cortex.get_edge_message_to_factor(model, v1, f1), message_from_f1_to_v2_deps)
 
     message_from_f2_to_v2 = Cortex.get_edge_message_to_variable(model, v2, f2)
-    @test length(message_from_f2_to_v2.dependencies) == 1
-    @test any(d -> d[1] === Cortex.get_edge_message_to_factor(model, v3, f2), message_from_f2_to_v2.dependencies)
+    message_from_f2_to_v2_deps = Cortex.get_dependencies(message_from_f2_to_v2)
+    @test length(message_from_f2_to_v2_deps) == 1
+    @test any(d -> d === Cortex.get_edge_message_to_factor(model, v3, f2), message_from_f2_to_v2_deps)
 
     message_from_v2_to_f1 = Cortex.get_edge_message_to_factor(model, v2, f1)
-    @test length(message_from_v2_to_f1.dependencies) == 1
-    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v2, f2), message_from_v2_to_f1.dependencies)
+    message_from_v2_to_f1_deps = Cortex.get_dependencies(message_from_v2_to_f1)
+    @test length(message_from_v2_to_f1_deps) == 1
+    @test any(d -> d === Cortex.get_edge_message_to_variable(model, v2, f2), message_from_v2_to_f1_deps)
 
     message_from_v2_to_f2 = Cortex.get_edge_message_to_factor(model, v2, f2)
-    @test length(message_from_v2_to_f2.dependencies) == 1
-    @test any(d -> d[1] === Cortex.get_edge_message_to_variable(model, v2, f1), message_from_v2_to_f2.dependencies)
+    message_from_v2_to_f2_deps = Cortex.get_dependencies(message_from_v2_to_f2)
+    @test length(message_from_v2_to_f2_deps) == 1
+    @test any(d -> d === Cortex.get_edge_message_to_variable(model, v2, f1), message_from_v2_to_f2_deps)
 end

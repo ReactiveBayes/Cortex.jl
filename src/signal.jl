@@ -7,15 +7,22 @@ This indicates that the signal has not yet been computed or has been invalidated
 struct UndefValue end
 
 """
+    UndefMetadata
+
+A singleton type used to represent undefined metadata within a [`Signal`](@ref).
+"""
+struct UndefMetadata end
+
+"""
     Signal()
-    Signal(value)
+    Signal(value; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
 
 A reactive signal that holds a value and tracks dependencies as well as notifies listeners when the value changes.
 If created without an initial value, the signal is initialized with [`UndefValue()`](@ref).
 
 A signal is said to be 'pending' if it is ready for potential recomputation (due to updated dependencies).
 However, a signal is not recomputed immediately when it becomes pending. Moreover, a Signal does not know 
-how to recompute itself. This is a responsibility of the [`Slot`](@ref) type.
+how to recompute itself. The recomputation logic is defined separately with the [`compute!`](@ref) function.
 
 Signals form a directed graph where edges represent dependencies.
 When a signal's value is updated via [`set_value!`](@ref), it notifies its active listeners.
@@ -27,18 +34,23 @@ A signal may become 'pending' if all its dependencies meet the following criteri
 A signal can depend on another signal without listening to it, see [`add_dependency!`](@ref) for more details.
 
 See also:
-- [`Slot`](@ref): Manages signal recomputation logic.
 - [`add_dependency!`](@ref): Establishes a dependency relationship between signals.
 - [`set_value!`](@ref): Updates the signal's value and notifies listeners.
+- [`compute!`](@ref): Function responsible for recomputing a signal's value.
 - [`is_pending`](@ref): Checks if the signal is marked for potential recomputation.
 - [`is_computed`](@ref): Checks if the signal currently holds a computed value (not `UndefValue`).
 - [`get_value`](@ref): Retrieves the current value stored in the signal.
+- [`get_type`](@ref): Retrieves the type identifier of the signal.
+- [`get_metadata`](@ref): Retrieves the metadata associated with the signal.
 - [`get_age`](@ref): Gets the computation age of the signal.
 - [`get_dependencies`](@ref): Returns the list of signals this signal depends on.
 - [`get_listeners`](@ref): Returns the list of signals that listen to this signal.
 """
 mutable struct Signal
     value::Any
+    type::UInt8
+    metadata::Any
+
     is_pending::Bool
     age::UInt64
 
@@ -49,15 +61,13 @@ mutable struct Signal
     listeners::Vector{Signal}
 
     # Constructor for creating an empty signal
-    function Signal()
-        # Initialize with the UndefValue() singleton, age 0
-        new(UndefValue(), false, 0, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+    function Signal(; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
+        return new(UndefValue(), type, metadata, false, 0, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
     end
 
     # Constructor for creating a new signal with a value
-    function Signal(value::Any)
-        # Initialize with the given value, age 1
-        new(value, false, 1, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+    function Signal(value::Any; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
+        return new(value, type, metadata, false, 1, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
     end
 end
 
@@ -87,6 +97,26 @@ Get the current value of the signal `s`.
 """
 function get_value(s::Signal)
     return s.value
+end
+
+"""
+    get_type(s::Signal) -> UInt8
+
+Get the type identifier (UInt8) of the signal `s`.
+Defaults to `0x00` if not specified during construction.
+"""
+function get_type(s::Signal)::UInt8
+    return s.type
+end
+
+"""
+    get_metadata(s::Signal)
+
+Get the metadata associated with the signal `s`.
+Defaults to `UndefMetadata()` if not specified during construction.
+"""
+function get_metadata(s::Signal)
+    return s.metadata
 end
 
 """
@@ -172,7 +202,9 @@ further updates to `dependency` will not trigger notifications to `signal`.
 
 Note that this function does nothing if `signal === dependency`.
 """
-function add_dependency!(signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true, check_computed::Bool = true)
+function add_dependency!(
+    signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true, check_computed::Bool = true
+)
     # We check that the dependency is not the same signal
     if signal === dependency
         return nothing
@@ -200,8 +232,11 @@ function add_dependency!(signal::Signal, dependency::Signal; weak::Bool = false,
 
     # If a new dependency has been added and this new dependency has already been computed,
     # we immediately notify the current signal `s` as if it was already subscribed to the changes
-    if check_computed && is_computed(dependency)
+    is_dependency_computed = is_computed(dependency)
+    if check_computed && is_dependency_computed
         check_and_set_pending!(dependency, signal)
+    elseif check_computed && !is_dependency_computed
+        signal.is_pending = false
     end
 
     return nothing
@@ -216,7 +251,7 @@ function check_and_set_pending!(notifier::Signal, listener::Signal)
     should_update_pending = all(zip(listener.weakmask, listener.dependencies)) do (is_weak, dependency)
         return !is_computed(dependency) ? false : (is_weak ? true : get_age(dependency) > listener_age)
     end
-    
+
     if should_update_pending
         listener.is_pending = true
     end
@@ -229,5 +264,59 @@ end
 function Base.show(io::IO, s::Signal)
     val_str = is_computed(s) ? repr(get_value(s)) : "#undef"
     pending_str = is_pending(s) ? "true" : "false"
-    print(io, "Signal(value=", val_str, ", pending=", pending_str, ")")
+    type_str = repr(get_type(s)) # Use repr directly for type
+    meta = get_metadata(s)
+
+    print(io, "Signal(value=", val_str, ", pending=", pending_str) # New order
+    if get_type(s) !== 0x00
+        print(io, ", type=", type_str)                               # New order
+    end
+    if meta !== UndefMetadata()                                     # Check against UndefMetadata
+        print(io, ", metadata=", repr(meta))
+    end
+    print(io, ")")
+end
+
+# --- Compute Interface ---
+
+"""
+    compute!(s::Signal, strategy; force::Bool = false)
+
+Compute the value of the signal `s` using the given `strategy`. 
+The strategy must implement [`compute_value!`](@ref) method.
+If the strategy is a function, it is assumed to be a function
+that takes the signal and a vector of signal's dependencies as arguments and returns a value.
+Be sure to call `compute!` only on signals that are pending. 
+Calling `compute!` on a non-pending signal will result in an error.
+
+Keyword Arguments:
+- `force::Bool = false`: If `true`, the signal will be computed even if it is not pending.
+"""
+function compute!(strategy, signal::Signal; force::Bool = false)
+    if !is_pending(signal) && !force
+        throw(
+            ArgumentError(
+                "Signal is not pending. Cannot compute a non-pending signal. Use `force=true` to force computation."
+            )
+        )
+    end
+
+    dependencies = get_dependencies(signal)
+    new_value = compute_value!(strategy, signal, dependencies)
+    set_value!(signal, new_value)
+    return nothing
+end
+
+"""
+    compute_value!(strategy, signal, dependencies)
+
+Compute the value of the signal `signal` using the given `strategy`.
+The strategy must implement this method. See also [`compute!`](@ref).
+"""
+function compute_value!(strategy, signal, dependencies)
+    error("`compute_value!` must be implemented for the given strategy of type `$(typeof(strategy))`")
+end
+
+function compute_value!(strategy::F, signal::Signal, dependencies::Vector{Signal}) where {F <: Function}
+    return strategy(signal, dependencies)
 end
