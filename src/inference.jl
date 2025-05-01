@@ -16,6 +16,7 @@ function create_inference_round(model, variable)
 end
 
 function process_inference_round(processor::P, round::InferenceRound) where {P}
+    processed_at_least_once = false
     # For each direct dependency of the marginal, we try to process it
     for dependency_of_marginal in get_dependencies(round.marginal)
         processed = process_dependency(processor, round, dependency_of_marginal)
@@ -23,21 +24,20 @@ function process_inference_round(processor::P, round::InferenceRound) where {P}
         if !processed
             immediate_first_dependencies = get_dependencies(dependency_of_marginal)
             for dependency_of_dependency in immediate_first_dependencies
-                process_dependency(processor, round, dependency_of_dependency)
+                if process_dependency(processor, round, dependency_of_dependency)
+                    processed_at_least_once = true
+                end
             end
+        else
+            processed_at_least_once = true
         end
     end
+    return processed_at_least_once
 end
 
 function process_dependency(processor::P, round::InferenceRound, signal::Signal) where {P}
     if is_pending(signal)
-        if signal.type === InferenceSignalTypes.MessageToFactor
-            processor(round, signal, signal.metadata::Tuple{Int, Int})
-        elseif signal.type == InferenceSignalTypes.MessageToVariable
-            processor(round, signal, signal.metadata::Tuple{Int, Int})
-        else
-            processor(round, signal, signal.metadata)
-        end
+        processor(round, signal)
         return true
     end
     return false
@@ -49,7 +49,7 @@ struct InferenceRoundCollector
     InferenceRoundCollector() = new(Signal[])
 end
 
-function (collector::InferenceRoundCollector)(::InferenceRound, signal::Signal, metadata::Any)
+function (collector::InferenceRoundCollector)(::InferenceRound, signal::Signal)
     push!(collector.signals, signal)
 end
 
@@ -57,4 +57,26 @@ function Base.collect(round::InferenceRound)
     collector = InferenceRoundCollector()
     process_inference_round(collector, round)
     return collector.signals
+end
+
+struct InferenceRoundComputer{F}
+    computer::F
+end
+
+function (computer::InferenceRoundComputer)(round::InferenceRound, signal::Signal)
+    compute!(computer.computer, signal)
+end
+
+function update_posterior!(model::AbstractCortexModel, computer::InferenceRoundComputer, variable::VariableId) where {P}
+    should_continue = true
+
+    round = create_inference_round(model, variable)
+
+    while should_continue
+        should_continue = process_inference_round(computer, round)
+    end
+
+    compute!(computer.computer, round.marginal)
+    
+    return nothing
 end

@@ -132,33 +132,63 @@ end
 
 @testitem "An inference in a simple IID model" setup = [ModelUtils] begin
     using .ModelUtils
-    using JET
+    using JET, BipartiteFactorGraphs
 
     model = Model()
 
-    # The probability of the coin
-    p = add_variable!(model.graph, Variable(:p))
+    # The "center" of the model
+    p = add_variable_to_model!(model, :p)
 
     # The observed outcomes
-    o1 = add_variable!(model.graph, Variable(:y1))
-    o2 = add_variable!(model.graph, Variable(:y2))
+    o1 = add_variable_to_model!(model, :y1)
+    o2 = add_variable_to_model!(model, :y2)
 
     # Priors
-    fp = add_factor!(model.graph, Factor(:fp))
+    fp = add_factor_to_model!(model, :prior)
 
     # Likelihoods
-    f1 = add_factor!(model.graph, Factor(:f1))
-    f2 = add_factor!(model.graph, Factor(:f2))
+    f1 = add_factor_to_model!(model, :likelihood)
+    f2 = add_factor_to_model!(model, :likelihood)
 
     # Connections between the parameter `p` and the factors
-    add_edge!(model.graph, p, fp, Edge())
-    add_edge!(model.graph, p, f1, Edge())
-    add_edge!(model.graph, p, f2, Edge())
+    add_edge_to_model!(model, p, fp)
+    add_edge_to_model!(model, p, f1)
+    add_edge_to_model!(model, p, f2)
 
     # Connections between the observed outcomes and the likelihoods
-    add_edge!(model.graph, o1, f1, Edge())
-    add_edge!(model.graph, o2, f2, Edge())
+    add_edge_to_model!(model, o1, f1)
+    add_edge_to_model!(model, o2, f2)
 
-    # Assume the prior has been computed already
-    @test "This test has not been completed"
+    resolve_dependencies!(model, BeliefPropagation())
+
+    # Set data
+    Cortex.set_value!(Cortex.get_edge_message_to_factor(model, o1, f1), 1)
+    Cortex.set_value!(Cortex.get_edge_message_to_factor(model, o2, f2), 2)
+
+    # Set prior
+    Cortex.set_value!(Cortex.get_edge_message_to_variable(model, p, fp), 3)
+
+    function computer(signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
+
+        if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
+            v, f = signal.metadata
+            
+            factor = get_factor_data(model.graph, f)
+
+            if factor.type === :likelihood
+                return 2 * Cortex.get_value(dependencies[1])
+            elseif factor.type === :prior
+                error("Should not be invoked")
+            end
+        elseif signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
+            return sum(Cortex.get_value.(dependencies))
+        end
+
+        error("Unreachable reached")
+    end
+
+    Cortex.update_posterior!(model, Cortex.InferenceRoundComputer(computer), p)
+
+    @test Cortex.get_value(Cortex.get_variable_marginal(model, p)) == 9
 end
+

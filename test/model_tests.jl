@@ -61,7 +61,6 @@ end
         VariableId,
         FactorId,
         EdgeId,
-        Value,
         Signal,
         add_variable_to_model!,
         add_factor_to_model!,
