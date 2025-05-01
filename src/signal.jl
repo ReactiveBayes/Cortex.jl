@@ -9,18 +9,19 @@ mutable struct Signal
     weakmask::BitVector
     dependencies::Vector{Signal}
 
+    listenmask::BitVector
     listeners::Vector{Signal}
 
     # Constructor for creating an empty signal
     function Signal()
         # Initialize with the UndefValue() singleton, age 0
-        new(UndefValue(), false, 0, falses(0), Vector{Signal}(), Vector{Signal}())
+        new(UndefValue(), false, 0, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
     end
 
     # Constructor for creating a new signal with a value
     function Signal(value::Any)
         # Initialize with the given value, age 1
-        new(value, false, 1, falses(0), Vector{Signal}(), Vector{Signal}())
+        new(value, false, 1, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
     end
 end
 
@@ -96,20 +97,24 @@ function set_value!(s::Signal, value::Any)
     s.is_pending = false
 
     # We notify all the signals that listen to this signal that it has been updated
-    for listener in s.listeners
-        check_and_set_pending!(s, listener)
+    # We only notify the signals that are listening to the current signal
+    for (is_listening, listener) in zip(s.listenmask, s.listeners)
+        if is_listening
+            check_and_set_pending!(s, listener)
+        end
     end
 
     return nothing
 end
 
-function add_dependency!(s::Signal, dependency::Signal; weak::Bool = false)
+function add_dependency!(s::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true)
     # We check that the dependency is not the same signal
     if s === dependency
         return nothing
     end
 
-    # If the dependency is weak, we store `true` in the weakmask, `false` otherwise
+    # If the dependency is weak, 
+    # we store `true` in the weakmask, `false` otherwise
     if weak
         push!(s.weakmask, true)
     else
@@ -117,6 +122,15 @@ function add_dependency!(s::Signal, dependency::Signal; weak::Bool = false)
     end
 
     push!(s.dependencies, dependency)
+
+    # If the dependency listens to updates, we add the current signal, 
+    # we add `true` to the listenmask, `false` otherwise
+    if listen
+        push!(dependency.listenmask, true)
+    else
+        push!(dependency.listenmask, false)
+    end
+
     push!(dependency.listeners, s)
 
     # If a new dependency has been added and this new dependency has already been computed,
@@ -137,8 +151,10 @@ function check_and_set_pending!(notifier::Signal, listener::Signal)
     should_update_pending = all(zip(listener.weakmask, listener.dependencies)) do (is_weak, dependency)
         return !is_computed(dependency) ? false : (is_weak ? true : get_age(dependency) > listener_age)
     end
+    
     if should_update_pending
         set_pending!(listener)
     end
+
     return nothing
 end

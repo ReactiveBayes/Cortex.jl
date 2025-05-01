@@ -434,7 +434,7 @@ end
     end
 
     @testset "Set Value s1" begin
-        set_value!(s1, 1) 
+        set_value!(s1, 1)
         @test !is_pending(s1)
         @test is_pending(s2)
     end
@@ -560,6 +560,92 @@ end
     end
 end
 
-# Ensure previous tests still exist below if not refactored above
-# ... (rest of the original tests if any were not touched) ...
-# Note: I have integrated and refactored all provided tests into the sections above.
+@testitem "A Chain Of Signals" begin
+    import Cortex: Signal, add_dependency!, get_value, set_value!, is_pending
+
+    # Create a chain of signals
+    s1 = Signal(1)
+    s2 = Signal()
+    s3 = Signal()
+
+    add_dependency!(s2, s1)
+    add_dependency!(s3, s2)
+
+    @test !is_pending(s1)
+    @test is_pending(s2) # since s1 is initialized
+    @test !is_pending(s3)
+
+    set_value!(s1, 2)
+    @test !is_pending(s1)
+    @test is_pending(s2)
+    @test !is_pending(s3)
+
+    set_value!(s2, 3)
+    @test !is_pending(s1)
+    @test !is_pending(s2)
+    @test is_pending(s3)
+
+    set_value!(s3, 4)
+    @test !is_pending(s1)
+    @test !is_pending(s2)
+    @test !is_pending(s3)
+
+    set_value!(s1, 5)
+    @test !is_pending(s1)
+    @test is_pending(s2)
+    @test !is_pending(s3)
+
+    set_value!(s2, 6)
+    @test !is_pending(s1)
+    @test !is_pending(s2)
+    @test is_pending(s3)
+
+    set_value!(s3, 7)
+    @test !is_pending(s1)
+    @test !is_pending(s2)
+    @test !is_pending(s3)
+end
+
+@testitem "Not-Listening Dependency" begin
+    import Cortex: Signal, add_dependency!, get_value, set_value!, is_pending
+
+    @testset "Case: A single dependency" begin
+        s1 = Signal(1)
+        s2 = Signal(2)
+
+        # `s2` depends on `s1`, but it does not listen to updates   
+        add_dependency!(s2, s1; listen = false)
+
+        @test !is_pending(s2)
+
+        set_value!(s1, 10)
+
+        @test !is_pending(s2)
+    end
+
+    @testset "Case: Multiple dependencies" begin
+        s1 = Signal()
+        s2 = Signal()
+        s3 = Signal()
+
+        add_dependency!(s3, s1; listen = false)
+        add_dependency!(s3, s2)
+
+        @test !is_pending(s3)
+
+        set_value!(s2, 10) 
+
+        @test !is_pending(s3) # we set value to `s2`, but `s3` also requires `s1` to be set
+
+        set_value!(s1, 10) 
+
+        @test !is_pending(s3) # we set value to `s1`, but `s3` does not listen to updates from `s1`
+
+        set_value!(s2, 30)
+
+        # we set value to `s2` and `s3` listens to updates from `s2`
+        # in this case `s1` is also set, so `s3` should be pending
+        @test is_pending(s3) 
+    end
+    
+end
