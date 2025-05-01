@@ -10,6 +10,32 @@
     @test get_value(s) == 100
 end
 
+@testitem "A Signal Can Have A Label" begin 
+    import Cortex: Signal, get_label, UndefLabel
+
+    @testset let s = Signal(42)
+        @test get_label(s) === UndefLabel()
+    end
+
+    @testset let s = Signal(42; label = :message)
+        @test get_label(s) == :message
+    end
+
+    struct ArbitraryLabel 
+        val::Int
+    end
+
+    @testset let s = Signal(42; label = ArbitraryLabel(1))
+        @test get_label(s) isa ArbitraryLabel
+        @test get_label(s).val == 1
+    end
+
+    @testset let s = Signal(42; label = "message")
+        @test get_label(s) == "message"
+    end
+
+end
+
 @testitem "Setting Value Updates Age" begin
     import Cortex: Signal, set_value!, get_age
 

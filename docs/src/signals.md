@@ -13,6 +13,7 @@ Think of a [`Cortex.Signal`](@ref) as a container for a value that can change ov
 ## Key Features
 
 *   **Value Storage:** Holds the current value.
+*   **Optional Labeling:** Can be assigned a `label` via the constructor for identification ([`Cortex.get_label`](@ref)).
 *   **Dependency Tracking:** Knows which other signals it depends on (`dependencies`) and which signals depend on it `listeners` via [`Cortex.get_listeners`](@ref).
 *   **Notification:** When updated via [`Cortex.set_value!`](@ref), it notifies its active listeners.
 *   **Pending State:** Can be marked as [`Cortex.is_pending`](@ref) if its dependencies have updated appropriately, signaling a need for potential recomputation.
@@ -41,6 +42,11 @@ s2 = Cortex.Signal("hello")
 ```@example signal_examples
 # No initial value, computed=false
 s3 = Cortex.Signal()        
+```
+
+```@example signal_examples
+# Labeled signal
+s4 = Cortex.Signal(42; label = :label)        
 ```
 
 Check their properties:
@@ -103,7 +109,6 @@ Cortex.is_pending(s_derived) # true
 
 `s_derived` is pending because both `s1` and `s2` have been computed at the time of dependency addition.
 
-
 Using `listen=false` creates a dependency without automatic notifications:
 ```@example signal_examples
 s_source = Cortex.Signal()
@@ -130,10 +135,12 @@ Here is the detailed API documentation for the `Signal` type and its associated 
 
 ```@docs
 Cortex.UndefValue
+Cortex.UndefLabel
 Cortex.Signal
 Cortex.is_pending(::Cortex.Signal)
 Cortex.is_computed(::Cortex.Signal)
 Cortex.get_value(::Cortex.Signal)
+Cortex.get_label(::Cortex.Signal)
 Cortex.get_age(::Cortex.Signal)
 Cortex.get_dependencies(::Cortex.Signal)
 Cortex.get_listeners(::Cortex.Signal)

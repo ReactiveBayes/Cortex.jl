@@ -7,8 +7,15 @@ This indicates that the signal has not yet been computed or has been invalidated
 struct UndefValue end
 
 """
+    UndefLabel
+
+A singleton type used to represent an undefined label within a [`Signal`](@ref).
+"""
+struct UndefLabel end
+
+"""
     Signal()
-    Signal(value)
+    Signal(value; label = UndefLabel())
 
 A reactive signal that holds a value and tracks dependencies as well as notifies listeners when the value changes.
 If created without an initial value, the signal is initialized with [`UndefValue()`](@ref).
@@ -33,12 +40,15 @@ See also:
 - [`is_pending`](@ref): Checks if the signal is marked for potential recomputation.
 - [`is_computed`](@ref): Checks if the signal currently holds a computed value (not `UndefValue`).
 - [`get_value`](@ref): Retrieves the current value stored in the signal.
+- [`get_label`](@ref): Retrieves the label associated with the signal.
 - [`get_age`](@ref): Gets the computation age of the signal.
 - [`get_dependencies`](@ref): Returns the list of signals this signal depends on.
 - [`get_listeners`](@ref): Returns the list of signals that listen to this signal.
 """
 mutable struct Signal
     value::Any
+    label::Any
+
     is_pending::Bool
     age::UInt64
 
@@ -49,15 +59,15 @@ mutable struct Signal
     listeners::Vector{Signal}
 
     # Constructor for creating an empty signal
-    function Signal()
+    function Signal(; label = UndefLabel())
         # Initialize with the UndefValue() singleton, age 0
-        new(UndefValue(), false, 0, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+        return new(UndefValue(), label, false, 0, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
     end
 
     # Constructor for creating a new signal with a value
-    function Signal(value::Any)
+    function Signal(value::Any; label = UndefLabel())
         # Initialize with the given value, age 1
-        new(value, false, 1, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+        return new(value, label, false, 1, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
     end
 end
 
@@ -87,6 +97,15 @@ Get the current value of the signal `s`.
 """
 function get_value(s::Signal)
     return s.value
+end
+
+"""
+    get_label(s::Signal)
+
+Get the label of the signal `s`.
+"""
+function get_label(s::Signal)
+    return s.label
 end
 
 """
