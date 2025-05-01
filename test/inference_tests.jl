@@ -9,8 +9,8 @@
         f2 = add_factor!(model.graph, Factor(:right))
         vc = add_variable!(model.graph, Variable(:center))
 
-        add_edge!(model.graph, vc, f1, Edge())
-        add_edge!(model.graph, vc, f2, Edge())
+        add_edge!(model.graph, vc, f1, Edge(vc, f1))
+        add_edge!(model.graph, vc, f2, Edge(vc, f2))
 
         inference_round = Cortex.create_inference_round(model, vc)
         inference_steps = collect(inference_round)

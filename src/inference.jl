@@ -1,7 +1,7 @@
 
 struct InferenceRound{M}
     model::M
-    marginal::Any
+    marginal::Signal
 end
 
 function create_inference_round(model, variable)
@@ -22,7 +22,7 @@ function process_inference_round(processor::P, round::InferenceRound) where {P}
     end
 end
 
-function process_dependency(processor::P, round::InferenceRound, t::Tuple{Any, Dependency}) where {P}
+function process_dependency(processor::P, round::InferenceRound, t::Tuple{Any, Any}) where {P}
     slot, dependency = t
     if !is_computed(slot) && is_pending(slot)
         if dependency.type == DependencyType.MessageToFactor
@@ -40,7 +40,7 @@ end
 struct CollectedInferenceStep{M}
     round::InferenceRound{M}
     slot::Any
-    dependency::AbstractDependency
+    dependency::Any
 end
 
 struct InferenceRoundCollector{M}
@@ -50,7 +50,7 @@ struct InferenceRoundCollector{M}
 end
 
 function (collector::InferenceRoundCollector{M})(
-    round::InferenceRound{M}, slot::Slot, dependency::AbstractDependency
+    round::InferenceRound{M}, slot::Signal, dependency::Any
 ) where {M}
     push!(collector.steps, CollectedInferenceStep{M}(round, slot, dependency))
 end
