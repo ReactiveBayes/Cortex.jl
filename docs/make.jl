@@ -4,13 +4,17 @@ using Documenter
 DocMeta.setdocmeta!(Cortex, :DocTestSetup, :(using Cortex); recursive = true)
 
 makedocs(;
+    warnonly = Documenter.except(),
     modules = [Cortex],
     authors = "Bagaev Dmitry <bvdmitri@gmail.com> and contributors",
     sitename = "Cortex.jl",
     format = Documenter.HTML(;
-        canonical = "https://ReactiveBayes.github.io/Cortex.jl", edit_link = "main", assets = String[]
+        prettyurls = get(ENV, "CI", "false") == "true",
+        canonical = "https://ReactiveBayes.github.io/Cortex.jl",
+        edit_link = "main",
+        assets = String[]
     ),
-    pages = ["Home" => "index.md", "Implementation" => ["Value" => "implementation/value.md"]]
+    pages = ["Home" => "index.md", "Signals: The Core of Reactivity" => "signals.md"]
 )
 
 deploydocs(; repo = "github.com/ReactiveBayes/Cortex.jl", devbranch = "main")
