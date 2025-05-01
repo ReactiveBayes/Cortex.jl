@@ -1,5 +1,5 @@
 
-module InferenceSignalTypes 
+module InferenceSignalTypes
 const MessageToVariable = UInt8(0x01)
 const MessageToFactor = UInt8(0x02)
 const IndividualMarginal = UInt8(0x03)
@@ -43,26 +43,18 @@ function process_dependency(processor::P, round::InferenceRound, signal::Signal)
     return false
 end
 
-struct CollectedInferenceStep{M}
-    round::InferenceRound{M}
-    slot::Any
-    dependency::Any
+struct InferenceRoundCollector
+    signals::Vector{Signal}
+
+    InferenceRoundCollector() = new(Signal[])
 end
 
-struct InferenceRoundCollector{M}
-    steps::Vector{CollectedInferenceStep{M}}
-
-    InferenceRoundCollector(::Type{M}) where {M} = new{M}(CollectedInferenceStep{M}[])
-end
-
-function (collector::InferenceRoundCollector{M})(
-    round::InferenceRound{M}, slot::Signal, dependency::Any
-) where {M}
-    push!(collector.steps, CollectedInferenceStep{M}(round, slot, dependency))
+function (collector::InferenceRoundCollector)(::InferenceRound, signal::Signal, metadata::Any)
+    push!(collector.signals, signal)
 end
 
 function Base.collect(round::InferenceRound)
-    collector = InferenceRoundCollector(typeof(round.model))
+    collector = InferenceRoundCollector()
     process_inference_round(collector, round)
-    return collector.steps
+    return collector.signals
 end

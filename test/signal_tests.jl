@@ -76,7 +76,8 @@ end
 end
 
 @testitem "Empty Signal Creation" begin
-    import Cortex: Signal, UndefValue, get_value, get_age, get_dependencies, get_listeners, get_type, get_metadata, UndefMetadata
+    import Cortex:
+        Signal, UndefValue, get_value, get_age, get_dependencies, get_listeners, get_type, get_metadata, UndefMetadata
 
     s = Signal()
     @test get_value(s) === UndefValue()
@@ -855,21 +856,21 @@ end
     @testset "Uninitialized Signal" begin
         s_no_meta = Signal()
         @test repr(s_no_meta) == "Signal(value=#undef, pending=false)"
-        
+
         s_meta = Signal(metadata = :test)
         @test repr(s_meta) == "Signal(value=#undef, pending=false, metadata=:test)"
 
         s_type = Signal(type = 0x01)
         @test repr(s_type) == "Signal(value=#undef, pending=false, type=0x01)"
-        
-        s_both = Signal(type = 0xab, metadata = [1,2])
+
+        s_both = Signal(type = 0xab, metadata = [1, 2])
         @test repr(s_both) == "Signal(value=#undef, pending=false, type=0xab, metadata=[1, 2])"
     end
 
     @testset "Initialized Signal" begin
         s_int = Signal(123)
         @test repr(s_int) == "Signal(value=123, pending=false)"
-        
+
         s_str_meta = Signal("test"; metadata = "some info")
         @test repr(s_str_meta) == "Signal(value=\"test\", pending=false, metadata=\"some info\")"
     end
@@ -897,12 +898,12 @@ end
     JET.@test_opt Cortex.Signal(1)
     JET.@test_opt Cortex.Signal("1")
     # Test constructors with keywords
-    JET.@test_opt Cortex.Signal(type=0x01)
-    JET.@test_opt Cortex.Signal(metadata=:meta)
-    JET.@test_opt Cortex.Signal(metadata=UndefMetadata())
-    JET.@test_opt Cortex.Signal(1; type=0x02, metadata="meta")
-    JET.@test_opt Cortex.Signal(1; metadata=UndefMetadata())
-    
+    JET.@test_opt Cortex.Signal(type = 0x01)
+    JET.@test_opt Cortex.Signal(metadata = :meta)
+    JET.@test_opt Cortex.Signal(metadata = UndefMetadata())
+    JET.@test_opt Cortex.Signal(1; type = 0x02, metadata = "meta")
+    JET.@test_opt Cortex.Signal(1; metadata = UndefMetadata())
+
     # Test getters
     JET.@test_opt Cortex.is_pending(Cortex.Signal())
     JET.@test_opt Cortex.is_pending(Cortex.Signal(1))
@@ -932,7 +933,7 @@ end
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
     JET.@test_opt Cortex.get_type(Cortex.Signal())
     JET.@test_opt Cortex.get_metadata(Cortex.Signal())
-    JET.@test_opt Cortex.get_metadata(Cortex.Signal(metadata=123))
+    JET.@test_opt Cortex.get_metadata(Cortex.Signal(metadata = 123))
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
 end
 
