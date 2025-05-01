@@ -7,15 +7,15 @@ This indicates that the signal has not yet been computed or has been invalidated
 struct UndefValue end
 
 """
-    UndefLabel
+    UndefMetadata
 
-A singleton type used to represent an undefined label within a [`Signal`](@ref).
+A singleton type used to represent undefined metadata within a [`Signal`](@ref).
 """
-struct UndefLabel end
+struct UndefMetadata end
 
 """
     Signal()
-    Signal(value; label = UndefLabel())
+    Signal(value; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
 
 A reactive signal that holds a value and tracks dependencies as well as notifies listeners when the value changes.
 If created without an initial value, the signal is initialized with [`UndefValue()`](@ref).
@@ -40,14 +40,16 @@ See also:
 - [`is_pending`](@ref): Checks if the signal is marked for potential recomputation.
 - [`is_computed`](@ref): Checks if the signal currently holds a computed value (not `UndefValue`).
 - [`get_value`](@ref): Retrieves the current value stored in the signal.
-- [`get_label`](@ref): Retrieves the label associated with the signal.
+- [`get_type`](@ref): Retrieves the type identifier of the signal.
+- [`get_metadata`](@ref): Retrieves the metadata associated with the signal.
 - [`get_age`](@ref): Gets the computation age of the signal.
 - [`get_dependencies`](@ref): Returns the list of signals this signal depends on.
 - [`get_listeners`](@ref): Returns the list of signals that listen to this signal.
 """
 mutable struct Signal
     value::Any
-    label::Any
+    type::UInt8
+    metadata::Any
 
     is_pending::Bool
     age::UInt64
@@ -59,15 +61,13 @@ mutable struct Signal
     listeners::Vector{Signal}
 
     # Constructor for creating an empty signal
-    function Signal(; label = UndefLabel())
-        # Initialize with the UndefValue() singleton, age 0
-        return new(UndefValue(), label, false, 0, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+    function Signal(; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
+        return new(UndefValue(), type, metadata, false, 0, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
     end
 
     # Constructor for creating a new signal with a value
-    function Signal(value::Any; label = UndefLabel())
-        # Initialize with the given value, age 1
-        return new(value, label, false, 1, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+    function Signal(value::Any; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
+        return new(value, type, metadata, false, 1, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
     end
 end
 
@@ -100,12 +100,23 @@ function get_value(s::Signal)
 end
 
 """
-    get_label(s::Signal)
+    get_type(s::Signal) -> UInt8
 
-Get the label of the signal `s`.
+Get the type identifier (UInt8) of the signal `s`.
+Defaults to `0x00` if not specified during construction.
 """
-function get_label(s::Signal)
-    return s.label
+function get_type(s::Signal)::UInt8
+    return s.type
+end
+
+"""
+    get_metadata(s::Signal)
+
+Get the metadata associated with the signal `s`.
+Defaults to `UndefMetadata()` if not specified during construction.
+"""
+function get_metadata(s::Signal)
+    return s.metadata
 end
 
 """
@@ -252,9 +263,18 @@ end
 
 function Base.show(io::IO, s::Signal)
     val_str = is_computed(s) ? repr(get_value(s)) : "#undef"
-    label_str = get_label(s) === UndefLabel() ? "undef" : repr(get_label(s))
     pending_str = is_pending(s) ? "true" : "false"
-    print(io, "Signal(value=", val_str, ", label=", label_str, ", pending=", pending_str, ")")
+    type_str = repr(get_type(s)) # Use repr directly for type
+    meta = get_metadata(s)
+
+    print(io, "Signal(value=", val_str, ", pending=", pending_str) # New order
+    if get_type(s) !== 0x00
+        print(io, ", type=", type_str)                               # New order
+    end
+    if meta !== UndefMetadata()                                     # Check against UndefMetadata
+        print(io, ", metadata=", repr(meta))
+    end
+    print(io, ")")
 end
 
 # --- Compute Interface ---

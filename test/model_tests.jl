@@ -68,7 +68,7 @@ end
         index::Any
         marginal::Signal
 
-        Variable(name, index...) = new(name, index, Signal(label = (:marginal, name, index)))
+        Variable(name, index...) = new(name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal))
     end
 
     struct Factor
@@ -79,7 +79,11 @@ end
         message_to_variable::Signal
         message_to_factor::Signal
 
-        Edge(vi, f) = new(Signal(label = (:message_to_variable, vi, f)), Signal(label = (:message_to_factor, vi, f)))
+        function Edge(vi, f)
+            message_to_variable = Signal(type = Cortex.InferenceSignalTypes.MessageToVariable, metadata = (vi, f))
+            message_to_factor = Signal(type = Cortex.InferenceSignalTypes.MessageToFactor, metadata = (vi, f))
+            return new(message_to_variable, message_to_factor)
+        end
     end
 
     struct Model{G}

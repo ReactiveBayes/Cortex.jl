@@ -10,28 +10,36 @@
     @test get_value(s) == 100
 end
 
-@testitem "A Signal Can Have A Label" begin
-    import Cortex: Signal, get_label, UndefLabel
+@testitem "Signal Type and Metadata" begin
+    import Cortex: Signal, get_type, get_metadata, UndefMetadata
 
-    @testset let s = Signal(42)
-        @test get_label(s) === UndefLabel()
+    @testset "Default Values" begin
+        s = Signal(42)
+        @test get_type(s) === 0x00
+        @test get_metadata(s) === UndefMetadata()
+        s_empty = Signal()
+        @test get_type(s_empty) === 0x00
+        @test get_metadata(s_empty) === UndefMetadata()
     end
 
-    @testset let s = Signal(42; label = :message)
-        @test get_label(s) == :message
+    @testset "Custom Type" begin
+        s = Signal(42; type = 0x05)
+        @test get_type(s) === 0x05
+        @test get_metadata(s) === UndefMetadata()
     end
 
-    struct ArbitraryLabel
-        val::Int
+    @testset "Custom Metadata" begin
+        meta = Dict("info" => "extra data")
+        s = Signal(42; metadata = meta)
+        @test get_type(s) === 0x00
+        @test get_metadata(s) === meta
     end
 
-    @testset let s = Signal(42; label = ArbitraryLabel(1))
-        @test get_label(s) isa ArbitraryLabel
-        @test get_label(s).val == 1
-    end
-
-    @testset let s = Signal(42; label = "message")
-        @test get_label(s) == "message"
+    @testset "Custom Type and Metadata" begin
+        meta = (:a, 1)
+        s = Signal(42; type = 0xff, metadata = meta)
+        @test get_type(s) === 0xff
+        @test get_metadata(s) === meta
     end
 end
 
@@ -68,11 +76,13 @@ end
 end
 
 @testitem "Empty Signal Creation" begin
-    import Cortex: Signal, UndefValue, get_value, get_age, get_dependencies, get_listeners
+    import Cortex: Signal, UndefValue, get_value, get_age, get_dependencies, get_listeners, get_type, get_metadata, UndefMetadata
 
     s = Signal()
     @test get_value(s) === UndefValue()
-    @test get_age(s) == 0 # Test constructor assignment
+    @test get_age(s) == 0
+    @test get_type(s) === 0x00
+    @test get_metadata(s) === UndefMetadata()
     @test isempty(get_dependencies(s))
     @test isempty(get_listeners(s))
 end
@@ -840,48 +850,60 @@ end
 end
 
 @testitem "Signal Representation" begin
-    import Cortex: Signal, set_value!, add_dependency!, UndefLabel
+    import Cortex: Signal, set_value!, add_dependency!, get_type, get_metadata, UndefMetadata
 
     @testset "Uninitialized Signal" begin
-        s_no_label = Signal()
-        @test repr(s_no_label) == "Signal(value=#undef, label=undef, pending=false)"
+        s_no_meta = Signal()
+        @test repr(s_no_meta) == "Signal(value=#undef, pending=false)"
+        
+        s_meta = Signal(metadata = :test)
+        @test repr(s_meta) == "Signal(value=#undef, pending=false, metadata=:test)"
 
-        s_label = Signal(label = :test)
-        @test repr(s_label) == "Signal(value=#undef, label=:test, pending=false)"
+        s_type = Signal(type = 0x01)
+        @test repr(s_type) == "Signal(value=#undef, pending=false, type=0x01)"
+        
+        s_both = Signal(type = 0xab, metadata = [1,2])
+        @test repr(s_both) == "Signal(value=#undef, pending=false, type=0xab, metadata=[1, 2])"
     end
 
     @testset "Initialized Signal" begin
         s_int = Signal(123)
-        @test repr(s_int) == "Signal(value=123, label=undef, pending=false)"
-
-        s_str_label = Signal("test"; label = "a label")
-        @test repr(s_str_label) == "Signal(value=\"test\", label=\"a label\", pending=false)"
+        @test repr(s_int) == "Signal(value=123, pending=false)"
+        
+        s_str_meta = Signal("test"; metadata = "some info")
+        @test repr(s_str_meta) == "Signal(value=\"test\", pending=false, metadata=\"some info\")"
     end
 
     @testset "Pending Signal" begin
         s1 = Signal(1)
-        s_pending = Signal(label = :pending_sig)
+        s_pending = Signal(type = 0x1f, metadata = ("meta", 1.0))
         add_dependency!(s_pending, s1)
-        # s_pending becomes pending immediately because s1 is computed
-        @test repr(s_pending) == "Signal(value=#undef, label=:pending_sig, pending=true)"
+        @test repr(s_pending) == "Signal(value=#undef, pending=true, type=0x1f, metadata=(\"meta\", 1.0))"
 
-        # Set value, pending should become false
         set_value!(s_pending, 50)
-        @test repr(s_pending) == "Signal(value=50, label=:pending_sig, pending=false)"
+        @test repr(s_pending) == "Signal(value=50, pending=false, type=0x1f, metadata=(\"meta\", 1.0))"
 
-        # Update dependency, pending should become true again
         set_value!(s1, 2)
-        @test repr(s_pending) == "Signal(value=50, label=:pending_sig, pending=true)"
+        @test repr(s_pending) == "Signal(value=50, pending=true, type=0x1f, metadata=(\"meta\", 1.0))"
     end
 end
 
 @testitem "Signal JET Coverage" begin
-    import Cortex: Signal
+    import Cortex: Signal, UndefMetadata
     import JET
 
+    # Test default constructors
     JET.@test_opt Cortex.Signal()
     JET.@test_opt Cortex.Signal(1)
     JET.@test_opt Cortex.Signal("1")
+    # Test constructors with keywords
+    JET.@test_opt Cortex.Signal(type=0x01)
+    JET.@test_opt Cortex.Signal(metadata=:meta)
+    JET.@test_opt Cortex.Signal(metadata=UndefMetadata())
+    JET.@test_opt Cortex.Signal(1; type=0x02, metadata="meta")
+    JET.@test_opt Cortex.Signal(1; metadata=UndefMetadata())
+    
+    # Test getters
     JET.@test_opt Cortex.is_pending(Cortex.Signal())
     JET.@test_opt Cortex.is_pending(Cortex.Signal(1))
     JET.@test_opt Cortex.is_pending(Cortex.Signal("1"))
@@ -907,6 +929,10 @@ end
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2))
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); weak = true)
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); check_computed = false)
+    JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
+    JET.@test_opt Cortex.get_type(Cortex.Signal())
+    JET.@test_opt Cortex.get_metadata(Cortex.Signal())
+    JET.@test_opt Cortex.get_metadata(Cortex.Signal(metadata=123))
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
 end
 

@@ -8,12 +8,13 @@ Think of a [`Signal`](@ref) as a container for a value that can change over time
 
 **For Beginners:** Imagine a spreadsheet cell. When you change the value in one cell (like `A1`), other cells that use `A1` in their formulas (like `B1 = A1 * 2`) automatically update. A [`Signal`](@ref) is like that cell – it holds a value, and changes can trigger updates elsewhere.
 
-**For Advanced Users:** Signals form a directed graph (potentially cyclic, although cycles might affect update logic depending on how they are handled). Each [`Signal`](@ref) node stores a value and maintains lists of its dependencies (signals it reads from) and listeners (signals that read from it). When a signal is updated via [`set_value!`](@ref), it propagates a notification through the graph, potentially marking downstream signals as 'pending'. This 'pending' state indicates that the signal's value might be stale and needs recomputation. The actual recomputation logic, however, is defined externally to the signal itself. It is invoked by calling the [`compute!`](@ref) function on the pending signal, providing a `strategy` (e.g., a function) that defines how to calculate the new value based on its dependencies.
+**For Advanced Users:** Signals form a directed graph (potentially cyclic, although cycles might affect update logic depending on how they are handled). Each [`Signal`](@ref) node stores a value, an optional `type` identifier (`UInt8`), optional `metadata`, and maintains lists of its dependencies and listeners. When a signal is updated via [`set_value!`](@ref), it propagates a notification through the graph, potentially marking downstream signals as 'pending'. This 'pending' state indicates that the signal's value might be stale and needs recomputation. The actual recomputation logic is defined externally via the [`compute!`](@ref) function, which uses the signal's `type` and `metadata` (along with dependency values) to calculate the new value.
 
 ## Key Features
 
 *   **Value Storage:** Holds the current value.
-*   **Optional Labeling:** Can be assigned a `label` via the constructor for identification ([`Cortex.get_label`](@ref)).
+*   **Type Identifier:** Stores an optional `UInt8` type ([`get_type`](@ref)), defaulting to `0x00`.
+*   **Optional Metadata:** Can store arbitrary metadata ([`get_metadata`](@ref)), defaulting to `UndefMetadata()`.
 *   **Dependency Tracking:** Knows which other signals it depends on (`dependencies`) and which signals depend on it ([`listeners`](@ref) via [`get_listeners`](@ref)).
 *   **Notification:** When updated via [`set_value!`](@ref), it notifies its active listeners.
 *   **Pending State:** Can be marked as [`is_pending`](@ref) if its dependencies have updated appropriately, signaling a need for recomputation via [`compute!`](@ref).
@@ -28,7 +29,7 @@ Here are some basic examples demonstrating how to use signals.
 
 ### Creating Signals and Checking Properties
 
-Signals can be created with or without an initial value. We can inspect their initial state, including value, label, computed status, and age.
+Signals can be created with or without an initial value. You can optionally specify a `type` identifier and `metadata`.
 
 Create signals:
 ```@example signal_examples
@@ -41,7 +42,7 @@ s1 = Cortex.Signal(10)
 
 ```@example signal_examples
  # Initial value, computed=true
-s2 = Cortex.Signal(5) # Changed from "hello" for compute! example
+s2 = Cortex.Signal(5)
 ```
 
 ```@example signal_examples
@@ -50,8 +51,8 @@ s3 = Cortex.Signal()
 ```
 
 ```@example signal_examples
-# Labeled signal
-s4 = Cortex.Signal(42; label = :label)        
+# Signal with type and metadata
+s4 = Cortex.Signal(true; type=0x01, metadata=Dict(:info => "flag"))
 ```
 Check their properties:
 ```@example signal_examples
@@ -69,6 +70,22 @@ Cortex.is_computed(s1) # true
 ```@example signal_examples
 @test Cortex.is_computed(s3) == false # hide
 Cortex.is_computed(s3) # false
+```
+```@example signal_examples
+@test Cortex.get_type(s1) === 0x00 # hide
+Cortex.get_type(s1) # 0x00 (default)
+```
+```@example signal_examples
+@test Cortex.get_type(s4) === 0x01 # hide
+Cortex.get_type(s4) # 0x01
+```
+```@example signal_examples
+@test Cortex.get_metadata(s1) === Cortex.UndefMetadata() # hide
+Cortex.get_metadata(s1) # UndefMetadata() (default)
+```
+```@example signal_examples
+@test Cortex.get_metadata(s4) == Dict(:info => "flag") # hide
+Cortex.get_metadata(s4) # Dict{Symbol, String}(:info => "flag")
 ```
 
 ### Setting Values
@@ -129,7 +146,7 @@ Cortex.is_pending(s_derived) # true
 To compute a signal, use the [`Cortex.compute!`](@ref) function, providing a strategy (often a simple function) to calculate the new value based on dependencies. Computing a signal typically clears its pending state.
 
 !!! note
-    By default, `compute!` throws an `ArgumentError` if called on a signal that is not pending ([`is_pending`](@ref) returns `false`). You can override this check using the `force=true` keyword argument.
+    By default, `compute!` throws an `ArgumentError` if called on a signal that is not pending ([`Cortex.is_pending`](@ref) returns `false`). You can override this check using the `force=true` keyword argument.
 
 ```@example signal_examples
 
@@ -187,7 +204,11 @@ Then, implement the [`Cortex.compute_value!`](@ref) method for your strategy typ
 
 ```@example signal_examples
 function Cortex.compute_value!(strategy::CustomStrategy, signal::Cortex.Signal, dependencies)
-    return strategy.multiplier * sum(Cortex.get_value, dependencies)
+    # Example: Use signal's metadata if available
+    meta = Cortex.get_metadata(signal)
+    base_sum = sum(Cortex.get_value, dependencies)
+    offset = meta isa Dict && haskey(meta, :offset) ? meta[:offset] : 0
+    return strategy.multiplier * base_sum + offset
 end
 ```
 
@@ -196,20 +217,23 @@ Now, you can use this strategy with your signals:
 ```@example signal_examples
 strategy = CustomStrategy(2)
 
-Cortex.set_value!(signal_1, 41)
-Cortex.set_value!(signal_2, 1)
+signal_with_meta = Cortex.Signal(metadata=Dict(:offset => 10))
 
-Cortex.compute!(strategy, signal_to_be_computed)
+Cortex.add_dependency!(signal_with_meta, signal_1)
+Cortex.add_dependency!(signal_with_meta, signal_2)
+@test Cortex.is_pending(signal_with_meta) # hide
 
-@test Cortex.get_value(signal_to_be_computed) == 2 * (41 + 1) # hide
-Cortex.get_value(signal_to_be_computed) # 84
+Cortex.compute!(strategy, signal_with_meta)
+
+@test Cortex.get_value(signal_with_meta) == 2 * (1 + 41) + 10 # hide
+Cortex.get_value(signal_with_meta) # 94
 ```
 
 ```@example signal_examples
-Cortex.compute!(CustomStrategy(3), signal_to_be_computed; force=true)
+Cortex.compute!(CustomStrategy(3), signal_with_meta; force=true)
 
-@test Cortex.get_value(signal_to_be_computed) == 3 * (41 + 1) # hide
-Cortex.get_value(signal_to_be_computed) # 126
+@test Cortex.get_value(signal_with_meta) == 3 * (1 + 41) + 10 # hide
+Cortex.get_value(signal_with_meta) # 136
 ```
 
 
@@ -243,12 +267,13 @@ Here is the detailed API documentation for the `Signal` type and its associated 
 
 ```@docs
 Cortex.UndefValue
-Cortex.UndefLabel
+Cortex.UndefMetadata
 Cortex.Signal
 Cortex.is_pending(::Cortex.Signal)
 Cortex.is_computed(::Cortex.Signal)
 Cortex.get_value(::Cortex.Signal)
-Cortex.get_label(::Cortex.Signal)
+Cortex.get_type(::Cortex.Signal)
+Cortex.get_metadata(::Cortex.Signal)
 Cortex.get_age(::Cortex.Signal)
 Cortex.get_dependencies(::Cortex.Signal)
 Cortex.get_listeners(::Cortex.Signal)

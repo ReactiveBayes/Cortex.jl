@@ -1,4 +1,11 @@
 
+module InferenceSignalTypes 
+const MessageToVariable = UInt8(0x01)
+const MessageToFactor = UInt8(0x02)
+const IndividualMarginal = UInt8(0x03)
+const JointMarginal = UInt8(0x04)
+end
+
 struct InferenceRound{M}
     model::M
     marginal::Signal
@@ -10,27 +17,26 @@ end
 
 function process_inference_round(processor::P, round::InferenceRound) where {P}
     # For each direct dependency of the marginal, we try to process it
-    for md in round.marginal.dependencies
-        processed = process_dependency(processor, round, md)
+    for dependency_of_marginal in get_dependencies(round.marginal)
+        processed = process_dependency(processor, round, dependency_of_marginal)
         # If the dependency cannot be processed, we try its first direct dependency
         if !processed
-            slot, _ = md
-            for sd in slot.dependencies
-                process_dependency(processor, round, sd)
+            immediate_first_dependencies = get_dependencies(dependency_of_marginal)
+            for dependency_of_dependency in immediate_first_dependencies
+                process_dependency(processor, round, dependency_of_dependency)
             end
         end
     end
 end
 
-function process_dependency(processor::P, round::InferenceRound, t::Tuple{Any, Any}) where {P}
-    slot, dependency = t
-    if !is_computed(slot) && is_pending(slot)
-        if dependency.type == DependencyType.MessageToFactor
-            processor(round, slot, dependency.wrapped::MessageToFactor)
-        elseif dependency.type == DependencyType.MessageToVariable
-            processor(round, slot, dependency.wrapped::MessageToVariable)
+function process_dependency(processor::P, round::InferenceRound, signal::Signal) where {P}
+    if is_pending(signal)
+        if signal.type === InferenceSignalTypes.MessageToFactor
+            processor(round, signal, signal.metadata::Tuple{Int, Int})
+        elseif signal.type == InferenceSignalTypes.MessageToVariable
+            processor(round, signal, signal.metadata::Tuple{Int, Int})
         else
-            processor(round, slot, dependency.wrapped::AbstractDependency)
+            processor(round, signal, signal.metadata)
         end
         return true
     end
