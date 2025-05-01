@@ -169,7 +169,6 @@ end
     Cortex.set_value!(Cortex.get_edge_message_to_variable(model, p, fp), 3)
 
     function computer(signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
-
         if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
             v, f = signal.metadata
             
@@ -190,5 +189,102 @@ end
     Cortex.update_posterior!(model, Cortex.InferenceRoundComputer(computer), p)
 
     @test Cortex.get_value(Cortex.get_variable_marginal(model, p)) == 9
+end
+
+@testitem "Inference in Beta-Bernoulli model" setup = [ModelUtils] begin
+    using .ModelUtils
+    using JET, BipartiteFactorGraphs, StableRNGs
+
+    struct Beta
+        a::Float64
+        b::Float64
+    end
+
+    struct Bernoulli
+        y::Bool
+    end
+
+    function make_beta_bernoulli_model(n)
+        model = Model()
+
+        p = add_variable_to_model!(model, :p)
+        o = []
+        f = []
+
+        for i in 1:n
+            oi = add_variable_to_model!(model, :o, i)
+            fi = add_factor_to_model!(model, Bernoulli)
+
+            push!(o, oi)
+            push!(f, fi)
+
+            add_edge_to_model!(model, p, fi)
+            add_edge_to_model!(model, oi, fi)
+        end
+
+        return model, p, o, f
+    end
+
+    function experiment(n, dataset)
+        model, p, o, f = make_beta_bernoulli_model(n)
+
+        resolve_dependencies!(model, BeliefPropagation())
+
+        for i in 1:n
+            Cortex.set_value!(Cortex.get_edge_message_to_factor(model, o[i], f[i]), dataset[i])
+        end
+
+        function computer(signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
+            if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
+                v, f = signal.metadata
+                
+                factor = get_factor_data(model.graph, f)
+    
+                if factor.type === Bernoulli
+                    r = Cortex.get_value(dependencies[1])::Bool
+                    return Beta(one(r) + r, 2one(r) - r)
+                elseif factor.type === :prior
+                    error("Should not be invoked")
+                end
+            elseif signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
+                answer = Cortex.get_value(dependencies[1])::Beta
+                for i in 2:length(dependencies)
+                    @inbounds next = Cortex.get_value(dependencies[i])::Beta
+                    answer = Beta(answer.a + next.a - 1, answer.b + next.b - 1)
+                end
+                return answer
+            end
+    
+            error("Unreachable reached")
+        end
+
+        Cortex.update_posterior!(model, Cortex.InferenceRoundComputer(computer), p)
+
+        return Cortex.get_value(Cortex.get_variable_marginal(model, p))
+    end
+
+    n = 100
+    rng = StableRNG(1234)
+    dataset = rand(rng, Bool, n)
+
+    answer = experiment(n, dataset)
+
+    # Known answer calculation for Beta-Bernoulli
+    # Prior: Beta(1, 1)
+    # Likelihood: Bernoulli(p)
+    # Data: dataset (n trials)
+    # Posterior: Beta(1 + sum(dataset), 1 + n - sum(dataset))
+    num_successes = sum(dataset)
+    num_failures = n - num_successes
+    known_answer = Beta(1.0 + num_successes, 1.0 + num_failures)
+
+    @test answer.a ≈ known_answer.a
+    @test answer.b ≈ known_answer.b
+
+    using BenchmarkTools
+
+    @btime experiment(500, d) setup = (d = rand(StableRNG(42), Bool, 500))
+
+    
 end
 
