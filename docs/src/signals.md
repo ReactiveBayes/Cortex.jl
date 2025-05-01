@@ -164,7 +164,7 @@ Cortex.is_pending(signal_to_be_computed) # true
 
 ```@example signal_examples
 # Define a strategy (a function) to compute the value
-compute_sum = (deps) -> sum(Cortex.get_value, deps)
+compute_sum = (signal, deps) -> sum(Cortex.get_value, deps)
 
 # Apply the strategy using compute!
 Cortex.compute!(compute_sum, signal_to_be_computed)

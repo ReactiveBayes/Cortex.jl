@@ -950,7 +950,7 @@ end
         @test is_pending(s3)
         @test !is_computed(s3)
 
-        strategy = (deps) -> sum(get_value, deps)
+        strategy = (_, deps) -> sum(get_value, deps)
 
         compute!(strategy, s3)
 
@@ -1003,7 +1003,7 @@ end
         @test !is_pending(s3)
         @test !is_computed(s3)
 
-        strategy = (deps) -> sum(get_value, deps)
+        strategy = (_, deps) -> sum(get_value, deps)
 
         compute!(strategy, s21)
         compute!(strategy, s22)

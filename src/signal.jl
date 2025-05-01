@@ -285,7 +285,7 @@ end
 Compute the value of the signal `s` using the given `strategy`. 
 The strategy must implement [`compute_value!`](@ref) method.
 If the strategy is a function, it is assumed to be a function
-that takes a vector of dependencies as argument and returns a value.
+that takes the signal and a vector of signal's dependencies as arguments and returns a value.
 Be sure to call `compute!` only on signals that are pending. 
 Calling `compute!` on a non-pending signal will result in an error.
 
@@ -318,5 +318,5 @@ function compute_value!(strategy, signal, dependencies)
 end
 
 function compute_value!(strategy::F, signal::Signal, dependencies::Vector{Signal}) where {F <: Function}
-    return strategy(dependencies)
+    return strategy(signal, dependencies)
 end
