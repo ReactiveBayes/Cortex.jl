@@ -4,22 +4,22 @@ At the heart of Cortex.jl's reactivity system lies the [`Signal`](@ref).
 
 ## Concept
 
-Think of a [`Cortex.Signal`](@ref) as a container for a value that can change over time. The key idea is that other parts of your system can *depend* on a signal. When the signal's value changes, anything that depends on it (its *listeners*) is notified, allowing the system to react automatically.
+Think of a [`Signal`](@ref) as a container for a value that can change over time. The key idea is that other parts of your system can *depend* on a signal. When the signal's value changes, anything that depends on it (its *listeners*) is notified, allowing the system to react automatically.
 
-**For Beginners:** Imagine a spreadsheet cell. When you change the value in one cell (like `A1`), other cells that use `A1` in their formulas (like `B1 = A1 * 2`) automatically update. A [`Cortex.Signal`](@ref) is like that cell – it holds a value, and changes can trigger updates elsewhere.
+**For Beginners:** Imagine a spreadsheet cell. When you change the value in one cell (like `A1`), other cells that use `A1` in their formulas (like `B1 = A1 * 2`) automatically update. A [`Signal`](@ref) is like that cell – it holds a value, and changes can trigger updates elsewhere.
 
-**For Advanced Users:** Signals form a directed graph (potentially cyclic, although cycles might affect update logic depending on how they are handled). Each [`Cortex.Signal`](@ref) node stores a value and maintains lists of its dependencies (signals it reads from) and listeners (signals that read from it). When a signal is updated via [`Cortex.set_value!`](@ref), it propagates a notification through the graph, potentially marking downstream signals as 'pending'. This 'pending' state indicates that the signal's value might be stale and needs recomputation. The actual recomputation logic, however, is typically managed by a higher-level construct like a `Slot` (assuming `Slot` is documented elsewhere, otherwise keep as ``Slot`` or add its reference if available), which observes the pending state.
+**For Advanced Users:** Signals form a directed graph (potentially cyclic, although cycles might affect update logic depending on how they are handled). Each [`Signal`](@ref) node stores a value and maintains lists of its dependencies (signals it reads from) and listeners (signals that read from it). When a signal is updated via [`set_value!`](@ref), it propagates a notification through the graph, potentially marking downstream signals as 'pending'. This 'pending' state indicates that the signal's value might be stale and needs recomputation. The actual recomputation logic, however, is defined externally to the signal itself and is typically invoked via a `compute!` function which observes the pending state and calculates the new value.
 
 ## Key Features
 
 *   **Value Storage:** Holds the current value.
 *   **Optional Labeling:** Can be assigned a `label` via the constructor for identification ([`Cortex.get_label`](@ref)).
-*   **Dependency Tracking:** Knows which other signals it depends on (`dependencies`) and which signals depend on it `listeners` via [`Cortex.get_listeners`](@ref).
-*   **Notification:** When updated via [`Cortex.set_value!`](@ref), it notifies its active listeners.
-*   **Pending State:** Can be marked as [`Cortex.is_pending`](@ref) if its dependencies have updated appropriately, signaling a need for potential recomputation.
-*   **Weak Dependencies:** Supports 'weak' dependencies, which influence the pending state based only on whether they are computed ([`Cortex.is_computed`](@ref)), not their age relative to the listener.
-*   **Controlled Listening:** Allows dependencies to be added without automatically listening to their updates (`listen=false` in [`Cortex.add_dependency!`](@ref)).
-*   **Controlled Initial Check:** Allows dependencies to be added without immediately checking their computed state (`check_computed=false` in [`Cortex.add_dependency!`](@ref)).
+*   **Dependency Tracking:** Knows which other signals it depends on (`dependencies`) and which signals depend on it ([`listeners`](@ref) via [`get_listeners`](@ref)).
+*   **Notification:** When updated via [`set_value!`](@ref), it notifies its active listeners.
+*   **Pending State:** Can be marked as [`is_pending`](@ref) if its dependencies have updated appropriately, signaling a need for potential recomputation via `compute!`.
+*   **Weak Dependencies:** Supports 'weak' dependencies, which influence the pending state based only on whether they are computed ([`is_computed`](@ref)), not their age relative to the listener.
+*   **Controlled Listening:** Allows dependencies to be added without automatically listening to their updates (`listen=false` in [`add_dependency!`](@ref)).
+*   **Controlled Initial Check:** Allows dependencies to be added without immediately checking their computed state (`check_computed=false` in [`add_dependency!`](@ref)).
 
 ## Usage Examples
 

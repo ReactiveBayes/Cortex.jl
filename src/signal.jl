@@ -22,7 +22,7 @@ If created without an initial value, the signal is initialized with [`UndefValue
 
 A signal is said to be 'pending' if it is ready for potential recomputation (due to updated dependencies).
 However, a signal is not recomputed immediately when it becomes pending. Moreover, a Signal does not know 
-how to recompute itself. This is a responsibility of the [`Slot`](@ref) type.
+how to recompute itself. The recomputation logic is defined separately with the [`compute!`](@ref) function.
 
 Signals form a directed graph where edges represent dependencies.
 When a signal's value is updated via [`set_value!`](@ref), it notifies its active listeners.
@@ -34,9 +34,9 @@ A signal may become 'pending' if all its dependencies meet the following criteri
 A signal can depend on another signal without listening to it, see [`add_dependency!`](@ref) for more details.
 
 See also:
-- [`Slot`](@ref): Manages signal recomputation logic.
 - [`add_dependency!`](@ref): Establishes a dependency relationship between signals.
 - [`set_value!`](@ref): Updates the signal's value and notifies listeners.
+- [`compute!`](@ref): Function responsible for recomputing a signal's value.
 - [`is_pending`](@ref): Checks if the signal is marked for potential recomputation.
 - [`is_computed`](@ref): Checks if the signal currently holds a computed value (not `UndefValue`).
 - [`get_value`](@ref): Retrieves the current value stored in the signal.
@@ -191,7 +191,9 @@ further updates to `dependency` will not trigger notifications to `signal`.
 
 Note that this function does nothing if `signal === dependency`.
 """
-function add_dependency!(signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true, check_computed::Bool = true)
+function add_dependency!(
+    signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true, check_computed::Bool = true
+)
     # We check that the dependency is not the same signal
     if signal === dependency
         return nothing
@@ -235,7 +237,7 @@ function check_and_set_pending!(notifier::Signal, listener::Signal)
     should_update_pending = all(zip(listener.weakmask, listener.dependencies)) do (is_weak, dependency)
         return !is_computed(dependency) ? false : (is_weak ? true : get_age(dependency) > listener_age)
     end
-    
+
     if should_update_pending
         listener.is_pending = true
     end
@@ -249,4 +251,37 @@ function Base.show(io::IO, s::Signal)
     val_str = is_computed(s) ? repr(get_value(s)) : "#undef"
     pending_str = is_pending(s) ? "true" : "false"
     print(io, "Signal(value=", val_str, ", pending=", pending_str, ")")
+end
+
+# --- Compute Interface ---
+
+"""
+    compute!(s::Signal, strategy)
+
+Compute the value of the signal `s` using the given `strategy`. 
+The strategy must implement [`compute_value!`](@ref) method.
+If the strategy is a function, it is assumed to be a function
+that takes a vector of dependencies as argument and returns a value.
+Be sure to call `compute!` only on signals that are pending. 
+Calling `compute!` on a non-pending signal will result in undefined behavior.
+"""
+function compute!(strategy, signal::Signal)
+    dependencies = get_dependencies(signal)
+    new_value = compute_value!(strategy, signal, dependencies)
+    set_value!(signal, new_value)
+    return nothing
+end
+
+"""
+    compute_value!(strategy, signal::Signal, dependencies::Vector{Signal})
+
+Compute the value of the signal `signal` using the given `strategy`.
+The strategy must implement this method. See also [`compute!`](@ref).
+"""
+function compute_value!(strategy, signal::Signal, dependencies::Vector{Signal})
+    error("`compute_value!` must be implemented for the given strategy of type `$(typeof(strategy))`")
+end
+
+function compute_value!(strategy::F, signal::Signal, dependencies::Vector{Signal}) where {F <: Function}
+    return strategy(dependencies)
 end

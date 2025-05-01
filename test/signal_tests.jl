@@ -10,7 +10,7 @@
     @test get_value(s) == 100
 end
 
-@testitem "A Signal Can Have A Label" begin 
+@testitem "A Signal Can Have A Label" begin
     import Cortex: Signal, get_label, UndefLabel
 
     @testset let s = Signal(42)
@@ -21,7 +21,7 @@ end
         @test get_label(s) == :message
     end
 
-    struct ArbitraryLabel 
+    struct ArbitraryLabel
         val::Int
     end
 
@@ -33,7 +33,6 @@ end
     @testset let s = Signal(42; label = "message")
         @test get_label(s) == "message"
     end
-
 end
 
 @testitem "Setting Value Updates Age" begin
@@ -867,4 +866,77 @@ end
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); weak = true)
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); check_computed = false)
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
+end
+
+@testitem "A Signal Can Be Computed With A Lambda Function" begin
+    import Cortex: Signal, compute!, add_dependency!, set_value!, get_value, is_pending, is_computed
+
+    @testset "Basic Case" begin
+        s1 = Signal(1)
+        s2 = Signal(2)
+        s3 = Signal()
+
+        add_dependency!(s3, s1)
+        add_dependency!(s3, s2)
+
+        @test is_pending(s3)
+        @test !is_computed(s3)
+
+        strategy = (deps) -> sum(get_value, deps)
+
+        compute!(strategy, s3)
+
+        @test is_computed(s3)
+        @test get_value(s3) == 3
+
+        set_value!(s1, 10)
+        set_value!(s2, 20)
+
+        compute!(strategy, s3)
+
+        @test is_computed(s3)
+        @test get_value(s3) == 30
+    end
+
+    @testset "Pyramid of Signals" begin 
+        s01 = Signal(1)
+        s02 = Signal(2)
+
+        s11 = Signal(3)
+        s12 = Signal(4)
+
+        s21 = Signal()
+        s22 = Signal()
+
+        add_dependency!(s21, s01)
+        add_dependency!(s21, s02)
+
+        add_dependency!(s22, s11)
+        add_dependency!(s22, s12)
+
+        s3 = Signal()
+
+        add_dependency!(s3, s21)
+        add_dependency!(s3, s22)
+
+        @test is_pending(s21)
+        @test is_pending(s22)
+        @test !is_computed(s21)
+        @test !is_computed(s22)
+        @test !is_pending(s3)
+        @test !is_computed(s3)
+
+        strategy = (deps) -> sum(get_value, deps)
+
+        compute!(strategy, s21)
+        compute!(strategy, s22)
+
+        @test is_pending(s3)
+        @test !is_computed(s3)
+
+        compute!(strategy, s3)
+
+        @test is_computed(s3)
+        @test get_value(s3) == 10
+    end
 end
