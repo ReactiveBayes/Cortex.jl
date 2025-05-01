@@ -1,4 +1,4 @@
-# Signals: The Core of Reactivity
+# [Signals: The Core of Reactivity](@id signals)
 
 At the heart of Cortex.jl's reactivity system lies the [`Signal`](@ref).
 
