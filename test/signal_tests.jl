@@ -116,6 +116,46 @@ end
     @test !is_computed(s)
 end
 
+@testitem "Add Single Non-Initialized Weak Dependency" begin
+    import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, is_pending, set_value!, is_computed
+
+    s1 = Signal()
+    s2 = Signal()
+
+    add_dependency!(s2, s1; weak = true)
+
+    @test get_dependencies(s2) == [s1]
+    @test get_listeners(s1) == [s2]
+
+    @test !is_pending(s2)
+    @test !is_computed(s2)
+
+    set_value!(s1, 10)
+
+    @test is_pending(s2)
+    @test !is_computed(s2)
+end
+
+@testitem "Add Single Initialized Weak Dependency" begin
+    import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, is_pending, set_value!, is_computed
+
+    s1 = Signal(1)
+    s2 = Signal()
+
+    add_dependency!(s2, s1; weak = true)
+
+    @test get_dependencies(s2) == [s1]
+    @test get_listeners(s1) == [s2]
+
+    @test is_pending(s2) # Should be pending because `s1` is initialized and is weak
+    @test !is_computed(s2)
+
+    set_value!(s1, 10)
+
+    @test is_pending(s2)
+    @test !is_computed(s2)
+end
+
 @testitem "Add Many Dependencies (All Strong)" begin
     import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, is_pending, set_value!, is_computed
 
@@ -609,7 +649,7 @@ end
 @testitem "Not-Listening Dependency" begin
     import Cortex: Signal, add_dependency!, get_value, set_value!, is_pending
 
-    @testset "Case: A single dependency" begin
+    @testset "Case: A single dependency non-weak dependency" begin
         s1 = Signal(1)
         s2 = Signal(2)
 
@@ -621,6 +661,20 @@ end
         set_value!(s1, 10)
 
         @test !is_pending(s2)
+    end
+
+    @testset "Case: A single dependency weak dependency" begin
+        s1 = Signal(1)
+        s2 = Signal(2)
+
+        # `s2` depends on `s1`, but it does not listen to updates   
+        add_dependency!(s2, s1; listen = false, weak = true)
+
+        @test is_pending(s2) # `s2` is pending because it has only weak dependency, which is computed
+
+        set_value!(s1, 10)
+
+        @test is_pending(s2)
     end
 
     @testset "Case: Multiple dependencies" begin
