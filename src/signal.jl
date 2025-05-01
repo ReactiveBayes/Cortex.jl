@@ -249,23 +249,35 @@ end
 
 function Base.show(io::IO, s::Signal)
     val_str = is_computed(s) ? repr(get_value(s)) : "#undef"
+    label_str = get_label(s) === UndefLabel() ? "undef" : repr(get_label(s))
     pending_str = is_pending(s) ? "true" : "false"
-    print(io, "Signal(value=", val_str, ", pending=", pending_str, ")")
+    print(io, "Signal(value=", val_str, ", label=", label_str, ", pending=", pending_str, ")")
 end
 
 # --- Compute Interface ---
 
 """
-    compute!(s::Signal, strategy)
+    compute!(s::Signal, strategy; force::Bool = false)
 
 Compute the value of the signal `s` using the given `strategy`. 
 The strategy must implement [`compute_value!`](@ref) method.
 If the strategy is a function, it is assumed to be a function
 that takes a vector of dependencies as argument and returns a value.
 Be sure to call `compute!` only on signals that are pending. 
-Calling `compute!` on a non-pending signal will result in undefined behavior.
+Calling `compute!` on a non-pending signal will result in an error.
+
+Keyword Arguments:
+- `force::Bool = false`: If `true`, the signal will be computed even if it is not pending.
 """
-function compute!(strategy, signal::Signal)
+function compute!(strategy, signal::Signal; force::Bool = false)
+    if !is_pending(signal) && !force
+        throw(
+            ArgumentError(
+                "Signal is not pending. Cannot compute a non-pending signal. Use `force=true` to force computation."
+            )
+        )
+    end
+
     dependencies = get_dependencies(signal)
     new_value = compute_value!(strategy, signal, dependencies)
     set_value!(signal, new_value)
@@ -273,12 +285,12 @@ function compute!(strategy, signal::Signal)
 end
 
 """
-    compute_value!(strategy, signal::Signal, dependencies::Vector{Signal})
+    compute_value!(strategy, signal, dependencies)
 
 Compute the value of the signal `signal` using the given `strategy`.
 The strategy must implement this method. See also [`compute!`](@ref).
 """
-function compute_value!(strategy, signal::Signal, dependencies::Vector{Signal})
+function compute_value!(strategy, signal, dependencies)
     error("`compute_value!` must be implemented for the given strategy of type `$(typeof(strategy))`")
 end
 

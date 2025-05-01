@@ -801,35 +801,38 @@ end
 end
 
 @testitem "Signal Representation" begin
-    import Cortex: Signal, set_value!, add_dependency!
+    import Cortex: Signal, set_value!, add_dependency!, UndefLabel
 
     @testset "Uninitialized Signal" begin
-        s = Signal()
-        @test repr(s) == "Signal(value=#undef, pending=false)"
+        s_no_label = Signal()
+        @test repr(s_no_label) == "Signal(value=#undef, label=undef, pending=false)"
+        
+        s_label = Signal(label = :test)
+        @test repr(s_label) == "Signal(value=#undef, label=:test, pending=false)"
     end
 
     @testset "Initialized Signal" begin
         s_int = Signal(123)
-        @test repr(s_int) == "Signal(value=123, pending=false)"
-
-        s_str = Signal("test")
-        @test repr(s_str) == "Signal(value=\"test\", pending=false)" # Check quoting
+        @test repr(s_int) == "Signal(value=123, label=undef, pending=false)"
+        
+        s_str_label = Signal("test"; label = "a label")
+        @test repr(s_str_label) == "Signal(value=\"test\", label=\"a label\", pending=false)"
     end
 
     @testset "Pending Signal" begin
         s1 = Signal(1)
-        s_pending = Signal()
+        s_pending = Signal(label=:pending_sig)
         add_dependency!(s_pending, s1)
         # s_pending becomes pending immediately because s1 is computed
-        @test repr(s_pending) == "Signal(value=#undef, pending=true)"
+        @test repr(s_pending) == "Signal(value=#undef, label=:pending_sig, pending=true)"
 
         # Set value, pending should become false
         set_value!(s_pending, 50)
-        @test repr(s_pending) == "Signal(value=50, pending=false)"
+        @test repr(s_pending) == "Signal(value=50, label=:pending_sig, pending=false)"
 
         # Update dependency, pending should become true again
         set_value!(s1, 2)
-        @test repr(s_pending) == "Signal(value=50, pending=true)"
+        @test repr(s_pending) == "Signal(value=50, label=:pending_sig, pending=true)"
     end
 end
 
@@ -887,14 +890,23 @@ end
         compute!(strategy, s3)
 
         @test is_computed(s3)
+        @test !is_pending(s3) # compute! should unset pending
         @test get_value(s3) == 3
+
+        # s3 is no longer pending
+        @test_throws ArgumentError compute!(strategy, s3) # Should throw error without force=true
+        @test compute!(strategy, s3; force=true) === nothing # Should run with force=true
+        @test get_value(s3) == 3 # Value remains the same as deps didn't change
+        @test !is_pending(s3) # Still not pending
 
         set_value!(s1, 10)
         set_value!(s2, 20)
+        @test is_pending(s3) # Now pending again
 
         compute!(strategy, s3)
 
         @test is_computed(s3)
+        @test !is_pending(s3)
         @test get_value(s3) == 30
     end
 
@@ -931,12 +943,15 @@ end
         compute!(strategy, s21)
         compute!(strategy, s22)
 
-        @test is_pending(s3)
+        @test !is_pending(s21)
+        @test !is_pending(s22)
+        @test is_pending(s3) # s3 becomes pending after its deps are computed
         @test !is_computed(s3)
 
         compute!(strategy, s3)
 
         @test is_computed(s3)
-        @test get_value(s3) == 10
+        @test !is_pending(s3)
+        @test get_value(s3) == (1+2) + (3+4) # 3 + 7 = 10
     end
 end
