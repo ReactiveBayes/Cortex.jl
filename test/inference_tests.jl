@@ -280,11 +280,6 @@ end
 
     @test answer.a ≈ known_answer.a
     @test answer.b ≈ known_answer.b
-
-    using BenchmarkTools
-
-    @btime experiment(500, d) setup = (d = rand(StableRNG(42), Bool, 500))
-
     
 end
 

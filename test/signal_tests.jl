@@ -1021,3 +1021,130 @@ end
         @test get_value(s3) == (1 + 2) + (3 + 4) # 3 + 7 = 10
     end
 end
+
+@testitem "It is possible to add intermediate dependencies" begin
+    import Cortex: Signal, add_dependency!, get_dependencies
+
+    source = Signal()
+    intermediate = Signal()
+    derived = Signal()
+
+    add_dependency!(intermediate, source)
+    add_dependency!(derived, intermediate; intermediate = true)
+
+    @test get_dependencies(derived) == [intermediate]
+    @test get_dependencies(intermediate) == [source]
+end
+
+@testitem "`process_dependencies!` function should step down recursively for intermediate dependencies" begin
+    import Cortex: Signal, add_dependency!, process_dependencies!
+
+    source = Signal()
+    intermediate = Signal()
+    derived = Signal()
+
+    add_dependency!(intermediate, source)
+    add_dependency!(derived, intermediate; intermediate = true)
+
+    @testset "Case: retry = false, callback returns false" begin
+        attempted_to_process = []
+
+        process_dependencies!(derived; retry = false) do dependency
+            push!(attempted_to_process, dependency)
+            return false
+        end
+
+        @test length(attempted_to_process) == 2
+        @test attempted_to_process[1] == intermediate
+        @test attempted_to_process[2] == source
+    end
+
+    @testset "Case: retry = true, callback returns false" begin
+        attempted_to_process = []
+
+        process_dependencies!(derived; retry = true) do dependency
+            push!(attempted_to_process, dependency)
+            return false
+        end
+
+        @test length(attempted_to_process) == 2
+        @test attempted_to_process[1] == intermediate
+        @test attempted_to_process[2] == source
+    end
+
+    @testset "Case: retry = false, callback returns true" begin
+        attempted_to_process = []
+
+        process_dependencies!(derived; retry = false) do dependency
+            push!(attempted_to_process, dependency)
+            return true
+        end
+
+        @test length(attempted_to_process) == 1
+        @test attempted_to_process[1] == intermediate
+    end
+
+    @testset "Case: retry = true, callback returns true" begin
+        attempted_to_process = []
+
+        process_dependencies!(derived; retry = true) do dependency
+            push!(attempted_to_process, dependency)
+            return true
+        end
+
+        @test length(attempted_to_process) == 1
+        @test attempted_to_process[1] == intermediate
+    end
+
+    @testset "Case: retry = false, callback returns false for `intermediate` and true for `source`" begin
+        attempted_to_process = []
+
+        process_dependencies!(derived; retry = false) do dependency
+            push!(attempted_to_process, dependency)
+            return dependency === intermediate ? false : true
+        end
+
+        @test length(attempted_to_process) == 2
+        @test attempted_to_process[1] == intermediate
+        @test attempted_to_process[2] == source
+    end
+
+    @testset "Case: retry = true, callback returns false for `intermediate` and true for `source`" begin
+        attempted_to_process = []
+
+        process_dependencies!(derived; retry = true) do dependency
+            push!(attempted_to_process, dependency)
+            return dependency === intermediate ? false : true
+        end
+
+        @test length(attempted_to_process) == 3
+        @test attempted_to_process[1] == intermediate
+        @test attempted_to_process[2] == source
+        @test attempted_to_process[3] == intermediate # should retry on intermediate
+    end
+end
+
+@testitem "`process_dependencies!` function should NOT step down recursively for non-intermediate dependencies" begin
+    import Cortex: Signal, add_dependency!, process_dependencies!
+
+    source = Signal()
+    not_intermediate = Signal()
+    derived = Signal()
+
+    add_dependency!(not_intermediate, source)
+    add_dependency!(derived, not_intermediate)
+
+    @testset for retry in [false, true]
+        @testset for callback_returns in [false, true]
+            attempted_to_process = []
+
+            process_dependencies!(derived; retry = retry) do dependency
+                push!(attempted_to_process, dependency)
+                return callback_returns
+            end
+
+            @test length(attempted_to_process) == 1
+            @test attempted_to_process[1] == not_intermediate
+        end
+    end
+end

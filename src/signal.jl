@@ -56,6 +56,7 @@ mutable struct Signal
     age::UInt64
 
     weakmask::BitVector
+    intermediatemask::BitVector
     dependencies::Vector{Signal}
 
     listenmask::BitVector
@@ -63,12 +64,36 @@ mutable struct Signal
 
     # Constructor for creating an empty signal
     function Signal(; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
-        return new(UndefValue(),metadata, type, false, false, UInt64(0), falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+        return new(
+            UndefValue(),
+            metadata,
+            type,
+            false,
+            false,
+            UInt64(0),
+            falses(0),
+            falses(0),
+            Vector{Signal}(),
+            trues(0),
+            Vector{Signal}()
+        )
     end
 
     # Constructor for creating a new signal with a value
     function Signal(value::Any; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
-        return new(value, metadata, type, false, false, UInt64(1), falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+        return new(
+            value,
+            metadata,
+            type,
+            false,
+            false,
+            UInt64(1),
+            falses(0),
+            falses(0),
+            Vector{Signal}(),
+            trues(0),
+            Vector{Signal}()
+        )
     end
 end
 
@@ -183,7 +208,7 @@ function set_value!(s::Signal, @nospecialize(value))
 end
 
 """
-    add_dependency!(signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true)
+    add_dependency!(signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true, intermediate::Bool = false)
 
 Add `dependency` to the list of dependencies for signal `signal`.
 Also adds `signal` to the list of listeners for `dependency`.
@@ -193,6 +218,9 @@ Arguments:
 - `dependency::Signal`: The signal to be added as a dependency.
 
 Keyword Arguments:
+- `intermediate::Bool = false`: If `true`, marks the dependency as intermediate. Intermediate dependencies
+have an effect on the `process_dependencies!` function. See the documentation of [`process_dependencies!`](@ref) for more details.
+By default, the added dependency is not intermediate.
 - `weak::Bool = false`: If `true`, marks the dependency as weak. Weak dependencies
   only require `is_computed` to be true (not necessarily older) for the dependent
   signal `signal` to potentially become pending.
@@ -206,7 +234,12 @@ further updates to `dependency` will not trigger notifications to `signal`.
 Note that this function does nothing if `signal === dependency`.
 """
 function add_dependency!(
-    signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true, check_computed::Bool = true
+    signal::Signal,
+    dependency::Signal;
+    weak::Bool = false,
+    listen::Bool = true,
+    check_computed::Bool = true,
+    intermediate::Bool = false
 )
     # We check that the dependency is not the same signal
     if signal === dependency
@@ -219,6 +252,14 @@ function add_dependency!(
         push!(signal.weakmask, true)
     else
         push!(signal.weakmask, false)
+    end
+
+    # If the dependency is intermediate, 
+    # we store `true` in the intermediatemask, `false` otherwise
+    if intermediate
+        push!(signal.intermediatemask, true)
+    else
+        push!(signal.intermediatemask, false)
     end
 
     push!(signal.dependencies, dependency)
@@ -338,4 +379,22 @@ end
 
 function compute_value!(strategy::F, signal::Signal, dependencies::Vector{Signal}) where {F <: Function}
     return strategy(signal, dependencies)
+end
+
+# --- Processing Interface ---
+
+function process_dependencies!(f::F, signal::Signal; retry::Bool = false) where {F}
+    dependencies = get_dependencies(signal)
+    all_processed = true
+    for (is_intermediate, dependency) in zip(signal.intermediatemask, dependencies)
+        processed = f(dependency)
+        if is_intermediate && !processed
+            intermediate_all_processed = process_dependencies!(f, dependency; retry = retry)
+            if intermediate_all_processed && retry
+                processed = f(dependency)
+            end
+        end
+        all_processed = all_processed && processed
+    end
+    return all_processed
 end
