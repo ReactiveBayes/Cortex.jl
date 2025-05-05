@@ -51,6 +51,7 @@ mutable struct Signal
     type::UInt8
     metadata::Any
 
+    is_potentially_pending::Bool
     is_pending::Bool
     age::UInt64
 
@@ -62,12 +63,12 @@ mutable struct Signal
 
     # Constructor for creating an empty signal
     function Signal(; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
-        return new(UndefValue(), type, metadata, false, 0, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+        return new(UndefValue(), type, metadata, false, false, 0, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
     end
 
     # Constructor for creating a new signal with a value
     function Signal(value::Any; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
-        return new(value, type, metadata, false, 1, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+        return new(value, type, metadata, false, false, 1, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
     end
 end
 
@@ -77,6 +78,7 @@ end
 Check if the signal `s` is marked as pending.
 """
 function is_pending(s::Signal)::Bool
+    check_and_set_pending!(s)
     return s.is_pending
 end
 
@@ -172,7 +174,7 @@ function set_value!(s::Signal, @nospecialize(value))
     # We only notify the signals that are listening to the current signal
     for (is_listening, listener) in zip(s.listenmask, s.listeners)
         if is_listening
-            check_and_set_pending!(s, listener)
+            set_potentially_pending!(listener)
         end
     end
 
@@ -234,7 +236,7 @@ function add_dependency!(
     # we immediately notify the current signal `s` as if it was already subscribed to the changes
     is_dependency_computed = is_computed(dependency)
     if check_computed && is_dependency_computed
-        check_and_set_pending!(dependency, signal)
+        set_potentially_pending!(signal)
     elseif check_computed && !is_dependency_computed
         signal.is_pending = false
     end
@@ -242,18 +244,34 @@ function add_dependency!(
     return nothing
 end
 
-function check_and_set_pending!(notifier::Signal, listener::Signal)
-    listener_age = get_age(listener)
+function set_potentially_pending!(signal::Signal)
+    signal.is_potentially_pending = true
+end
+
+function check_and_set_pending!(signal::Signal)
+    # If the listener is not potentially pending, we do nothing
+    # as there is nothing to check and set
+    if !signal.is_potentially_pending
+        return nothing
+    end
+
+    # If it was potentially pending, we set it to false
+    # since no matter what the outcome of the check is, 
+    # it will either be set pending to true and if not, 
+    # then it is not potentially pending anyway
+    signal.is_potentially_pending = false
+
+    listener_age = get_age(signal)
     # If notified, the listener will check its own dependencies 
     # to see if it needs to update its own `pending` state
     # The condition is that all weak dependencies are computed,
     # and all non-weak dependencies are older than the listener
-    should_update_pending = all(zip(listener.weakmask, listener.dependencies)) do (is_weak, dependency)
+    should_update_pending = all(zip(signal.weakmask, signal.dependencies)) do (is_weak, dependency)
         return !is_computed(dependency) ? false : (is_weak ? true : get_age(dependency) > listener_age)
     end
 
     if should_update_pending
-        listener.is_pending = true
+        signal.is_pending = true
     end
 
     return nothing
