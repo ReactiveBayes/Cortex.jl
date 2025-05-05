@@ -3,4 +3,4 @@ using BenchmarkTools
 
 SUITE = BenchmarkGroup()
 
-include("src/value_benchmarks.jl")
+include("src/signal_benchmarks.jl")

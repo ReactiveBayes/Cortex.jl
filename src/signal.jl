@@ -48,9 +48,9 @@ See also:
 """
 mutable struct Signal
     value::Any
-    type::UInt8
     metadata::Any
 
+    type::UInt8
     is_potentially_pending::Bool
     is_pending::Bool
     age::UInt64
@@ -63,12 +63,12 @@ mutable struct Signal
 
     # Constructor for creating an empty signal
     function Signal(; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
-        return new(UndefValue(), type, metadata, false, false, 0, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+        return new(UndefValue(),metadata, type, false, false, UInt64(0), falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
     end
 
     # Constructor for creating a new signal with a value
     function Signal(value::Any; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
-        return new(value, type, metadata, false, false, 1, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+        return new(value, metadata, type, false, false, UInt64(1), falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
     end
 end
 
@@ -161,7 +161,7 @@ function set_value!(s::Signal, @nospecialize(value))
     # If the signal has no dependencies, we simply take the age of the signal and add 2
     # Interpret it as if the signal had actually a "ghost" dependency with an age equal to the `s.age + 1` 
     # thus the new age becomes `(s.age + 1) + 1`
-    next_age = isempty(get_dependencies(s)) ? s.age + 2 : maximum(d -> get_age(d), s.dependencies) + 1
+    next_age = isempty(get_dependencies(s)) ? s.age + UInt64(2) : maximum(d -> get_age(d), s.dependencies) + UInt64(1)
     s.age = next_age
 
     # We update the value of the signal
@@ -169,6 +169,7 @@ function set_value!(s::Signal, @nospecialize(value))
 
     # We unset the pending flag
     s.is_pending = false
+    s.is_potentially_pending = false
 
     # We notify all the signals that listen to this signal that it has been updated
     # We only notify the signals that are listening to the current signal
