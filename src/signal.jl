@@ -393,6 +393,7 @@ function process_dependencies!(f::F, signal::Signal; retry::Bool = false) where 
             if intermediate_processed_at_least_once && retry
                 processed = f(dependency)
             end
+            processed_at_least_once = processed_at_least_once || intermediate_processed_at_least_once
         end
         processed_at_least_once = processed_at_least_once || processed
     end

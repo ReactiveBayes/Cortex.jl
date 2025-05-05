@@ -1049,7 +1049,7 @@ end
     @testset "Case: retry = false, callback returns false" begin
         attempted_to_process = []
 
-        process_dependencies!(derived; retry = false) do dependency
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = false) do dependency
             push!(attempted_to_process, dependency)
             return false
         end
@@ -1057,12 +1057,15 @@ end
         @test length(attempted_to_process) == 2
         @test attempted_to_process[1] == intermediate
         @test attempted_to_process[2] == source
+        # `process_dependencies!` should return false because no dependency was processed
+        # since the callback returned false for all dependencies
+        @test !at_least_one_dependency_processed
     end
 
     @testset "Case: retry = true, callback returns false" begin
         attempted_to_process = []
 
-        process_dependencies!(derived; retry = true) do dependency
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = true) do dependency
             push!(attempted_to_process, dependency)
             return false
         end
@@ -1070,36 +1073,41 @@ end
         @test length(attempted_to_process) == 2
         @test attempted_to_process[1] == intermediate
         @test attempted_to_process[2] == source
+        # `process_dependencies!` should return false because no dependency was processed
+        # since the callback returned false for all dependencies
+        @test !at_least_one_dependency_processed
     end
 
     @testset "Case: retry = false, callback returns true" begin
         attempted_to_process = []
 
-        process_dependencies!(derived; retry = false) do dependency
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = false) do dependency
             push!(attempted_to_process, dependency)
             return true
         end
 
         @test length(attempted_to_process) == 1
         @test attempted_to_process[1] == intermediate
+        @test at_least_one_dependency_processed
     end
 
     @testset "Case: retry = true, callback returns true" begin
         attempted_to_process = []
 
-        process_dependencies!(derived; retry = true) do dependency
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = true) do dependency
             push!(attempted_to_process, dependency)
             return true
         end
 
         @test length(attempted_to_process) == 1
         @test attempted_to_process[1] == intermediate
+        @test at_least_one_dependency_processed
     end
 
     @testset "Case: retry = false, callback returns false for `intermediate` and true for `source`" begin
         attempted_to_process = []
 
-        process_dependencies!(derived; retry = false) do dependency
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = false) do dependency
             push!(attempted_to_process, dependency)
             return dependency === intermediate ? false : true
         end
@@ -1107,12 +1115,13 @@ end
         @test length(attempted_to_process) == 2
         @test attempted_to_process[1] == intermediate
         @test attempted_to_process[2] == source
+        @test at_least_one_dependency_processed
     end
 
     @testset "Case: retry = true, callback returns false for `intermediate` and true for `source`" begin
         attempted_to_process = []
 
-        process_dependencies!(derived; retry = true) do dependency
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = true) do dependency
             push!(attempted_to_process, dependency)
             return dependency === intermediate ? false : true
         end
@@ -1121,6 +1130,7 @@ end
         @test attempted_to_process[1] == intermediate
         @test attempted_to_process[2] == source
         @test attempted_to_process[3] == intermediate # should retry on intermediate
+        @test at_least_one_dependency_processed
     end
 end
 
@@ -1138,13 +1148,41 @@ end
         @testset for callback_returns in [false, true]
             attempted_to_process = []
 
-            process_dependencies!(derived; retry = retry) do dependency
+            at_least_one_dependency_processed = process_dependencies!(derived; retry = retry) do dependency
                 push!(attempted_to_process, dependency)
                 return callback_returns
             end
 
             @test length(attempted_to_process) == 1
             @test attempted_to_process[1] == not_intermediate
+            if callback_returns === true
+                @test at_least_one_dependency_processed
+            else
+                @test !at_least_one_dependency_processed
+            end
         end
+    end
+end
+
+@testitem "`process_dependencies!` should return true if at least one dependency was processed" begin
+    import Cortex: Signal, add_dependency!, process_dependencies!
+
+    source = Signal()
+    intermediate = Signal()
+    derived = Signal()
+
+    add_dependency!(intermediate, source)
+    add_dependency!(derived, intermediate; intermediate = true)
+
+    @testset for retry in [false, true]
+        attempted_to_process = []
+
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = retry) do dependency
+            push!(attempted_to_process, dependency)
+            return dependency === source
+        end
+
+        @test length(attempted_to_process) >= 1
+        @test at_least_one_dependency_processed
     end
 end

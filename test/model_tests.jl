@@ -88,7 +88,8 @@ end
         index::Any
         marginal::Signal
 
-        Variable(name, index...) = new(name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal))
+        Variable(name, index...) =
+            new(name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal, metadata = (name, index...)))
     end
 
     function Cortex.add_variable_to_model!(model::Model, name::Any, index...)
@@ -161,41 +162,81 @@ end
 
     struct BeliefPropagation end
 
-    # function resolve_variable_dependencies!(vi::Int, model::Model, ::BeliefPropagation)
-    #     paired_messages = map(BipartiteFactorGraphs.neighbors(model.graph, vi)) do fi 
-    #         return (
-    #             Cortex.get_edge_message_to_factor(model, VariableId(vi), FactorId(fi)),
-    #             Cortex.get_edge_message_to_variable(model, VariableId(vi), FactorId(fi))
-    #         )
-    #     end
+    function resolve_variable_dependencies!(vi::Int, model::Model, ::BeliefPropagation)
+        paired_messages = map(BipartiteFactorGraphs.neighbors(model.graph, vi)) do fi
+            return (
+                to_factor = Cortex.get_edge_message_to_factor(model, VariableId(vi), FactorId(fi)),
+                to_variable = Cortex.get_edge_message_to_variable(model, VariableId(vi), FactorId(fi))
+            )
+        end
 
-    #     range1, idependency1, range2, idependency2form_segment_tree_dependencies!(paired_messages)
-    # end
+        N = length(paired_messages)
 
-    # function form_segment_tree(messages_towards_variable::Vector{Cortex.Signal})
+        if N < 2
+            Cortex.add_dependency!(
+                Cortex.get_variable_marginal(model, VariableId(vi)), paired_messages[1].to_variable; intermediate = true
+            )
+            return nothing
+        end
 
-    # end
+        middle_point = div(N, 2)
+
+        left_range = 1:middle_point
+        right_range = (middle_point + 1):N
+
+        left_dependency = form_segment_tree_dependency!(left_range, paired_messages)
+        right_dependency = form_segment_tree_dependency!(right_range, paired_messages)
+
+        for left_fi in left_range
+            Cortex.add_dependency!(paired_messages[left_fi].to_factor, right_dependency; intermediate = true)
+        end
+
+        for right_fi in right_range
+            Cortex.add_dependency!(paired_messages[right_fi].to_factor, left_dependency; intermediate = true)
+        end
+
+        Cortex.add_dependency!(
+            Cortex.get_variable_marginal(model, VariableId(vi)), left_dependency; intermediate = true
+        )
+        Cortex.add_dependency!(
+            Cortex.get_variable_marginal(model, VariableId(vi)), right_dependency; intermediate = true
+        )
+    end
+
+    function form_segment_tree_dependency!(range, paired_messages)
+        @assert length(range) >= 1
+
+        if length(range) == 1
+            return paired_messages[range[1]].to_variable
+        end
+
+        middle_point = div(length(range), 2)
+        left_range = range[begin:middle_point]
+        right_range = range[(middle_point + 1):end]
+
+        left_dependency = form_segment_tree_dependency!(left_range, paired_messages)
+        right_dependency = form_segment_tree_dependency!(right_range, paired_messages)
+
+        for left_fi in left_range
+            Cortex.add_dependency!(@inbounds(paired_messages[left_fi].to_factor), right_dependency; intermediate = true)
+        end
+
+        for right_fi in right_range
+            Cortex.add_dependency!(@inbounds(paired_messages[right_fi].to_factor), left_dependency; intermediate = true)
+        end
+
+        intermediate = Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal)
+
+        Cortex.add_dependency!(intermediate, left_dependency; intermediate = true)
+        Cortex.add_dependency!(intermediate, right_dependency; intermediate = true)
+
+        return intermediate
+    end
 
     function resolve_dependencies!(model::Model, ::BeliefPropagation)
         # For each variable
         for vi in variables(model.graph)
-            for fi in neighbors(model.graph, vi)
-                # for a marginal of a variable, we add a dependency on the message to the variable from each of its neighbors
-                Cortex.add_dependency!(
-                    Cortex.get_variable_marginal(model, VariableId(vi)),
-                    Cortex.get_edge_message_to_variable(model, VariableId(vi), FactorId(fi))
-                )
-
-                # And for each individual edge, we add a dependency on the message from the factor to the variable
-                for e_fi in neighbors(model.graph, vi)
-                    if fi !== e_fi
-                        Cortex.add_dependency!(
-                            Cortex.get_edge_message_to_factor(model, VariableId(vi), FactorId(fi)),
-                            Cortex.get_edge_message_to_variable(model, VariableId(vi), FactorId(e_fi))
-                        )
-                    end
-                end
-            end
+            resolve_variable_dependencies!(vi, model, BeliefPropagation())
         end
 
         # For each factor, we add a dependency on the inbound messages from its neighbors (excluding self-references)

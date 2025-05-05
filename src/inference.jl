@@ -52,6 +52,10 @@ function (computer::InferenceTaskComputer)(task::InferenceTask, signal::Signal)
     end
 end
 
+struct VerboseTaskComputer{F}
+    f::F
+end
+
 function update_posterior!(f::F, model::AbstractCortexModel, variable::VariableId) where {F <: Function}
     should_continue = true
 
