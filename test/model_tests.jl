@@ -161,6 +161,21 @@ end
 
     struct BeliefPropagation end
 
+    # function resolve_variable_dependencies!(vi::Int, model::Model, ::BeliefPropagation)
+    #     paired_messages = map(BipartiteFactorGraphs.neighbors(model.graph, vi)) do fi 
+    #         return (
+    #             Cortex.get_edge_message_to_factor(model, VariableId(vi), FactorId(fi)),
+    #             Cortex.get_edge_message_to_variable(model, VariableId(vi), FactorId(fi))
+    #         )
+    #     end
+
+    #     range1, idependency1, range2, idependency2form_segment_tree_dependencies!(paired_messages)
+    # end
+
+    # function form_segment_tree(messages_towards_variable::Vector{Cortex.Signal})
+
+    # end
+
     function resolve_dependencies!(model::Model, ::BeliefPropagation)
         # For each variable
         for vi in variables(model.graph)

@@ -12,8 +12,8 @@
         add_edge_to_model!(model, vc, f1)
         add_edge_to_model!(model, vc, f2)
 
-        inference_round = Cortex.create_inference_round(model, vc)
-        inference_steps = collect(inference_round)
+        inference_task = Cortex.create_inference_task(model, vc)
+        inference_steps = Cortex.scan_inference_task(inference_task)
 
         @test length(inference_steps) == 0
     end
@@ -51,8 +51,8 @@ end
     @testset let (model, f1, f2, vc, left, right) = make_small_node_variable_node_model()
         Cortex.set_value!(left, 1.0)
 
-        inference_round = Cortex.create_inference_round(model, vc)
-        inference_steps = collect(inference_round)
+        inference_task = Cortex.create_inference_task(model, vc)
+        inference_steps = Cortex.scan_inference_task(inference_task)
 
         @test length(inference_steps) == 1
         @test inference_steps[1] == Cortex.get_edge_message_to_variable(model, vc, f1)
@@ -62,8 +62,8 @@ end
     @testset let (model, f1, f2, vc, left, right) = make_small_node_variable_node_model()
         Cortex.set_value!(right, 1.0)
 
-        inference_round = Cortex.create_inference_round(model, vc)
-        inference_steps = collect(inference_round)
+        inference_task = Cortex.create_inference_task(model, vc)
+        inference_steps = Cortex.scan_inference_task(inference_task)
 
         @test length(inference_steps) == 1
         @test inference_steps[1] == Cortex.get_edge_message_to_variable(model, vc, f2)
@@ -74,8 +74,8 @@ end
         Cortex.set_value!(left, 1.0)
         Cortex.set_value!(right, 1.0)
 
-        inference_round = Cortex.create_inference_round(model, vc)
-        inference_steps = collect(inference_round)
+        inference_task = Cortex.create_inference_task(model, vc)
+        inference_steps = Cortex.scan_inference_task(inference_task)
 
         @test length(inference_steps) == 2
         @test inference_steps[1] == Cortex.get_edge_message_to_variable(model, vc, f1)
@@ -122,8 +122,8 @@ end
     Cortex.set_value!(Cortex.get_edge_message_to_factor(model, v1, f1), 1.0)
     Cortex.set_value!(Cortex.get_edge_message_to_factor(model, v3, f2), 1.0)
 
-    inference_round = Cortex.create_inference_round(model, v2)
-    inference_steps = collect(inference_round)
+    inference_task = Cortex.create_inference_task(model, v2)
+    inference_steps = Cortex.scan_inference_task(inference_task)
 
     @test length(inference_steps) == 2
     @test inference_steps[1] == Cortex.get_edge_message_to_variable(model, v2, f1)
@@ -168,10 +168,10 @@ end
     # Set prior
     Cortex.set_value!(Cortex.get_edge_message_to_variable(model, p, fp), 3)
 
-    function computer(signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
+    function computer(model::Model, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
         if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
             v, f = signal.metadata
-            
+
             factor = get_factor_data(model.graph, f)
 
             if factor.type === :likelihood
@@ -186,7 +186,7 @@ end
         error("Unreachable reached")
     end
 
-    Cortex.update_posterior!(model, Cortex.InferenceRoundComputer(computer), p)
+    Cortex.update_posterior!(computer, model, p)
 
     @test Cortex.get_value(Cortex.get_variable_marginal(model, p)) == 9
 end
@@ -234,12 +234,12 @@ end
             Cortex.set_value!(Cortex.get_edge_message_to_factor(model, o[i], f[i]), dataset[i])
         end
 
-        function computer(signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
+        function computer(model::Model, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
             if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
                 v, f = signal.metadata
-                
+
                 factor = get_factor_data(model.graph, f)
-    
+
                 if factor.type === Bernoulli
                     r = Cortex.get_value(dependencies[1])::Bool
                     return Beta(one(r) + r, 2one(r) - r)
@@ -254,11 +254,11 @@ end
                 end
                 return answer
             end
-    
+
             error("Unreachable reached")
         end
 
-        Cortex.update_posterior!(model, Cortex.InferenceRoundComputer(computer), p)
+        Cortex.update_posterior!(computer, model, p)
 
         return Cortex.get_value(Cortex.get_variable_marginal(model, p))
     end
@@ -280,6 +280,4 @@ end
 
     @test answer.a ≈ known_answer.a
     @test answer.b ≈ known_answer.b
-    
 end
-

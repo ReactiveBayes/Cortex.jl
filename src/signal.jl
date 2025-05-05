@@ -385,16 +385,16 @@ end
 
 function process_dependencies!(f::F, signal::Signal; retry::Bool = false) where {F}
     dependencies = get_dependencies(signal)
-    all_processed = true
+    processed_at_least_once = false
     for (is_intermediate, dependency) in zip(signal.intermediatemask, dependencies)
         processed = f(dependency)
         if is_intermediate && !processed
-            intermediate_all_processed = process_dependencies!(f, dependency; retry = retry)
-            if intermediate_all_processed && retry
+            intermediate_processed_at_least_once = process_dependencies!(f, dependency; retry = retry)
+            if intermediate_processed_at_least_once && retry
                 processed = f(dependency)
             end
         end
-        all_processed = all_processed && processed
+        processed_at_least_once = processed_at_least_once || processed
     end
-    return all_processed
+    return processed_at_least_once
 end
