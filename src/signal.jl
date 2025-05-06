@@ -214,14 +214,18 @@ mutable struct Signal
     metadata::Any
 
     type::UInt8
-    is_potentially_pending::Bool
-    is_pending::Bool
 
-    dependencies_props::SignalDependenciesProps
-    dependencies::Vector{Signal}
+    # Pending state
+    # - is_potentially_pending: Whether the signal is potentially pending
+    # - is_pending: Whether the signal is actually pending
+    # We store it as a single tuple in order to avoid excessive memory accesses
+    pending_state::Tuple{Bool, Bool}
 
-    listenmask::BitVector
-    listeners::Vector{Signal}
+    const dependencies_props::SignalDependenciesProps
+    const dependencies::Vector{Signal}
+
+    const listenmask::BitVector
+    const listeners::Vector{Signal}
 
     # Constructor for creating an empty signal
     function Signal(; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
@@ -229,8 +233,7 @@ mutable struct Signal
             UndefValue(),
             metadata,
             type,
-            false,
-            false,
+            (false, false),
             SignalDependenciesProps(),
             Vector{Signal}(),
             trues(0),
@@ -241,7 +244,14 @@ mutable struct Signal
     # Constructor for creating a new signal with a value
     function Signal(value::Any; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
         return new(
-            value, metadata, type, false, false, SignalDependenciesProps(), Vector{Signal}(), trues(0), Vector{Signal}()
+            value,
+            metadata,
+            type,
+            (false, false),
+            SignalDependenciesProps(),
+            Vector{Signal}(),
+            trues(0),
+            Vector{Signal}()
         )
     end
 end
@@ -254,11 +264,16 @@ Check if the signal `s` is marked as pending.
 function is_pending(s::Signal)::Bool
     # In case if the signal is potentially pending, we need to check if it is actually pending or not
     # and reset the potential pending state
-    if s.is_potentially_pending
-        s.is_pending = is_pending(s.dependencies_props)
-        s.is_potentially_pending = false
+    (_is_potentially_pending, _is_pending) = s.pending_state
+    if _is_pending
+        return true
     end
-    return s.is_pending
+    if _is_potentially_pending
+        new_is_pending = is_pending(s.dependencies_props)
+        s.pending_state = (false, new_is_pending)
+        return new_is_pending
+    end
+    return false
 end
 
 """
@@ -326,8 +341,7 @@ function set_value!(signal::Signal, @nospecialize(value))
 
     # We update the value of the signal
     signal.value = value
-    signal.is_potentially_pending = false
-    signal.is_pending = false
+    signal.pending_state = (false, false)
 
     unset_all_fresh!(signal.dependencies_props)
 
@@ -412,11 +426,9 @@ function add_dependency!(
         if !is_computed(signal)
             set_dependency_fresh!(dependencies_props, dependencies_props_index)
         end
-        signal.is_potentially_pending = true
-        signal.is_pending = false
+        signal.pending_state = (true, false)
     elseif check_computed && !is_computed(dependency)
-        signal.is_potentially_pending = false
-        signal.is_pending = false
+        signal.pending_state = (false, false)
     end
 
     return nothing
@@ -424,7 +436,7 @@ end
 
 function notify_listener!(listener::Signal, signal::Signal; update_potentially_pending::Bool = false)
     if update_potentially_pending
-        listener.is_potentially_pending = true
+        listener.pending_state = (true, false)
     end
 
     # Technically we can stop early here, but we allow duplicate dependencies
@@ -507,18 +519,25 @@ end
 function process_dependencies!(f::F, signal::Signal; retry::Bool = false) where {F}
     dependencies = get_dependencies(signal)
     processed_at_least_once = false
-    for index in 1:length(dependencies)
-        dependency = @inbounds dependencies[index]
-        is_intermediate = is_dependency_intermediate(signal.dependencies_props, index)
+    for i in 1:length(dependencies)
+        @inbounds dependency = dependencies[i]
+        # We first try to process the dependency itself
         processed = f(dependency)
-        if is_intermediate && !processed
-            intermediate_processed_at_least_once = process_dependencies!(f, dependency; retry = retry)
-            if intermediate_processed_at_least_once && retry
-                processed = f(dependency)
+        # If it wasn't processed, we check if it is an intermediate dependency or not 
+        # and if it is, we process its dependencies recursively
+        if !processed
+            if is_dependency_intermediate(signal.dependencies_props, i)
+                intermediate_processed_at_least_once = process_dependencies!(f, dependency; retry = retry)
+                # If we processed the recursive dependencies, and the retry flag is set,
+                # we try to process the dependency itself again
+                if intermediate_processed_at_least_once && retry
+                    processed = f(dependency)
+                end
+                processed_at_least_once = processed_at_least_once || intermediate_processed_at_least_once
             end
-            processed_at_least_once = processed_at_least_once || intermediate_processed_at_least_once
         end
         processed_at_least_once = processed_at_least_once || processed
     end
+
     return processed_at_least_once
 end
