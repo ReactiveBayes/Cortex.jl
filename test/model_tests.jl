@@ -112,9 +112,8 @@ end
         index::Any
         marginal::Signal
 
-        Variable(name, index...) = new(
-            name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal, metadata = (name, index...))
-        )
+        Variable(name, index...) =
+            new(name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal, metadata = (name, index...)))
     end
 
     function Cortex.add_variable_to_model!(model::Model, name::Any, index...)
@@ -201,6 +200,27 @@ end
             Cortex.add_dependency!(
                 Cortex.get_variable_marginal(model, VariableId(vi)), paired_messages[1].to_variable; intermediate = true
             )
+            return nothing
+        end
+
+        # Use a simplified approach for small numbers of neighbors
+        if N <= 5
+            for i in 1:N
+                Cortex.add_dependency!(
+                    Cortex.get_variable_marginal(model, VariableId(vi)),
+                    paired_messages[i].to_variable;
+                    intermediate = true
+                )
+
+                for k in 1:N
+                    if i !== k
+                        Cortex.add_dependency!(
+                            paired_messages[i].to_factor, paired_messages[k].to_variable; intermediate = true
+                        )
+                    end
+                end
+            end
+
             return nothing
         end
 

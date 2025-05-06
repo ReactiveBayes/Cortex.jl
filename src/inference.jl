@@ -70,3 +70,37 @@ function update_posterior!(f::F, model::AbstractCortexModel, variable::VariableI
 
     return nothing
 end
+
+function update_posterior!(
+    f::F, model::AbstractCortexModel, variables::Vector{V}
+) where {F <: Function, V <: VariableId}
+    should_continue = true
+
+    callback = InferenceTaskComputer(f)
+
+    tasks = [create_inference_task(model, variable) for variable in variables]
+
+    is_reverse = false
+
+    while should_continue
+        _should_continue = false
+        if !is_reverse
+            for task in tasks
+                _should_continue = _should_continue || process_inference_task(callback, task)
+            end
+            is_reverse = true
+        else
+            for task in Iterators.reverse(tasks)
+                _should_continue = _should_continue || process_inference_task(callback, task)
+            end
+            is_reverse = false
+        end
+        should_continue = _should_continue
+    end
+
+    for task in tasks
+        callback(task, task.marginal)
+    end
+
+    return nothing
+end

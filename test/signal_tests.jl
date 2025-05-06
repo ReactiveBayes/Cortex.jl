@@ -1186,3 +1186,35 @@ end
         @test at_least_one_dependency_processed
     end
 end
+
+@testitem "`process_dependencies!` should be type-stable" begin
+    import Cortex: Signal, add_dependency!, process_dependencies!
+    import JET
+
+    source = Signal()
+    intermediate = Signal()
+    derived = Signal()
+
+    add_dependency!(intermediate, source)
+    add_dependency!(derived, intermediate; intermediate = true)
+
+    JET.@test_opt process_dependencies!(derived; retry = true) do dependency
+        return dependency === source
+    end
+
+    JET.@test_opt process_dependencies!(derived; retry = true) do dependency
+        return true
+    end
+
+    JET.@test_opt process_dependencies!(derived; retry = true) do dependency
+        return false
+    end
+
+    JET.@test_opt process_dependencies!(derived; retry = false) do dependency
+        return true
+    end
+
+    JET.@test_opt process_dependencies!(derived; retry = false) do dependency
+        return false
+    end
+end
