@@ -21,7 +21,6 @@ end
         get_variable_display_name,
         get_edge_display_name,
         get_variable_marginal,
-        get_factor_local_marginal,
         get_edge_message_to_variable,
         get_edge_message_to_factor
 
