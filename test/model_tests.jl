@@ -17,14 +17,31 @@ end
         VariableId,
         FactorId,
         EdgeId,
+        add_factor_to_model!,
+        add_variable_to_model!,
+        add_edge_to_model!,
         get_factor_display_name,
         get_variable_display_name,
         get_edge_display_name,
         get_variable_marginal,
         get_edge_message_to_variable,
-        get_edge_message_to_factor
+        get_edge_message_to_factor,
+        get_factor_neighbors,
+        get_variable_neighbors
 
     struct IncorrectlyImplementedCortexModel <: AbstractCortexModel end
+
+    @test_throws CortexModelInterfaceNotImplementedError(
+        :add_factor_to_model!, IncorrectlyImplementedCortexModel(), (identity,)
+    ) add_factor_to_model!(IncorrectlyImplementedCortexModel(), identity)
+
+    @test_throws CortexModelInterfaceNotImplementedError(
+        :add_variable_to_model!, IncorrectlyImplementedCortexModel(), (:x, 1)
+    ) add_variable_to_model!(IncorrectlyImplementedCortexModel(), :x, 1)
+
+    @test_throws CortexModelInterfaceNotImplementedError(
+        :add_edge_to_model!, IncorrectlyImplementedCortexModel(), (VariableId(1), FactorId(2))
+    ) add_edge_to_model!(IncorrectlyImplementedCortexModel(), VariableId(1), FactorId(2))
 
     @test_throws CortexModelInterfaceNotImplementedError(
         :get_factor_display_name, IncorrectlyImplementedCortexModel(), (FactorId(1),)
@@ -49,6 +66,14 @@ end
     @test_throws CortexModelInterfaceNotImplementedError(
         :get_edge_message_to_factor, IncorrectlyImplementedCortexModel(), (VariableId(1), FactorId(2))
     ) get_edge_message_to_factor(IncorrectlyImplementedCortexModel(), VariableId(1), FactorId(2))
+
+    @test_throws CortexModelInterfaceNotImplementedError(
+        :get_factor_neighbors, IncorrectlyImplementedCortexModel(), (FactorId(1),)
+    ) get_factor_neighbors(IncorrectlyImplementedCortexModel(), FactorId(1))
+
+    @test_throws CortexModelInterfaceNotImplementedError(
+        :get_variable_neighbors, IncorrectlyImplementedCortexModel(), (VariableId(1),)
+    ) get_variable_neighbors(IncorrectlyImplementedCortexModel(), VariableId(1))
 end
 
 @testmodule ModelUtils begin
