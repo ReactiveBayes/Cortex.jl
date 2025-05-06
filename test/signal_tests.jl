@@ -1,3 +1,34 @@
+@testitem "Signal Dependencies Properties Should Return Index of Added Dependency" begin
+    import Cortex: SignalDependenciesProps, add_dependency!
+
+    props = SignalDependenciesProps()
+
+    first_dependency = add_dependency!(props)
+    second_dependency = add_dependency!(props)
+
+    @test first_dependency !== second_dependency
+
+    @test Cortex.is_dependency_weak(props, first_dependency) == false
+    @test Cortex.is_dependency_intermediate(props, first_dependency) == false
+    @test Cortex.is_dependency_computed(props, first_dependency) == false
+    @test Cortex.is_dependency_fresh(props, first_dependency) == false
+
+    @test Cortex.is_dependency_weak(props, second_dependency) == false
+    @test Cortex.is_dependency_intermediate(props, second_dependency) == false
+    @test Cortex.is_dependency_computed(props, second_dependency) == false
+    @test Cortex.is_dependency_fresh(props, second_dependency) == false
+
+    Cortex.set_dependency_weak!(props, first_dependency)
+    @test Cortex.is_dependency_weak(props, first_dependency) == true
+    @test Cortex.is_dependency_intermediate(props, first_dependency) == false
+    @test Cortex.is_dependency_computed(props, first_dependency) == false
+    @test Cortex.is_dependency_fresh(props, first_dependency) == false
+
+    @test Cortex.is_dependency_weak(props, second_dependency) == false
+    @test Cortex.is_dependency_intermediate(props, second_dependency) == false
+    @test Cortex.is_dependency_computed(props, second_dependency) == false
+    @test Cortex.is_dependency_fresh(props, second_dependency) == false
+end
 
 @testitem "Signal Dependencies Properties Basic Operations" begin
     import Cortex: SignalDependenciesProps, SignalDependenciesProps
@@ -282,6 +313,124 @@ end
     end
 end
 
+@testitem "Signal Dependencies Properties is_pending Granular" begin
+    # This is Cursor auto-generated testset
+
+    import Cortex:
+        SignalDependenciesProps,
+        add_dependency!,
+        set_dependency_computed!,
+        set_dependency_fresh!,
+        set_dependency_weak!,
+        is_pending
+
+    # Helper function to create and setup props based on a list of states
+    # Each state is a tuple: (is_computed, is_fresh, is_weak)
+    function setup_props_with_states(states::Vector{Tuple{Bool, Bool, Bool}})
+        props = SignalDependenciesProps()
+        for (i, state) in enumerate(states)
+            add_dependency!(props)
+            is_c, is_f, is_w = state
+            if is_c
+                set_dependency_computed!(props, i)
+            end
+            if is_f
+                set_dependency_fresh!(props, i)
+            end
+            if is_w
+                set_dependency_weak!(props, i)
+            end
+        end
+        return props
+    end
+
+    # Condition for a single dependency to pass: Computed AND (Weak OR Fresh)
+    # C=true, W=true, F=true  -> T
+    # C=true, W=true, F=false -> T
+    # C=true, W=false, F=true -> T
+    # C=true, W=false, F=false -> F (Strong, Computed, Not Fresh)
+    # C=false, W=any, F=any   -> F
+
+    @testset "Zero Dependencies" begin
+        props = SignalDependenciesProps()
+        @test !is_pending(props) # Should be false as per current implementation
+    end
+
+    @testset "Single Dependency Exhaustive" begin
+        # Format: (Computed, Fresh, Weak) -> Expected is_pending result
+        test_cases = [
+            # Passing states
+            ((true, true, true), true),
+            ((true, false, true), true), # Weak, Computed
+            ((true, true, false), true), # Strong, Computed, Fresh
+            # Failing states
+            ((true, false, false), false), # Strong, Computed, NOT Fresh
+            ((false, true, true), false),
+            ((false, false, true), false),
+            ((false, true, false), false),
+            ((false, false, false), false)
+        ]
+
+        for (state_tuple, expected) in test_cases
+            props = setup_props_with_states([state_tuple])
+            @test is_pending(props) == expected
+        end
+    end
+
+    @testset "Multiple Dependencies (e.g., 3)" begin
+        pass_state = (true, true, true) # C=T, F=T, W=T (passes)
+        fail_state_not_computed = (false, true, true) # C=F (fails)
+        fail_state_strong_not_fresh = (true, false, false) # C=T, F=F, W=F (fails)
+
+        # All pass
+        props = setup_props_with_states([pass_state, pass_state, pass_state])
+        @test is_pending(props)
+
+        # One fails (not computed)
+        props = setup_props_with_states([fail_state_not_computed, pass_state, pass_state])
+        @test !is_pending(props)
+        props = setup_props_with_states([pass_state, fail_state_not_computed, pass_state])
+        @test !is_pending(props)
+        props = setup_props_with_states([pass_state, pass_state, fail_state_not_computed])
+        @test !is_pending(props)
+
+        # One fails (strong, computed, but not fresh)
+        props = setup_props_with_states([fail_state_strong_not_fresh, pass_state, pass_state])
+        @test !is_pending(props)
+        props = setup_props_with_states([pass_state, fail_state_strong_not_fresh, pass_state])
+        @test !is_pending(props)
+        props = setup_props_with_states([pass_state, pass_state, fail_state_strong_not_fresh])
+        @test !is_pending(props)
+    end
+
+    @testset "Chunk Boundary Tests" begin
+        pass_state = (true, true, true)
+        fail_state = (false, false, false) # Fails due to not computed
+
+        num_deps_to_test = [1, 15, 16, 17, 31, 32, 33, 63, 64, 65]
+
+        for N in num_deps_to_test
+            @testset "N = $N Dependencies" begin
+                # All pass
+                all_pass_states = [pass_state for _ in 1:N]
+                props = setup_props_with_states(all_pass_states)
+                @test is_pending(props)
+
+                # Single failure at various positions
+                if N > 0
+                    fail_positions = unique([1, N > 1 ? div(N, 2) + 1 : 1, N])
+                    for fail_idx in fail_positions
+                        states = [pass_state for _ in 1:N]
+                        states[fail_idx] = fail_state
+                        props = setup_props_with_states(states)
+                        @test !is_pending(props)
+                    end
+                end
+            end
+        end
+    end
+end
+
 @testitem "Basic Signal Operations" begin
     import Cortex: Signal, set_value!, get_value
 
@@ -327,57 +476,36 @@ end
     end
 end
 
-@testitem "Setting Value Updates Age" begin
-    import Cortex: Signal, set_value!, get_age
-
-    @testset "Initialized Signal" begin
-        s = Signal(42)
-        initial_age = get_age(s)
-        @test initial_age == 1 # Test constructor assignment
-
-        set_value!(s, 100)
-        age_after_first_set = get_age(s)
-        @test age_after_first_set > initial_age
-
-        set_value!(s, 200)
-        age_after_second_set = get_age(s)
-        @test age_after_second_set > age_after_first_set
-    end
-
-    @testset "Empty Signal" begin
-        s = Signal()
-        initial_age = get_age(s)
-        @test initial_age == 0 # Test constructor assignment
-
-        set_value!(s, 100)
-        age_after_first_set = get_age(s)
-        @test age_after_first_set > initial_age
-
-        set_value!(s, 200)
-        age_after_second_set = get_age(s)
-        @test age_after_second_set > age_after_first_set
-    end
-end
-
 @testitem "Empty Signal Creation" begin
     import Cortex:
-        Signal, UndefValue, get_value, get_age, get_dependencies, get_listeners, get_type, get_metadata, UndefMetadata
+        Signal,
+        UndefValue,
+        get_value,
+        get_dependencies,
+        get_listeners,
+        get_type,
+        get_metadata,
+        UndefMetadata,
+        is_pending,
+        is_computed
 
     s = Signal()
     @test get_value(s) === UndefValue()
-    @test get_age(s) == 0
     @test get_type(s) === 0x00
     @test get_metadata(s) === UndefMetadata()
     @test isempty(get_dependencies(s))
     @test isempty(get_listeners(s))
+    @test !is_pending(s)
+    @test !is_computed(s)
 end
 
-@testitem "Signal Creation with Value Sets Age" begin
-    import Cortex: Signal, get_value, get_age
+@testitem "Signal Creation with Value Sets Computed" begin
+    import Cortex: Signal, get_value, is_computed, is_pending
 
     s = Signal(10)
     @test get_value(s) == 10
-    @test get_age(s) == 1 # Test constructor assignment
+    @test is_computed(s)
+    @test !is_pending(s)
 end
 
 @testitem "Add Dependency Basic" begin
@@ -587,81 +715,8 @@ end
     end
 end
 
-@testitem "Setting Value Updates Dependent Age" begin
-    import Cortex: Signal, set_value!, get_age, add_dependency!, is_computed, is_pending
-
-    @testset "Simple Case (Uninitialized)" begin
-        s1 = Signal()
-        s2 = Signal()
-        add_dependency!(s1, s2)
-        age_s1_initial = get_age(s1)
-        age_s2_initial = get_age(s2)
-        @test age_s1_initial == age_s2_initial # Should both be 0 initially
-
-        set_value!(s2, 3)
-        age_s1_after_s2_set = get_age(s1)
-        age_s2_after_s2_set = get_age(s2)
-        @test age_s1_after_s2_set == age_s1_initial # s1 age unchanged
-        @test age_s2_after_s2_set > age_s2_initial # s2 age increased
-
-        set_value!(s1, 4)
-        age_s1_after_s1_set = get_age(s1)
-        age_s2_after_s1_set = get_age(s2)
-        @test age_s1_after_s1_set > age_s2_after_s2_set # s1 should now be older than s2
-        @test age_s2_after_s1_set == age_s2_after_s2_set # s2 age unchanged
-    end
-
-    @testset "Simple Case (Initialized)" begin
-        s1 = Signal(10)
-        s2 = Signal(20)
-        add_dependency!(s1, s2)
-        age_s1_initial = get_age(s1)
-        age_s2_initial = get_age(s2)
-        @test age_s1_initial == age_s2_initial # Should both be 1 initially
-
-        set_value!(s2, 30)
-        age_s1_after_s2_set = get_age(s1)
-        age_s2_after_s2_set = get_age(s2)
-        @test age_s2_after_s2_set > age_s1_after_s2_set # s2 age increased and should be greater
-        @test age_s1_after_s2_set == age_s1_initial # s1 age unchanged
-
-        set_value!(s1, 40)
-        age_s1_after_s1_set = get_age(s1)
-        age_s2_after_s1_set = get_age(s2)
-        @test age_s1_after_s1_set > age_s2_after_s1_set # s1 should now be older than s2
-        @test age_s2_after_s1_set == age_s2_after_s2_set # s2 age unchanged
-    end
-
-    @testset "Multiple Intermediate Updates" begin
-        s1 = Signal()
-        s2 = Signal()
-        add_dependency!(s1, s2)
-        age_s1_initial = get_age(s1)
-        age_s2_initial = get_age(s2)
-
-        set_value!(s2, 3)
-        age_s2_after_first_set = get_age(s2)
-        @test age_s2_after_first_set > age_s1_initial # s2 older than initial s1
-        @test is_computed(s2)
-
-        set_value!(s2, 4)
-        age_s2_after_second_set = get_age(s2)
-        @test age_s2_after_second_set > age_s2_after_first_set # s2 age increased again
-        @test age_s2_after_second_set > get_age(s1) # s2 should still be older than s1 (which hasn't been set)
-        @test is_pending(s1)
-        @test !is_computed(s1)
-
-        set_value!(s1, 5)
-        age_s1_after_set = get_age(s1)
-        @test age_s1_after_set > age_s2_after_second_set # s1 should now be older than s2
-        @test !is_pending(s1)
-        @test is_computed(s1)
-    end
-end
-
 @testitem "Weak Dependencies Basic" begin
-    import Cortex:
-        Signal, add_dependency!, get_dependencies, get_listeners, is_pending, is_computed, set_value!, get_age
+    import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, is_pending, is_computed, set_value!
 
     weak_dep = Signal(1)
     strong_dep = Signal(2)
@@ -680,39 +735,23 @@ end
     set_value!(derived, 10)
     @test !is_pending(derived)
     @test is_computed(derived)
-    derived_age_after_set = get_age(derived)
-    weak_dep_age_before_update = get_age(weak_dep)
-    strong_dep_age_before_update = get_age(strong_dep)
 
     set_value!(strong_dep, 3)
-    strong_dep_age_after_update = get_age(strong_dep)
     @test is_pending(derived)
-    @test strong_dep_age_after_update > strong_dep_age_before_update
-    # Test that strong_dep is now older than derived was before this update
-    @test strong_dep_age_after_update > derived_age_after_set
 
     set_value!(derived, 11)
     @test !is_pending(derived)
     @test is_computed(derived)
-    derived_age_after_second_set = get_age(derived)
-    weak_dep_age_before_update_2 = get_age(weak_dep)
-    strong_dep_age_before_update_2 = get_age(strong_dep)
 
     set_value!(weak_dep, 4)
-    @test !is_pending(derived) # Updating weak dep shouldn't make it pending if strong dep is older
-    @test get_age(weak_dep) > weak_dep_age_before_update_2
+    @test !is_pending(derived)
 
     set_value!(strong_dep, 5)
-    strong_dep_age_after_update_2 = get_age(strong_dep)
     @test is_pending(derived)
-    @test strong_dep_age_after_update_2 > strong_dep_age_before_update_2
-    # Test that strong_dep is now older than derived was before this update
-    @test strong_dep_age_after_update_2 > derived_age_after_second_set
 end
 
 @testitem "Add Many Weak Dependencies" begin
-    import Cortex:
-        Signal, add_dependency!, get_dependencies, get_listeners, is_pending, is_computed, set_value!, get_age
+    import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, is_pending, is_computed, set_value!
 
     weak1 = Signal()
     weak2 = Signal()
@@ -758,60 +797,30 @@ end
     end
 
     @testset "Set Derived Value" begin
-        # All deps computed
-        age_strong1_before = get_age(strong1)
-        age_weak1_before = get_age(weak1)
-        age_weak2_before = get_age(weak2)
         set_value!(derived, 100)
         @test !is_pending(derived)
         @test is_computed(derived)
-        derived_age_after_set = get_age(derived)
-        # Derived age should be greater than all dependencies' ages before it was set
-        @test derived_age_after_set > age_strong1_before
-        @test derived_age_after_set > age_weak1_before
-        @test derived_age_after_set > age_weak2_before
     end
 
     @testset "Update Strong Dependency Again" begin
-        derived_age_before_strong_update = get_age(derived)
-        age_strong1_before_update = get_age(strong1)
         set_value!(strong1, 11)
-        age_strong1_after_update = get_age(strong1)
-        # Strong dep updated and is older -> derived should be pending
         @test is_pending(derived)
-        @test age_strong1_after_update > age_strong1_before_update
-        # Check if strong dep is older than derived *was* before this update
-        @test age_strong1_after_update > derived_age_before_strong_update
     end
 
     @testset "Set Derived Value Again" begin
-        age_strong1_before = get_age(strong1)
-        age_weak1_before = get_age(weak1)
-        age_weak2_before = get_age(weak2)
         set_value!(derived, 101)
         @test !is_pending(derived)
         @test is_computed(derived)
-        derived_age_after_second_set = get_age(derived)
-        # Derived age should be greater than all dependencies' ages before it was set
-        @test derived_age_after_second_set > age_strong1_before
-        @test derived_age_after_second_set > age_weak1_before
-        @test derived_age_after_second_set > age_weak2_before
     end
 
-    @testset "Update Weak Dependency Again" begin
-        age_strong1 = get_age(strong1)
-        derived_age = get_age(derived)
-        age_weak1_before_update = get_age(weak1)
+    @testset "Update Weak 1 Dependency Again" begin
         set_value!(weak1, 3)
-        age_weak1_after_update = get_age(weak1)
-        # Weak dep updated, but strong dep might not be older than derived -> derived should NOT be pending
-        # Check based on derived_age and age_strong1 captured before weak update.
-        if age_strong1 > derived_age
-            @test is_pending(derived) # Should be pending if strong was already older
-        else
-            @test !is_pending(derived) # Should not be pending if strong was not older
-        end
-        @test age_weak1_after_update > age_weak1_before_update
+        @test !is_pending(derived)
+    end
+
+    @testset "Update Strong Dependency Again" begin
+        set_value!(strong1, 333)
+        @test is_pending(derived)
     end
 end
 
@@ -893,7 +902,7 @@ end
 end
 
 @testitem "Pending State Logic Coverage" begin
-    import Cortex: Signal, add_dependency!, set_value!, is_pending, is_computed, get_age
+    import Cortex: Signal, add_dependency!, set_value!, is_pending, is_computed
 
     @testset "Case: Strong dep not computed" begin
         derived = Signal()
@@ -930,32 +939,18 @@ end
         strong_dep = Signal(10)
         add_dependency!(derived, strong_dep)
         @test !is_pending(derived)
-        @test get_age(derived) == get_age(strong_dep)
 
-        age_derived_before_set = get_age(derived)
         set_value!(derived, 100)
         @test !is_pending(derived)
-        @test get_age(derived) > age_derived_before_set
 
-        age_derived_before_notify = get_age(derived)
-        age_strong_before_notify = get_age(strong_dep)
         set_value!(strong_dep, 101)
-        @test is_pending(derived) # Should be pending as strong_dep age increases and becomes > age_derived_before_notify
-        @test get_age(strong_dep) > age_strong_before_notify
+        @test is_pending(derived)
 
-        age_strong_before_set = get_age(strong_dep)
         set_value!(derived, 102)
         @test !is_pending(derived)
-        @test get_age(derived) > age_strong_before_set # Derived should now be older than strong was
-        age_derived_now = get_age(derived)
-        age_strong_now = get_age(strong_dep)
 
-        age_strong_before_update = get_age(strong_dep)
         set_value!(strong_dep, 103)
-        # Derived should become pending again if the updated strong_dep is older than derived *was* before the update
         @test is_pending(derived)
-        @test get_age(strong_dep) > age_strong_before_update
-        @test get_age(strong_dep) > age_derived_now # Check the final relationship
     end
 
     @testset "Case: All conditions met (Mixed)" begin
@@ -1195,9 +1190,6 @@ end
     JET.@test_opt Cortex.is_computed(Cortex.Signal())
     JET.@test_opt Cortex.is_computed(Cortex.Signal(1))
     JET.@test_opt Cortex.is_computed(Cortex.Signal("1"))
-    JET.@test_opt Cortex.get_age(Cortex.Signal())
-    JET.@test_opt Cortex.get_age(Cortex.Signal(1))
-    JET.@test_opt Cortex.get_age(Cortex.Signal("1"))
     JET.@test_opt Cortex.get_value(Cortex.Signal())
     JET.@test_opt Cortex.get_value(Cortex.Signal(1))
     JET.@test_opt Cortex.get_value(Cortex.Signal("1"))

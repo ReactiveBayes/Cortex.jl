@@ -13,6 +13,19 @@ A singleton type used to represent undefined metadata within a [`Signal`](@ref).
 """
 struct UndefMetadata end
 
+# Stores properties of a `Signal`'s dependencies in a bit-packed format.
+#
+# Each dependency's properties are stored in 4 bits within a `UInt64` chunk. Therefore, each `UInt64` chunk can store properties for 16 dependencies.
+#
+# The 4 bits for each dependency are used as follows (from LSB to MSB):
+# - Bit 1 (Mask `0x1`): `IsIntermediate` - Indicates if the dependency is intermediate.
+# - Bit 2 (Mask `0x2`): `IsWeak` - Indicates if the dependency is weak.
+# - Bit 3 (Mask `0x4`): `IsComputed` - Indicates if the dependency's value has been computed.
+# - Bit 4 (Mask `0x8`): `IsFresh` - Indicates if the dependency has a new, fresh value.
+#
+# !!! warning
+#     This is an internal type and should not be used directly. Use the functions defined in the `Signal` structure instead.
+#     This structure can be removed in the future.
 mutable struct SignalDependenciesProps
     ndependencies::Int
     const chunks::Vector{UInt64}
@@ -50,6 +63,8 @@ function add_dependency!(props::SignalDependenciesProps)
     if nchunks < nrequiredchunks
         push!(props.chunks, UInt64(0))
     end
+
+    return props.ndependencies
 end
 
 function is_dependency_intermediate(props::SignalDependenciesProps, index::Int)
@@ -131,6 +146,10 @@ function unset_all_fresh!(props::SignalDependenciesProps)
 end
 
 function is_pending(props::SignalDependenciesProps)
+    if props.ndependencies == 0
+        return false
+    end
+
     for i in 1:(length(props.chunks) - 1)
         @inbounds chunk = props.chunks[i]
         chunk_Weak = (chunk & SignalDependenciesProps_IsWeakMask_AllNibbles) >> 1
@@ -197,10 +216,8 @@ mutable struct Signal
     type::UInt8
     is_potentially_pending::Bool
     is_pending::Bool
-    age::UInt64
 
-    weakmask::BitVector
-    intermediatemask::BitVector
+    dependencies_props::SignalDependenciesProps
     dependencies::Vector{Signal}
 
     listenmask::BitVector
@@ -214,9 +231,7 @@ mutable struct Signal
             type,
             false,
             false,
-            UInt64(0),
-            falses(0),
-            falses(0),
+            SignalDependenciesProps(),
             Vector{Signal}(),
             trues(0),
             Vector{Signal}()
@@ -226,17 +241,7 @@ mutable struct Signal
     # Constructor for creating a new signal with a value
     function Signal(value::Any; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
         return new(
-            value,
-            metadata,
-            type,
-            false,
-            false,
-            UInt64(1),
-            falses(0),
-            falses(0),
-            Vector{Signal}(),
-            trues(0),
-            Vector{Signal}()
+            value, metadata, type, false, false, SignalDependenciesProps(), Vector{Signal}(), trues(0), Vector{Signal}()
         )
     end
 end
@@ -247,7 +252,12 @@ end
 Check if the signal `s` is marked as pending.
 """
 function is_pending(s::Signal)::Bool
-    check_and_set_pending!(s)
+    # In case if the signal is potentially pending, we need to check if it is actually pending or not
+    # and reset the potential pending state
+    if s.is_potentially_pending
+        s.is_pending = is_pending(s.dependencies_props)
+        s.is_potentially_pending = false
+    end
     return s.is_pending
 end
 
@@ -255,10 +265,9 @@ end
     is_computed(s::Signal) -> Bool
 
 Check if the signal `s` has been computed (i.e., its value has been set at least once).
-This is determined by checking if `get_age(s) > 0`.
 """
 function is_computed(s::Signal)::Bool
-    return s.age > 0
+    return s.value !== UndefValue()
 end
 
 """
@@ -291,17 +300,6 @@ function get_metadata(s::Signal)
 end
 
 """
-    get_age(s::Signal) -> UInt64
-
-Get the current age of the signal `s`.
-The age increments each time `set_value!` is called. 
-However, the amount of the increment is not fixed and should not be relied upon.
-"""
-function get_age(s::Signal)::UInt64
-    return s.age
-end
-
-"""
     get_dependencies(s::Signal) -> Vector{Signal}
 
 Get the list of signals that the signal `s` depends on.
@@ -323,29 +321,21 @@ end
     set_value!(s::Signal, value::Any)
 
 Set the `value` of the signal `s`. Notifies all the active listeners of the signal.
-Some of the active listeners might become pending.
 """
-function set_value!(s::Signal, @nospecialize(value))
-    # We update the age of the signal to the maximum age of its dependencies plus 1
-    # If the signal has no dependencies, we simply take the age of the signal and add 2
-    # Interpret it as if the signal had actually a "ghost" dependency with an age equal to the `s.age + 1` 
-    # thus the new age becomes `(s.age + 1) + 1`
-    next_age = isempty(get_dependencies(s)) ? s.age + UInt64(2) : maximum(d -> get_age(d), s.dependencies) + UInt64(1)
-    s.age = next_age
+function set_value!(signal::Signal, @nospecialize(value))
 
     # We update the value of the signal
-    s.value = value
+    signal.value = value
+    signal.is_potentially_pending = false
+    signal.is_pending = false
 
-    # We unset the pending flag
-    s.is_pending = false
-    s.is_potentially_pending = false
+    unset_all_fresh!(signal.dependencies_props)
 
     # We notify all the signals that listen to this signal that it has been updated
     # We only notify the signals that are listening to the current signal
-    for (is_listening, listener) in zip(s.listenmask, s.listeners)
-        if is_listening
-            set_potentially_pending!(listener)
-        end
+    for (is_listening, listener) in zip(signal.listenmask, signal.listeners)
+        # The listener will update its state to potentially pending if it is listening to the current signal
+        notify_listener!(listener, signal; update_potentially_pending = is_listening)
     end
 
     return nothing
@@ -390,20 +380,15 @@ function add_dependency!(
         return nothing
     end
 
-    # If the dependency is weak, 
-    # we store `true` in the weakmask, `false` otherwise
+    dependencies_props = signal.dependencies_props
+    dependencies_props_index = add_dependency!(dependencies_props)
+
     if weak
-        push!(signal.weakmask, true)
-    else
-        push!(signal.weakmask, false)
+        set_dependency_weak!(dependencies_props, dependencies_props_index)
     end
 
-    # If the dependency is intermediate, 
-    # we store `true` in the intermediatemask, `false` otherwise
     if intermediate
-        push!(signal.intermediatemask, true)
-    else
-        push!(signal.intermediatemask, false)
+        set_dependency_intermediate!(dependencies_props, dependencies_props_index)
     end
 
     push!(signal.dependencies, dependency)
@@ -420,44 +405,36 @@ function add_dependency!(
 
     # If a new dependency has been added and this new dependency has already been computed,
     # we immediately notify the current signal `s` as if it was already subscribed to the changes
-    is_dependency_computed = is_computed(dependency)
-    if check_computed && is_dependency_computed
-        set_potentially_pending!(signal)
-    elseif check_computed && !is_dependency_computed
+    if check_computed && is_computed(dependency)
+        set_dependency_computed!(dependencies_props, dependencies_props_index)
+        # If the current signal is not computed, we mark the newly added dependency as fresh
+        # so that the current signal can potentially become pending
+        if !is_computed(signal)
+            set_dependency_fresh!(dependencies_props, dependencies_props_index)
+        end
+        signal.is_potentially_pending = true
+        signal.is_pending = false
+    elseif check_computed && !is_computed(dependency)
+        signal.is_potentially_pending = false
         signal.is_pending = false
     end
 
     return nothing
 end
 
-function set_potentially_pending!(signal::Signal)
-    signal.is_potentially_pending = true
-end
-
-function check_and_set_pending!(signal::Signal)
-    # If the listener is not potentially pending, we do nothing
-    # as there is nothing to check and set
-    if !signal.is_potentially_pending
-        return nothing
+function notify_listener!(listener::Signal, signal::Signal; update_potentially_pending::Bool = false)
+    if update_potentially_pending
+        listener.is_potentially_pending = true
     end
 
-    # If it was potentially pending, we set it to false
-    # since no matter what the outcome of the check is, 
-    # it will either be set pending to true and if not, 
-    # then it is not potentially pending anyway
-    signal.is_potentially_pending = false
-
-    listener_age = get_age(signal)
-    # If notified, the listener will check its own dependencies 
-    # to see if it needs to update its own `pending` state
-    # The condition is that all weak dependencies are computed,
-    # and all non-weak dependencies are older than the listener
-    should_update_pending = all(zip(signal.weakmask, signal.dependencies)) do (is_weak, dependency)
-        return !is_computed(dependency) ? false : (is_weak ? true : get_age(dependency) > listener_age)
-    end
-
-    if should_update_pending
-        signal.is_pending = true
+    # Technically we can stop early here, but we allow duplicate dependencies
+    # and also test against it, we can relax this?
+    for i in 1:length(listener.dependencies)
+        @inbounds dependency = listener.dependencies[i]
+        if (dependency === signal)
+            set_dependency_fresh!(listener.dependencies_props, i)
+            set_dependency_computed!(listener.dependencies_props, i)
+        end
     end
 
     return nothing
@@ -530,7 +507,9 @@ end
 function process_dependencies!(f::F, signal::Signal; retry::Bool = false) where {F}
     dependencies = get_dependencies(signal)
     processed_at_least_once = false
-    for (is_intermediate, dependency) in zip(signal.intermediatemask, dependencies)
+    for index in 1:length(dependencies)
+        dependency = @inbounds dependencies[index]
+        is_intermediate = is_dependency_intermediate(signal.dependencies_props, index)
         processed = f(dependency)
         if is_intermediate && !processed
             intermediate_processed_at_least_once = process_dependencies!(f, dependency; retry = retry)
