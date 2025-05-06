@@ -1,3 +1,287 @@
+
+@testitem "Signal Dependencies Properties Basic Operations" begin
+    import Cortex: SignalDependenciesProps, SignalDependenciesProps
+
+    props = SignalDependenciesProps()
+
+    @test props.ndependencies == 0
+
+    Cortex.add_dependency!(props)
+
+    @test props.ndependencies == 1
+
+    @test Cortex.is_dependency_weak(props, 1) == false
+    @test Cortex.is_dependency_intermediate(props, 1) == false
+    @test Cortex.is_dependency_computed(props, 1) == false
+    @test Cortex.is_dependency_fresh(props, 1) == false
+
+    # we do this 4 times to make sure that repetative calls to the same function
+    # do not change the result
+
+    for i in 1:4
+        Cortex.set_dependency_weak!(props, 1)
+        @test Cortex.is_dependency_weak(props, 1) == true
+        @test Cortex.is_dependency_intermediate(props, 1) == false
+        @test Cortex.is_dependency_computed(props, 1) == false
+        @test Cortex.is_dependency_fresh(props, 1) == false
+    end
+
+    for i in 1:4
+        Cortex.set_dependency_intermediate!(props, 1)
+        @test Cortex.is_dependency_weak(props, 1) == true
+        @test Cortex.is_dependency_intermediate(props, 1) == true
+        @test Cortex.is_dependency_computed(props, 1) == false
+        @test Cortex.is_dependency_fresh(props, 1) == false
+    end
+
+    for i in 1:4
+        Cortex.set_dependency_computed!(props, 1)
+        @test Cortex.is_dependency_weak(props, 1) == true
+        @test Cortex.is_dependency_intermediate(props, 1) == true
+        @test Cortex.is_dependency_computed(props, 1) == true
+        @test Cortex.is_dependency_fresh(props, 1) == false
+    end
+
+    for i in 1:4
+        Cortex.set_dependency_fresh!(props, 1)
+        @test Cortex.is_dependency_weak(props, 1) == true
+        @test Cortex.is_dependency_intermediate(props, 1) == true
+        @test Cortex.is_dependency_computed(props, 1) == true
+        @test Cortex.is_dependency_fresh(props, 1) == true
+    end
+
+    for i in 1:4
+        Cortex.unset_dependency_weak!(props, 1)
+        @test Cortex.is_dependency_weak(props, 1) == false
+        @test Cortex.is_dependency_intermediate(props, 1) == true
+        @test Cortex.is_dependency_computed(props, 1) == true
+        @test Cortex.is_dependency_fresh(props, 1) == true
+    end
+
+    for i in 1:4
+        Cortex.unset_dependency_intermediate!(props, 1)
+        @test Cortex.is_dependency_weak(props, 1) == false
+        @test Cortex.is_dependency_intermediate(props, 1) == false
+        @test Cortex.is_dependency_computed(props, 1) == true
+        @test Cortex.is_dependency_fresh(props, 1) == true
+    end
+
+    for i in 1:4
+        Cortex.unset_dependency_computed!(props, 1)
+        @test Cortex.is_dependency_weak(props, 1) == false
+        @test Cortex.is_dependency_intermediate(props, 1) == false
+        @test Cortex.is_dependency_computed(props, 1) == false
+        @test Cortex.is_dependency_fresh(props, 1) == true
+    end
+
+    for i in 1:4
+        Cortex.unset_dependency_fresh!(props, 1)
+        @test Cortex.is_dependency_weak(props, 1) == false
+        @test Cortex.is_dependency_intermediate(props, 1) == false
+        @test Cortex.is_dependency_computed(props, 1) == false
+        @test Cortex.is_dependency_fresh(props, 1) == false
+    end
+end
+
+@testitem "Signal Dependencies Properties Basic Operations with Many Dependencies" begin
+    import Cortex: SignalDependenciesProps, SignalDependenciesProps
+
+    n = 100
+
+    for k in 1:n
+        props = SignalDependenciesProps()
+
+        @test props.ndependencies == 0
+
+        for i in 1:n
+            Cortex.add_dependency!(props)
+        end
+
+        @test props.ndependencies == n
+
+        for i in 1:n
+            @test !Cortex.is_dependency_weak(props, i)
+            @test !Cortex.is_dependency_intermediate(props, i)
+            @test !Cortex.is_dependency_computed(props, i)
+            @test !Cortex.is_dependency_fresh(props, i)
+        end
+
+        Cortex.set_dependency_weak!(props, k)
+
+        for i in 1:n
+            @test Cortex.is_dependency_weak(props, i) == (i == k)
+        end
+
+        Cortex.set_dependency_intermediate!(props, k)
+
+        for i in 1:n
+            @test Cortex.is_dependency_weak(props, i) == (i == k)
+            @test Cortex.is_dependency_intermediate(props, i) == (i == k)
+        end
+
+        Cortex.set_dependency_computed!(props, k)
+
+        for i in 1:n
+            @test Cortex.is_dependency_weak(props, i) == (i == k)
+            @test Cortex.is_dependency_intermediate(props, i) == (i == k)
+            @test Cortex.is_dependency_computed(props, i) == (i == k)
+        end
+
+        Cortex.set_dependency_fresh!(props, k)
+
+        for i in 1:n
+            @test Cortex.is_dependency_weak(props, i) == (i == k)
+            @test Cortex.is_dependency_intermediate(props, i) == (i == k)
+            @test Cortex.is_dependency_computed(props, i) == (i == k)
+            @test Cortex.is_dependency_fresh(props, i) == (i == k)
+        end
+
+        Cortex.unset_dependency_weak!(props, k)
+
+        for i in 1:n
+            @test !Cortex.is_dependency_weak(props, i)
+            @test Cortex.is_dependency_intermediate(props, i) == (i == k)
+            @test Cortex.is_dependency_computed(props, i) == (i == k)
+            @test Cortex.is_dependency_fresh(props, i) == (i == k)
+        end
+
+        Cortex.unset_dependency_intermediate!(props, k)
+
+        for i in 1:n
+            @test !Cortex.is_dependency_weak(props, i)
+            @test !Cortex.is_dependency_intermediate(props, i)
+            @test Cortex.is_dependency_computed(props, i) == (i == k)
+            @test Cortex.is_dependency_fresh(props, i) == (i == k)
+        end
+
+        Cortex.unset_dependency_computed!(props, k)
+
+        for i in 1:n
+            @test !Cortex.is_dependency_weak(props, i)
+            @test !Cortex.is_dependency_intermediate(props, i)
+            @test !Cortex.is_dependency_computed(props, i)
+            @test Cortex.is_dependency_fresh(props, i) == (i == k)
+        end
+
+        Cortex.unset_dependency_fresh!(props, k)
+
+        for i in 1:n
+            @test !Cortex.is_dependency_weak(props, i)
+            @test !Cortex.is_dependency_intermediate(props, i)
+            @test !Cortex.is_dependency_computed(props, i)
+            @test !Cortex.is_dependency_fresh(props, i)
+        end
+    end
+end
+
+@testitem "Signal Dependencies Properties Unset All Fresh" begin
+    import Cortex: SignalDependenciesProps, SignalDependenciesProps
+
+    props = SignalDependenciesProps()
+
+    n = 100
+
+    for i in 1:n
+        Cortex.add_dependency!(props)
+    end
+
+    for i in 1:n
+        for i in 1:4
+            for k in 1:i
+                Cortex.set_dependency_fresh!(props, k)
+            end
+
+            for j in 1:n
+                @test Cortex.is_dependency_fresh(props, j) == (j <= i)
+            end
+        end
+
+        for i in 1:4
+            Cortex.unset_all_fresh!(props)
+
+            for j in 1:n
+                @test !Cortex.is_dependency_fresh(props, j)
+            end
+        end
+    end
+end
+
+@testitem "Signal Dependencies Properties is_pending #1" begin
+    import Cortex: SignalDependenciesProps
+
+    @testset for ndependencies in 1:100
+        props = SignalDependenciesProps()
+
+        for i in 1:ndependencies
+            Cortex.add_dependency!(props)
+        end
+
+        # In the beginning, the props cannot be pending
+        @test !Cortex.is_pending(props)
+
+        # If we set all dependencies to computed, the props should not be pending
+        # as it also requires all dependencies to be fresh
+        for i in 1:ndependencies
+            Cortex.set_dependency_computed!(props, i)
+            @test !Cortex.is_pending(props)
+        end
+
+        @test !Cortex.is_pending(props)
+
+        # If we set all dependencies to fresh, the props should be pending
+        for i in 1:ndependencies
+            Cortex.set_dependency_fresh!(props, i)
+            if i < ndependencies
+                # If we have not set all dependencies to fresh, the props should not be pending
+                @test !Cortex.is_pending(props)
+            else
+                # If we have set all dependencies to fresh AND computed, the props should be pending
+                @test Cortex.is_pending(props)
+            end
+        end
+    end
+end
+
+@testitem "Signal Dependencies Properties is_pending #2" begin
+    import Cortex: SignalDependenciesProps
+
+    @testset for ndependencies in 1:100
+        props = SignalDependenciesProps()
+
+        for i in 1:ndependencies
+            Cortex.add_dependency!(props)
+        end
+
+        # In the beginning, the props cannot be pending
+        @test !Cortex.is_pending(props)
+
+        # If we set all dependencies to computed, the props should not be pending
+        # the dependencies can either be weak or fresh
+        for i in 1:ndependencies
+            Cortex.set_dependency_computed!(props, i)
+            @test !Cortex.is_pending(props)
+        end
+
+        @test !Cortex.is_pending(props)
+
+        # If we set all dependencies to fresh, the props should be pending
+        for i in 1:ndependencies
+            if div(i, 2) == 0
+                Cortex.set_dependency_weak!(props, i)
+            else
+                Cortex.set_dependency_fresh!(props, i)
+            end
+            if i < ndependencies
+                # If we have not set all dependencies to fresh, the props should not be pending
+                @test !Cortex.is_pending(props)
+            else
+                # If we have set all dependencies to fresh AND computed, the props should be pending
+                @test Cortex.is_pending(props)
+            end
+        end
+    end
+end
+
 @testitem "Basic Signal Operations" begin
     import Cortex: Signal, set_value!, get_value
 

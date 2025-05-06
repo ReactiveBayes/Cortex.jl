@@ -13,6 +13,150 @@ A singleton type used to represent undefined metadata within a [`Signal`](@ref).
 """
 struct UndefMetadata end
 
+mutable struct SignalDependenciesProps
+    ndependencies::Int
+    const chunks::Vector{UInt64}
+end
+
+function SignalDependenciesProps()
+    return SignalDependenciesProps(0, UInt64[])
+end
+
+const SignalDependenciesProps_IsIntermediateMask_SingleNibble::UInt64 = 0x1 # 0001
+const SignalDependenciesProps_IsWeakMask_SingleNibble::UInt64 = 0x2         # 0010
+const SignalDependenciesProps_IsComputedMask_SingleNibble::UInt64 = 0x4     # 0100
+const SignalDependenciesProps_IsFreshMask_SingleNibble::UInt64 = 0x8        # 1000
+
+const SignalDependenciesProps_IsIntermediateMask_AllNibbles::UInt64 = 0x1111_1111_1111_1111
+const SignalDependenciesProps_IsWeakMask_AllNibbles::UInt64 = 0x2222_2222_2222_2222
+const SignalDependenciesProps_IsComputedMask_AllNibbles::UInt64 = 0x4444_4444_4444_4444
+const SignalDependenciesProps_IsFreshMask_AllNibbles::UInt64 = 0x8888_8888_8888_8888
+
+function signal_dependencies_props_get_offset(index::Int)
+    chunk_index = div(index - 1, 16) + 1
+    offset_within_chunk = mod(index - 1, 16) << 2
+    return (chunk_index, offset_within_chunk)
+end
+
+function add_dependency!(props::SignalDependenciesProps)
+    props.ndependencies += 1
+
+    # we need 4 bits per nibble
+    nrequiredbits = 4 * props.ndependencies
+    # we have 64 bits per chunk
+    nrequiredchunks = div(nrequiredbits - 1, 64) + 1
+
+    nchunks = length(props.chunks)
+    if nchunks < nrequiredchunks
+        push!(props.chunks, UInt64(0))
+    end
+end
+
+function is_dependency_intermediate(props::SignalDependenciesProps, index::Int)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    return (
+        props.chunks[chunk_index] & (SignalDependenciesProps_IsIntermediateMask_SingleNibble << offset_within_chunk)
+    ) != 0
+end
+
+function is_dependency_weak(props::SignalDependenciesProps, index::Int)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    return (props.chunks[chunk_index] & (SignalDependenciesProps_IsWeakMask_SingleNibble << offset_within_chunk)) != 0
+end
+
+function is_dependency_computed(props::SignalDependenciesProps, index::Int)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    return (props.chunks[chunk_index] & (SignalDependenciesProps_IsComputedMask_SingleNibble << offset_within_chunk)) !=
+           0
+end
+
+function is_dependency_fresh(props::SignalDependenciesProps, index::Int)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    return (props.chunks[chunk_index] & (SignalDependenciesProps_IsFreshMask_SingleNibble << offset_within_chunk)) != 0
+end
+
+function set_dependency_intermediate!(props::SignalDependenciesProps, index::Int)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    props.chunks[chunk_index] |= (SignalDependenciesProps_IsIntermediateMask_SingleNibble << offset_within_chunk)
+    return nothing
+end
+
+function set_dependency_weak!(props::SignalDependenciesProps, index::Int)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    props.chunks[chunk_index] |= (SignalDependenciesProps_IsWeakMask_SingleNibble << offset_within_chunk)
+    return nothing
+end
+
+function set_dependency_computed!(props::SignalDependenciesProps, index::Int)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    props.chunks[chunk_index] |= (SignalDependenciesProps_IsComputedMask_SingleNibble << offset_within_chunk)
+    return nothing
+end
+
+function set_dependency_fresh!(props::SignalDependenciesProps, index::Int)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    props.chunks[chunk_index] |= (SignalDependenciesProps_IsFreshMask_SingleNibble << offset_within_chunk)
+    return nothing
+end
+
+function unset_dependency_intermediate!(props::SignalDependenciesProps, index::Int)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    props.chunks[chunk_index] &= ~(SignalDependenciesProps_IsIntermediateMask_SingleNibble << offset_within_chunk)
+    return nothing
+end
+
+function unset_dependency_weak!(props::SignalDependenciesProps, index::Int)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    props.chunks[chunk_index] &= ~(SignalDependenciesProps_IsWeakMask_SingleNibble << offset_within_chunk)
+    return nothing
+end
+
+function unset_dependency_computed!(props::SignalDependenciesProps, index::Int)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    props.chunks[chunk_index] &= ~(SignalDependenciesProps_IsComputedMask_SingleNibble << offset_within_chunk)
+    return nothing
+end
+
+function unset_dependency_fresh!(props::SignalDependenciesProps, index::Int)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    props.chunks[chunk_index] &= ~(SignalDependenciesProps_IsFreshMask_SingleNibble << offset_within_chunk)
+    return nothing
+end
+
+function unset_all_fresh!(props::SignalDependenciesProps)
+    for i in eachindex(props.chunks)
+        props.chunks[i] &= ~SignalDependenciesProps_IsFreshMask_AllNibbles
+    end
+    return nothing
+end
+
+function is_pending(props::SignalDependenciesProps)
+    for i in 1:(length(props.chunks) - 1)
+        @inbounds chunk = props.chunks[i]
+        chunk_Weak = (chunk & SignalDependenciesProps_IsWeakMask_AllNibbles) >> 1
+        chunk_Computed = (chunk & SignalDependenciesProps_IsComputedMask_AllNibbles) >> 2
+        chunk_Fresh = (chunk & SignalDependenciesProps_IsFreshMask_AllNibbles) >> 3
+        chunk_Result = chunk_Computed & (chunk_Weak | chunk_Fresh)
+        if chunk_Result != 0x1111_1111_1111_1111
+            return false
+        end
+    end
+
+    _, last_offset = signal_dependencies_props_get_offset(props.ndependencies)
+    last_chunk_mask = 0xffff_ffff_ffff_ffff << (last_offset + 4)
+    last_chunk = props.chunks[end] | last_chunk_mask
+
+    last_chunk_Weak = (last_chunk & SignalDependenciesProps_IsWeakMask_AllNibbles) >> 1
+    last_chunk_Computed = (last_chunk & SignalDependenciesProps_IsComputedMask_AllNibbles) >> 2
+    last_chunk_Fresh = (last_chunk & SignalDependenciesProps_IsFreshMask_AllNibbles) >> 3
+    last_chunk_Result = last_chunk_Computed & (last_chunk_Weak | last_chunk_Fresh)
+    if last_chunk_Result != 0x1111_1111_1111_1111
+        return false
+    end
+
+    return true
+end
+
 """
     Signal()
     Signal(value; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
