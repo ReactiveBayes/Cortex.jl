@@ -96,7 +96,7 @@ SUITE["Dense Signal Interaction"] = DenseBenchmarks
 # Limit n for dense benchmarks as setup cost (n^2 dependencies) grows quickly
 for n in [10, 100, 1000]
     DenseBenchmarks["setup_dense_signals_network", n] = @benchmarkable setup_dense_signals_network($n)
-    
+
     DenseBenchmarks["setup_update_check", n] = @benchmarkable set_value_and_check_pending(input) setup = begin
         input = setup_dense_signals_network($n)
     end
