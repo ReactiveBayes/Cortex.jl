@@ -34,6 +34,8 @@ end
 
 abstract type AbstractCortexModel end
 
+Base.broadcastable(m::AbstractCortexModel) = Ref(m)
+
 struct FactorId{T}
     id::T
 end

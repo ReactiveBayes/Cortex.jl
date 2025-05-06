@@ -204,6 +204,27 @@ end
             return nothing
         end
 
+        # Use a simplified approach for small numbers of neighbors
+        if N <= 5
+            for i in 1:N
+                Cortex.add_dependency!(
+                    Cortex.get_variable_marginal(model, VariableId(vi)),
+                    paired_messages[i].to_variable;
+                    intermediate = true
+                )
+
+                for k in 1:N
+                    if i !== k
+                        Cortex.add_dependency!(
+                            paired_messages[i].to_factor, paired_messages[k].to_variable; intermediate = true
+                        )
+                    end
+                end
+            end
+
+            return nothing
+        end
+
         middle_point = div(N, 2)
 
         left_range = 1:middle_point

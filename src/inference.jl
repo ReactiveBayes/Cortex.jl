@@ -16,7 +16,7 @@ function create_inference_task(model, variable)
 end
 
 function process_inference_task(callback::F, task::InferenceTask) where {F}
-    processed_at_least_once = process_dependencies!(task.marginal; retry = false) do dependency
+    processed_at_least_once = process_dependencies!(task.marginal; retry = true) do dependency
         if is_pending(dependency)
             callback(task, dependency)
             return true
@@ -67,6 +67,53 @@ function update_posterior!(f::F, model::AbstractCortexModel, variable::VariableI
     end
 
     callback(task, task.marginal)
+
+    return nothing
+end
+
+function update_posterior!(
+    f::F, model::AbstractCortexModel, variables::Vector{V}
+) where {F <: Function, V <: VariableId}
+    should_continue = true
+
+    callback = InferenceTaskComputer(f)
+
+    tasks = [create_inference_task(model, variable) for variable in variables]
+    tmask = falses(length(tasks))
+
+    indices         = 1:1:length(tasks)
+    indices_reverse = reverse(indices)
+
+    # We begin with a forward pass
+    # After each pass, we alternate the order
+    is_reverse = false
+
+    while should_continue
+        _should_continue = false
+
+        current_order = is_reverse ? indices_reverse : indices
+
+        @inbounds for i in current_order
+            if !tmask[i]
+                task = tasks[i]
+                task_has_been_processed_at_least_once = process_inference_task(callback, task)
+
+                if !task_has_been_processed_at_least_once
+                    tmask[i] = true
+                end
+                _should_continue = _should_continue || task_has_been_processed_at_least_once
+            end
+        end
+
+        # Alternate between forward and backward order
+        is_reverse = !is_reverse
+
+        should_continue = _should_continue
+    end
+
+    for task in tasks
+        callback(task, task.marginal)
+    end
 
     return nothing
 end

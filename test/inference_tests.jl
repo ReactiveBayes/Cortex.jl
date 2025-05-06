@@ -222,40 +222,41 @@ end
             add_edge_to_model!(model, oi, fi)
         end
 
+        resolve_dependencies!(model, BeliefPropagation())
+
         return model, p, o, f
     end
 
-    function experiment(n, dataset)
-        model, p, o, f = make_beta_bernoulli_model(n)
+    function computer(model::Model, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
+        if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
+            v, f = signal.metadata
 
-        resolve_dependencies!(model, BeliefPropagation())
+            factor = get_factor_data(model.graph, f)
+
+            if factor.type === Bernoulli
+                r = Cortex.get_value(dependencies[1])::Bool
+                return Beta(one(r) + r, 2one(r) - r)
+            elseif factor.type === :prior
+                error("Should not be invoked")
+            end
+        elseif signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
+            answer = Cortex.get_value(dependencies[1])::Beta
+            for i in 2:length(dependencies)
+                @inbounds next = Cortex.get_value(dependencies[i])::Beta
+                answer = Beta(answer.a + next.a - 1, answer.b + next.b - 1)
+            end
+            return answer
+        end
+
+        error("Unreachable reached")
+    end
+
+    function experiment(dataset)
+        n = length(dataset)
+        model, p, o, f = make_beta_bernoulli_model(n)
 
         for i in 1:n
             Cortex.set_value!(Cortex.get_edge_message_to_factor(model, o[i], f[i]), dataset[i])
-        end
-
-        function computer(model::Model, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
-            if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
-                v, f = signal.metadata
-
-                factor = get_factor_data(model.graph, f)
-
-                if factor.type === Bernoulli
-                    r = Cortex.get_value(dependencies[1])::Bool
-                    return Beta(one(r) + r, 2one(r) - r)
-                elseif factor.type === :prior
-                    error("Should not be invoked")
-                end
-            elseif signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
-                answer = Cortex.get_value(dependencies[1])::Beta
-                for i in 2:length(dependencies)
-                    @inbounds next = Cortex.get_value(dependencies[i])::Beta
-                    answer = Beta(answer.a + next.a - 1, answer.b + next.b - 1)
-                end
-                return answer
-            end
-
-            error("Unreachable reached")
         end
 
         Cortex.update_posterior!(computer, model, p)
@@ -267,7 +268,7 @@ end
     rng = StableRNG(1234)
     dataset = rand(rng, Bool, n)
 
-    answer = experiment(n, dataset)
+    answer = experiment(dataset)
 
     # Known answer calculation for Beta-Bernoulli
     # Prior: Beta(1, 1)
@@ -280,4 +281,87 @@ end
 
     @test answer.a ≈ known_answer.a
     @test answer.b ≈ known_answer.b
+end
+
+@testitem "Inference in a simple SSM model" setup = [ModelUtils] begin
+    using .ModelUtils
+    using JET, BipartiteFactorGraphs, StableRNGs
+
+    struct Normal
+        mean::Float64
+        variance::Float64
+    end
+
+    # In this model, we assume that both the likelihood and the transition are Normal
+    # with fixed variance equal to 1.0.
+    function make_ssm_model(n)
+        model = Model()
+
+        x = [add_variable_to_model!(model, :x, i) for i in 1:n]
+        y = [add_variable_to_model!(model, :y, i) for i in 1:n]
+
+        likelihood = [add_factor_to_model!(model, :likelihood) for i in 1:n]
+        transition = [add_factor_to_model!(model, :transition) for i in 1:(n - 1)]
+
+        for i in 1:n
+            add_edge_to_model!(model, y[i], likelihood[i])
+            add_edge_to_model!(model, x[i], likelihood[i])
+        end
+
+        for i in 1:(n - 1)
+            add_edge_to_model!(model, x[i], transition[i])
+            add_edge_to_model!(model, x[i + 1], transition[i])
+        end
+
+        resolve_dependencies!(model, BeliefPropagation())
+
+        return model, x, y, likelihood, transition
+    end
+
+    function product(left::Normal, right::Normal)
+        xi = left.mean / left.variance + right.mean / right.variance
+        w = 1 / left.variance + 1 / right.variance
+        variance = 1 / w
+        mean = variance * xi
+        return Normal(mean, variance)
+    end
+
+    function computer(model::Model, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
+        if signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
+            return reduce(product, Cortex.get_value.(dependencies))
+        elseif signal.type == Cortex.InferenceSignalTypes.MessageToFactor
+            return reduce(product, Cortex.get_value.(dependencies))
+        elseif signal.type == Cortex.InferenceSignalTypes.MessageToVariable
+            @assert length(dependencies) == 1
+            input = Cortex.get_value(dependencies[1])
+
+            if typeof(input) <: Real
+                return Normal(input, 1.0)
+            elseif typeof(input) <: Normal
+                return Normal(input.mean, input.variance + 1.0)
+            else
+                error("Unreachable reached")
+            end
+        end
+
+        error("Unreachable reached")
+    end
+
+    function experiment(dataset)
+        n = length(dataset)
+        model, x, y, likelihood, transition = make_ssm_model(n)
+
+        for i in 1:n
+            Cortex.set_value!(Cortex.get_edge_message_to_factor(model, y[i], likelihood[i]), dataset[i])
+        end
+
+        Cortex.update_posterior!(computer, model, x)
+
+        return Cortex.get_value.(Cortex.get_variable_marginal.(model, x))
+    end
+
+    rng = StableRNG(1234)
+    dataset = rand(rng, 100)
+
+    answer = experiment(dataset)
 end
