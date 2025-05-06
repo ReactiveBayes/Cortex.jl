@@ -47,7 +47,7 @@ struct InferenceTaskComputer{F}
 end
 
 function (computer::InferenceTaskComputer)(task::InferenceTask, signal::Signal)
-    compute!(signal) do signal, dependencies 
+    compute!(signal) do signal, dependencies
         computer.f(task.model, signal, dependencies)
     end
 end
