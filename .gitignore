@@ -58,3 +58,6 @@ benchmark/*.json
 # Test coverage
 coverage/
 *.lcov
+
+# Playground
+playground/

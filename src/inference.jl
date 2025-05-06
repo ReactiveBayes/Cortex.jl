@@ -1,68 +1,72 @@
 
-module InferenceSignalTypes 
+module InferenceSignalTypes
 const MessageToVariable = UInt8(0x01)
 const MessageToFactor = UInt8(0x02)
 const IndividualMarginal = UInt8(0x03)
 const JointMarginal = UInt8(0x04)
 end
 
-struct InferenceRound{M}
+struct InferenceTask{M}
     model::M
     marginal::Signal
 end
 
-function create_inference_round(model, variable)
-    return InferenceRound(model, Cortex.get_variable_marginal(model, variable))
+function create_inference_task(model, variable)
+    return InferenceTask(model, Cortex.get_variable_marginal(model, variable))
 end
 
-function process_inference_round(processor::P, round::InferenceRound) where {P}
-    # For each direct dependency of the marginal, we try to process it
-    for dependency_of_marginal in get_dependencies(round.marginal)
-        processed = process_dependency(processor, round, dependency_of_marginal)
-        # If the dependency cannot be processed, we try its first direct dependency
-        if !processed
-            immediate_first_dependencies = get_dependencies(dependency_of_marginal)
-            for dependency_of_dependency in immediate_first_dependencies
-                process_dependency(processor, round, dependency_of_dependency)
-            end
+function process_inference_task(callback::F, task::InferenceTask) where {F}
+    processed_at_least_once = process_dependencies!(task.marginal; retry = false) do dependency
+        if is_pending(dependency)
+            callback(task, dependency)
+            return true
         end
+        return false
+    end
+    return processed_at_least_once
+end
+
+struct InferenceTaskScanner
+    signals::Vector{Signal}
+
+    InferenceTaskScanner() = new(Signal[])
+end
+
+function (scanner::InferenceTaskScanner)(::InferenceTask, signal::Signal)
+    push!(scanner.signals, signal)
+end
+
+function scan_inference_task(task::InferenceTask)
+    scanner = InferenceTaskScanner()
+    process_inference_task(scanner, task)
+    return scanner.signals
+end
+
+struct InferenceTaskComputer{F}
+    f::F
+end
+
+function (computer::InferenceTaskComputer)(task::InferenceTask, signal::Signal)
+    compute!(signal) do signal, dependencies
+        computer.f(task.model, signal, dependencies)
     end
 end
 
-function process_dependency(processor::P, round::InferenceRound, signal::Signal) where {P}
-    if is_pending(signal)
-        if signal.type === InferenceSignalTypes.MessageToFactor
-            processor(round, signal, signal.metadata::Tuple{Int, Int})
-        elseif signal.type == InferenceSignalTypes.MessageToVariable
-            processor(round, signal, signal.metadata::Tuple{Int, Int})
-        else
-            processor(round, signal, signal.metadata)
-        end
-        return true
+struct VerboseTaskComputer{F}
+    f::F
+end
+
+function update_posterior!(f::F, model::AbstractCortexModel, variable::VariableId) where {F <: Function}
+    should_continue = true
+
+    callback = InferenceTaskComputer(f)
+    task = create_inference_task(model, variable)
+
+    while should_continue
+        should_continue = process_inference_task(callback, task)
     end
-    return false
-end
 
-struct CollectedInferenceStep{M}
-    round::InferenceRound{M}
-    slot::Any
-    dependency::Any
-end
+    callback(task, task.marginal)
 
-struct InferenceRoundCollector{M}
-    steps::Vector{CollectedInferenceStep{M}}
-
-    InferenceRoundCollector(::Type{M}) where {M} = new{M}(CollectedInferenceStep{M}[])
-end
-
-function (collector::InferenceRoundCollector{M})(
-    round::InferenceRound{M}, slot::Signal, dependency::Any
-) where {M}
-    push!(collector.steps, CollectedInferenceStep{M}(round, slot, dependency))
-end
-
-function Base.collect(round::InferenceRound)
-    collector = InferenceRoundCollector(typeof(round.model))
-    process_inference_round(collector, round)
-    return collector.steps
+    return nothing
 end

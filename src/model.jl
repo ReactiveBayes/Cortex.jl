@@ -32,157 +32,61 @@ function Base.showerror(io::IO, e::CortexModelInterfaceNotImplementedError)
     end
 end
 
-"""
-    get_factor_display_name(model, factor)
+abstract type AbstractCortexModel end
 
-A part of the interface of `CortexModel`.
-Must return a "displayable" object (e.g. a string) that can be used to display the factor when necessary (e.g. in error messages).
+struct FactorId{T}
+    id::T
+end
 
-# Arguments
-- `model`: The model object.
-- `factor`: The factor whose display name is requested.
+struct VariableId{T}
+    id::T
+end
 
-# Returns
-A displayable object (typically a `String`) representing the factor.
-"""
-function get_factor_display_name(model, factor)
+struct EdgeId{T}
+    variable::VariableId{T}
+    factor::FactorId{T}
+end
+
+function add_factor_to_model!(model::AbstractCortexModel, args...)
+    throw(CortexModelInterfaceNotImplementedError(:add_factor_to_model!, model, args))
+end
+
+function add_variable_to_model!(model::AbstractCortexModel, args...)
+    throw(CortexModelInterfaceNotImplementedError(:add_variable_to_model!, model, args))
+end
+
+function add_edge_to_model!(model::AbstractCortexModel, variable::VariableId, factor::FactorId)
+    throw(CortexModelInterfaceNotImplementedError(:add_edge_to_model!, model, (variable, factor)))
+end
+
+function get_factor_display_name(model::AbstractCortexModel, factor::FactorId)
     throw(CortexModelInterfaceNotImplementedError(:get_factor_display_name, model, (factor,)))
 end
 
-"""
-    get_variable_display_name(model, variable)
-
-A part of the interface of `CortexModel`.
-Must return a "displayable" object (e.g. a string) that can be used to display the variable when necessary (e.g. in error messages).
-
-# Arguments
-- `model`: The model object.
-- `variable`: The variable whose display name is requested.
-
-# Returns
-A displayable object (typically a `String`) representing the variable.
-"""
-function get_variable_display_name(model, variable)
+function get_variable_display_name(model::AbstractCortexModel, variable::VariableId)
     throw(CortexModelInterfaceNotImplementedError(:get_variable_display_name, model, (variable,)))
 end
 
-"""
-    get_edge_display_name(model, variable, factor)
-
-A part of the interface of `CortexModel`.
-Must return a "displayable" object (e.g. a string) that can be used to display the edge when necessary (e.g. in error messages).
-
-# Arguments
-- `model`: The model object.
-- `variable`: The variable node of the edge.
-- `factor`: The factor node of the edge.
-
-# Returns
-A displayable object (typically a `String`) representing the edge.
-"""
-function get_edge_display_name(model, variable, factor)
+function get_edge_display_name(model::AbstractCortexModel, variable::VariableId, factor::FactorId)
     throw(CortexModelInterfaceNotImplementedError(:get_edge_display_name, model, (variable, factor)))
 end
 
-"""
-    get_variable_marginal(model, variable)
-
-A part of the interface of `CortexModel`.
-Must return the marginal distribution or value associated with the given variable.
-
-# Arguments
-- `model`: The model object.
-- `variable`: The variable whose marginal is requested.
-
-# Returns
-A `Cortex.Signal` object representing the marginal distribution or value for the variable.
-"""
-function get_variable_marginal(model, variable)
+function get_variable_marginal(model::AbstractCortexModel, variable::VariableId)
     throw(CortexModelInterfaceNotImplementedError(:get_variable_marginal, model, (variable,)))
 end
 
-"""
-    get_factor_local_marginal(model, factor)
-
-A part of the interface of `CortexModel`.
-Must return the local marginal distribution or value associated with the given factor.
-
-# Arguments
-- `model`: The model object.
-- `factor`: The factor whose local marginal is requested.
-
-# Returns
-A `Cortex.Signal` object representing the local marginal distribution or value for the factor.
-"""
-function get_factor_local_marginal(model, factor)
-    throw(CortexModelInterfaceNotImplementedError(:get_factor_local_marginal, model, (factor,)))
-end
-
-"""
-    get_edge_message_to_variable(model, edge)
-
-A part of the interface of `CortexModel`.
-Must return the message sent along the edge to the variable node.
-
-# Arguments
-- `model`: The model object.
-- `edge`: The edge for which the message is requested.
-
-# Returns
-A `Cortex.Signal` object representing the message sent to the variable node along the edge.
-"""
-function get_edge_message_to_variable(model, variable, factor)
+function get_edge_message_to_variable(model::AbstractCortexModel, variable::VariableId, factor::FactorId)
     throw(CortexModelInterfaceNotImplementedError(:get_edge_message_to_variable, model, (variable, factor)))
 end
 
-"""
-    get_edge_message_to_factor(model, variable, factor)
-
-A part of the interface of `CortexModel`.
-Must return the message sent along the edge to the factor node.
-
-# Arguments
-- `model`: The model object.
-- `variable`: The variable node of the edge.
-- `factor`: The factor node of the edge.
-
-# Returns
-A `Cortex.Signal` object representing the message sent to the factor node along the edge.
-"""
-function get_edge_message_to_factor(model, variable, factor)
+function get_edge_message_to_factor(model::AbstractCortexModel, variable::VariableId, factor::FactorId)
     throw(CortexModelInterfaceNotImplementedError(:get_edge_message_to_factor, model, (variable, factor)))
 end
 
-"""
-    get_factor_neighbors(model, factor)
-
-A part of the interface of `CortexModel`.
-Must return the neighbors of the given factor.
-
-# Arguments
-- `model`: The model object.
-- `factor`: The factor whose neighbors are requested.
-
-# Returns
-A collection of nodes that are neighbors of the given factor.
-"""
-function get_factor_neighbors(model, factor)
+function get_factor_neighbors(model::AbstractCortexModel, factor::FactorId)
     throw(CortexModelInterfaceNotImplementedError(:get_factor_neighbors, model, (factor,)))
 end
 
-"""
-    get_variable_neighbors(model, variable)
-
-A part of the interface of `CortexModel`.
-Must return the neighbors of the given variable.
-
-# Arguments
-- `model`: The model object.
-- `variable`: The variable whose neighbors are requested.
-
-# Returns
-A collection of nodes that are neighbors of the given variable.
-"""
-function get_variable_neighbors(model, variable)
+function get_variable_neighbors(model::AbstractCortexModel, variable::VariableId)
     throw(CortexModelInterfaceNotImplementedError(:get_variable_neighbors, model, (variable,)))
 end

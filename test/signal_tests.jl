@@ -76,7 +76,8 @@ end
 end
 
 @testitem "Empty Signal Creation" begin
-    import Cortex: Signal, UndefValue, get_value, get_age, get_dependencies, get_listeners, get_type, get_metadata, UndefMetadata
+    import Cortex:
+        Signal, UndefValue, get_value, get_age, get_dependencies, get_listeners, get_type, get_metadata, UndefMetadata
 
     s = Signal()
     @test get_value(s) === UndefValue()
@@ -855,21 +856,21 @@ end
     @testset "Uninitialized Signal" begin
         s_no_meta = Signal()
         @test repr(s_no_meta) == "Signal(value=#undef, pending=false)"
-        
+
         s_meta = Signal(metadata = :test)
         @test repr(s_meta) == "Signal(value=#undef, pending=false, metadata=:test)"
 
         s_type = Signal(type = 0x01)
         @test repr(s_type) == "Signal(value=#undef, pending=false, type=0x01)"
-        
-        s_both = Signal(type = 0xab, metadata = [1,2])
+
+        s_both = Signal(type = 0xab, metadata = [1, 2])
         @test repr(s_both) == "Signal(value=#undef, pending=false, type=0xab, metadata=[1, 2])"
     end
 
     @testset "Initialized Signal" begin
         s_int = Signal(123)
         @test repr(s_int) == "Signal(value=123, pending=false)"
-        
+
         s_str_meta = Signal("test"; metadata = "some info")
         @test repr(s_str_meta) == "Signal(value=\"test\", pending=false, metadata=\"some info\")"
     end
@@ -897,12 +898,12 @@ end
     JET.@test_opt Cortex.Signal(1)
     JET.@test_opt Cortex.Signal("1")
     # Test constructors with keywords
-    JET.@test_opt Cortex.Signal(type=0x01)
-    JET.@test_opt Cortex.Signal(metadata=:meta)
-    JET.@test_opt Cortex.Signal(metadata=UndefMetadata())
-    JET.@test_opt Cortex.Signal(1; type=0x02, metadata="meta")
-    JET.@test_opt Cortex.Signal(1; metadata=UndefMetadata())
-    
+    JET.@test_opt Cortex.Signal(type = 0x01)
+    JET.@test_opt Cortex.Signal(metadata = :meta)
+    JET.@test_opt Cortex.Signal(metadata = UndefMetadata())
+    JET.@test_opt Cortex.Signal(1; type = 0x02, metadata = "meta")
+    JET.@test_opt Cortex.Signal(1; metadata = UndefMetadata())
+
     # Test getters
     JET.@test_opt Cortex.is_pending(Cortex.Signal())
     JET.@test_opt Cortex.is_pending(Cortex.Signal(1))
@@ -932,7 +933,7 @@ end
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
     JET.@test_opt Cortex.get_type(Cortex.Signal())
     JET.@test_opt Cortex.get_metadata(Cortex.Signal())
-    JET.@test_opt Cortex.get_metadata(Cortex.Signal(metadata=123))
+    JET.@test_opt Cortex.get_metadata(Cortex.Signal(metadata = 123))
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
 end
 
@@ -1018,5 +1019,170 @@ end
         @test is_computed(s3)
         @test !is_pending(s3)
         @test get_value(s3) == (1 + 2) + (3 + 4) # 3 + 7 = 10
+    end
+end
+
+@testitem "It is possible to add intermediate dependencies" begin
+    import Cortex: Signal, add_dependency!, get_dependencies
+
+    source = Signal()
+    intermediate = Signal()
+    derived = Signal()
+
+    add_dependency!(intermediate, source)
+    add_dependency!(derived, intermediate; intermediate = true)
+
+    @test get_dependencies(derived) == [intermediate]
+    @test get_dependencies(intermediate) == [source]
+end
+
+@testitem "`process_dependencies!` function should step down recursively for intermediate dependencies" begin
+    import Cortex: Signal, add_dependency!, process_dependencies!
+
+    source = Signal()
+    intermediate = Signal()
+    derived = Signal()
+
+    add_dependency!(intermediate, source)
+    add_dependency!(derived, intermediate; intermediate = true)
+
+    @testset "Case: retry = false, callback returns false" begin
+        attempted_to_process = []
+
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = false) do dependency
+            push!(attempted_to_process, dependency)
+            return false
+        end
+
+        @test length(attempted_to_process) == 2
+        @test attempted_to_process[1] == intermediate
+        @test attempted_to_process[2] == source
+        # `process_dependencies!` should return false because no dependency was processed
+        # since the callback returned false for all dependencies
+        @test !at_least_one_dependency_processed
+    end
+
+    @testset "Case: retry = true, callback returns false" begin
+        attempted_to_process = []
+
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = true) do dependency
+            push!(attempted_to_process, dependency)
+            return false
+        end
+
+        @test length(attempted_to_process) == 2
+        @test attempted_to_process[1] == intermediate
+        @test attempted_to_process[2] == source
+        # `process_dependencies!` should return false because no dependency was processed
+        # since the callback returned false for all dependencies
+        @test !at_least_one_dependency_processed
+    end
+
+    @testset "Case: retry = false, callback returns true" begin
+        attempted_to_process = []
+
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = false) do dependency
+            push!(attempted_to_process, dependency)
+            return true
+        end
+
+        @test length(attempted_to_process) == 1
+        @test attempted_to_process[1] == intermediate
+        @test at_least_one_dependency_processed
+    end
+
+    @testset "Case: retry = true, callback returns true" begin
+        attempted_to_process = []
+
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = true) do dependency
+            push!(attempted_to_process, dependency)
+            return true
+        end
+
+        @test length(attempted_to_process) == 1
+        @test attempted_to_process[1] == intermediate
+        @test at_least_one_dependency_processed
+    end
+
+    @testset "Case: retry = false, callback returns false for `intermediate` and true for `source`" begin
+        attempted_to_process = []
+
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = false) do dependency
+            push!(attempted_to_process, dependency)
+            return dependency === intermediate ? false : true
+        end
+
+        @test length(attempted_to_process) == 2
+        @test attempted_to_process[1] == intermediate
+        @test attempted_to_process[2] == source
+        @test at_least_one_dependency_processed
+    end
+
+    @testset "Case: retry = true, callback returns false for `intermediate` and true for `source`" begin
+        attempted_to_process = []
+
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = true) do dependency
+            push!(attempted_to_process, dependency)
+            return dependency === intermediate ? false : true
+        end
+
+        @test length(attempted_to_process) == 3
+        @test attempted_to_process[1] == intermediate
+        @test attempted_to_process[2] == source
+        @test attempted_to_process[3] == intermediate # should retry on intermediate
+        @test at_least_one_dependency_processed
+    end
+end
+
+@testitem "`process_dependencies!` function should NOT step down recursively for non-intermediate dependencies" begin
+    import Cortex: Signal, add_dependency!, process_dependencies!
+
+    source = Signal()
+    not_intermediate = Signal()
+    derived = Signal()
+
+    add_dependency!(not_intermediate, source)
+    add_dependency!(derived, not_intermediate)
+
+    @testset for retry in [false, true]
+        @testset for callback_returns in [false, true]
+            attempted_to_process = []
+
+            at_least_one_dependency_processed = process_dependencies!(derived; retry = retry) do dependency
+                push!(attempted_to_process, dependency)
+                return callback_returns
+            end
+
+            @test length(attempted_to_process) == 1
+            @test attempted_to_process[1] == not_intermediate
+            if callback_returns === true
+                @test at_least_one_dependency_processed
+            else
+                @test !at_least_one_dependency_processed
+            end
+        end
+    end
+end
+
+@testitem "`process_dependencies!` should return true if at least one dependency was processed" begin
+    import Cortex: Signal, add_dependency!, process_dependencies!
+
+    source = Signal()
+    intermediate = Signal()
+    derived = Signal()
+
+    add_dependency!(intermediate, source)
+    add_dependency!(derived, intermediate; intermediate = true)
+
+    @testset for retry in [false, true]
+        attempted_to_process = []
+
+        at_least_one_dependency_processed = process_dependencies!(derived; retry = retry) do dependency
+            push!(attempted_to_process, dependency)
+            return dependency === source
+        end
+
+        @test length(attempted_to_process) >= 1
+        @test at_least_one_dependency_processed
     end
 end

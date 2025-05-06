@@ -13,87 +13,134 @@ end
 @testitem "The functions required by the Cortex model interface should throw a `CortexModelInterfaceNotImplementedError` if not implemented" begin
     import Cortex:
         CortexModelInterfaceNotImplementedError,
+        AbstractCortexModel,
+        VariableId,
+        FactorId,
+        EdgeId,
+        add_factor_to_model!,
+        add_variable_to_model!,
+        add_edge_to_model!,
         get_factor_display_name,
         get_variable_display_name,
         get_edge_display_name,
         get_variable_marginal,
-        get_factor_local_marginal,
         get_edge_message_to_variable,
-        get_edge_message_to_factor
+        get_edge_message_to_factor,
+        get_factor_neighbors,
+        get_variable_neighbors
 
-    struct IncorrectlyImplementedCortexModel end
-
-    @test_throws CortexModelInterfaceNotImplementedError(
-        :get_factor_display_name, IncorrectlyImplementedCortexModel(), (1,)
-    ) get_factor_display_name(IncorrectlyImplementedCortexModel(), 1)
+    struct IncorrectlyImplementedCortexModel <: AbstractCortexModel end
 
     @test_throws CortexModelInterfaceNotImplementedError(
-        :get_variable_display_name, IncorrectlyImplementedCortexModel(), ("x",)
-    ) get_variable_display_name(IncorrectlyImplementedCortexModel(), "x")
+        :add_factor_to_model!, IncorrectlyImplementedCortexModel(), (identity,)
+    ) add_factor_to_model!(IncorrectlyImplementedCortexModel(), identity)
 
     @test_throws CortexModelInterfaceNotImplementedError(
-        :get_edge_display_name, IncorrectlyImplementedCortexModel(), (1, 2)
-    ) get_edge_display_name(IncorrectlyImplementedCortexModel(), 1, 2)
+        :add_variable_to_model!, IncorrectlyImplementedCortexModel(), (:x, 1)
+    ) add_variable_to_model!(IncorrectlyImplementedCortexModel(), :x, 1)
 
     @test_throws CortexModelInterfaceNotImplementedError(
-        :get_variable_marginal, IncorrectlyImplementedCortexModel(), ("x",)
-    ) get_variable_marginal(IncorrectlyImplementedCortexModel(), "x")
+        :add_edge_to_model!, IncorrectlyImplementedCortexModel(), (VariableId(1), FactorId(2))
+    ) add_edge_to_model!(IncorrectlyImplementedCortexModel(), VariableId(1), FactorId(2))
 
     @test_throws CortexModelInterfaceNotImplementedError(
-        :get_factor_local_marginal, IncorrectlyImplementedCortexModel(), (1,)
-    ) get_factor_local_marginal(IncorrectlyImplementedCortexModel(), 1)
+        :get_factor_display_name, IncorrectlyImplementedCortexModel(), (FactorId(1),)
+    ) get_factor_display_name(IncorrectlyImplementedCortexModel(), FactorId(1))
 
     @test_throws CortexModelInterfaceNotImplementedError(
-        :get_edge_message_to_variable, IncorrectlyImplementedCortexModel(), (1, 2)
-    ) get_edge_message_to_variable(IncorrectlyImplementedCortexModel(), 1, 2)
+        :get_variable_display_name, IncorrectlyImplementedCortexModel(), (VariableId("x"),)
+    ) get_variable_display_name(IncorrectlyImplementedCortexModel(), VariableId("x"))
 
     @test_throws CortexModelInterfaceNotImplementedError(
-        :get_edge_message_to_factor, IncorrectlyImplementedCortexModel(), (1, 2)
-    ) get_edge_message_to_factor(IncorrectlyImplementedCortexModel(), 1, 2)
+        :get_edge_display_name, IncorrectlyImplementedCortexModel(), (VariableId(1), FactorId(2))
+    ) get_edge_display_name(IncorrectlyImplementedCortexModel(), VariableId(1), FactorId(2))
+
+    @test_throws CortexModelInterfaceNotImplementedError(
+        :get_variable_marginal, IncorrectlyImplementedCortexModel(), (VariableId(1),)
+    ) get_variable_marginal(IncorrectlyImplementedCortexModel(), VariableId(1))
+
+    @test_throws CortexModelInterfaceNotImplementedError(
+        :get_edge_message_to_variable, IncorrectlyImplementedCortexModel(), (VariableId(1), FactorId(2))
+    ) get_edge_message_to_variable(IncorrectlyImplementedCortexModel(), VariableId(1), FactorId(2))
+
+    @test_throws CortexModelInterfaceNotImplementedError(
+        :get_edge_message_to_factor, IncorrectlyImplementedCortexModel(), (VariableId(1), FactorId(2))
+    ) get_edge_message_to_factor(IncorrectlyImplementedCortexModel(), VariableId(1), FactorId(2))
+
+    @test_throws CortexModelInterfaceNotImplementedError(
+        :get_factor_neighbors, IncorrectlyImplementedCortexModel(), (FactorId(1),)
+    ) get_factor_neighbors(IncorrectlyImplementedCortexModel(), FactorId(1))
+
+    @test_throws CortexModelInterfaceNotImplementedError(
+        :get_variable_neighbors, IncorrectlyImplementedCortexModel(), (VariableId(1),)
+    ) get_variable_neighbors(IncorrectlyImplementedCortexModel(), VariableId(1))
 end
 
 @testmodule ModelUtils begin
     using Reexport
 
     import Cortex
-    import Cortex: Value, Signal
+    import Cortex:
+        AbstractCortexModel,
+        VariableId,
+        FactorId,
+        EdgeId,
+        Signal,
+        add_variable_to_model!,
+        add_factor_to_model!,
+        add_edge_to_model!
 
     export Variable, Factor, Edge, Model
-    export make_empty_model
+    export make_empty_model, add_variable_to_model!, add_factor_to_model!, add_edge_to_model!
 
     @reexport using BipartiteFactorGraphs
 
-    struct Variable
-        name::Any
-        index::Any
-        marginal::Signal
-
-        Variable(name, index...) = new(name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal))
+    struct Model{G} <: AbstractCortexModel
+        graph::G
     end
 
     struct Factor
         type::Any
     end
 
+    function Cortex.add_factor_to_model!(model::Model, type::Any)
+        return FactorId(BipartiteFactorGraphs.add_factor!(model.graph, Factor(type)))
+    end
+
+    struct Variable
+        name::Any
+        index::Any
+        marginal::Signal
+
+        Variable(name, index...) = new(
+            name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal, metadata = (name, index...))
+        )
+    end
+
+    function Cortex.add_variable_to_model!(model::Model, name::Any, index...)
+        return VariableId(BipartiteFactorGraphs.add_variable!(model.graph, Variable(name, index...)))
+    end
+
     struct Edge
         message_to_variable::Signal
         message_to_factor::Signal
 
-        function Edge(vi, f)
-            message_to_variable = Signal(type = Cortex.InferenceSignalTypes.MessageToVariable, metadata = (vi, f))
-            message_to_factor = Signal(type = Cortex.InferenceSignalTypes.MessageToFactor, metadata = (vi, f))
+        function Edge(v, f)
+            message_to_variable = Signal(type = Cortex.InferenceSignalTypes.MessageToVariable, metadata = (v, f))
+            message_to_factor = Signal(type = Cortex.InferenceSignalTypes.MessageToFactor, metadata = (v, f))
             return new(message_to_variable, message_to_factor)
         end
     end
 
-    struct Model{G}
-        graph::G
+    function Cortex.add_edge_to_model!(model::Model, v::VariableId, f::FactorId)
+        BipartiteFactorGraphs.add_edge!(model.graph, v.id, f.id, Edge(v.id, f.id))
+        return EdgeId(v, f)
     end
 
     Model() = Model(BipartiteFactorGraphs.BipartiteFactorGraph(Variable, Factor, Edge))
 
-    function Cortex.get_variable_display_name(model::Model, vi)
-        v = BipartiteFactorGraphs.get_variable_data(model.graph, vi)
+    function Cortex.get_variable_display_name(model::Model, v::VariableId)
+        v = BipartiteFactorGraphs.get_variable_data(model.graph, v.id)
         if isnothing(v.index) || isempty(v.index)
             return v.name
         else
@@ -101,42 +148,38 @@ end
         end
     end
 
-    function Cortex.get_factor_display_name(model::Model, fi)
-        f = BipartiteFactorGraphs.get_factor_data(model.graph, fi)
+    function Cortex.get_factor_display_name(model::Model, f::FactorId)
+        f = BipartiteFactorGraphs.get_factor_data(model.graph, f.id)
         return "Factor(" * string(f.type) * ")"
     end
 
-    function Cortex.get_edge_display_name(model::Model, vi, fi)
-        v = Cortex.get_variable_display_name(model, vi)
-        f = Cortex.get_factor_display_name(model, fi)
+    function Cortex.get_edge_display_name(model::Model, v::VariableId, f::FactorId)
+        v = Cortex.get_variable_display_name(model, v)
+        f = Cortex.get_factor_display_name(model, f)
         return string("Edge(", v, " --- ", f, ")")
     end
 
-    function Cortex.get_variable_marginal(model::Model, vi)
-        v = BipartiteFactorGraphs.get_variable_data(model.graph, vi)
+    function Cortex.get_variable_marginal(model::Model, v::VariableId)
+        v = BipartiteFactorGraphs.get_variable_data(model.graph, v.id)
         return v.marginal
     end
 
-    function Cortex.get_factor_local_marginal(model::Model, fi)
-        error("Not implemented")
-    end
-
-    function Cortex.get_edge_message_to_variable(model::Model, vi, fi)
-        e = BipartiteFactorGraphs.get_edge_data(model.graph, vi, fi)
+    function Cortex.get_edge_message_to_variable(model::Model, v::VariableId, f::FactorId)
+        e = BipartiteFactorGraphs.get_edge_data(model.graph, v.id, f.id)
         return e.message_to_variable
     end
 
-    function Cortex.get_edge_message_to_factor(model::Model, vi, fi)
-        e = BipartiteFactorGraphs.get_edge_data(model.graph, vi, fi)
+    function Cortex.get_edge_message_to_factor(model::Model, v::VariableId, f::FactorId)
+        e = BipartiteFactorGraphs.get_edge_data(model.graph, v.id, f.id)
         return e.message_to_factor
     end
 
-    function Cortex.get_factor_neighbors(model::Model, fi)
-        return BipartiteFactorGraphs.neighbors(model.graph, fi)
+    function Cortex.get_factor_neighbors(model::Model, f::FactorId)
+        return Iterators.map(VariableId, BipartiteFactorGraphs.neighbors(model.graph, f.id))
     end
 
-    function Cortex.get_variable_neighbors(model::Model, vi)
-        return BipartiteFactorGraphs.neighbors(model.graph, vi)
+    function Cortex.get_variable_neighbors(model::Model, v::VariableId)
+        return Iterators.map(FactorId, BipartiteFactorGraphs.neighbors(model.graph, v.id))
     end
 
     export BeliefPropagation
@@ -144,25 +187,81 @@ end
 
     struct BeliefPropagation end
 
+    function resolve_variable_dependencies!(vi::Int, model::Model, ::BeliefPropagation)
+        paired_messages = map(BipartiteFactorGraphs.neighbors(model.graph, vi)) do fi
+            return (
+                to_factor = Cortex.get_edge_message_to_factor(model, VariableId(vi), FactorId(fi)),
+                to_variable = Cortex.get_edge_message_to_variable(model, VariableId(vi), FactorId(fi))
+            )
+        end
+
+        N = length(paired_messages)
+
+        if N < 2
+            Cortex.add_dependency!(
+                Cortex.get_variable_marginal(model, VariableId(vi)), paired_messages[1].to_variable; intermediate = true
+            )
+            return nothing
+        end
+
+        middle_point = div(N, 2)
+
+        left_range = 1:middle_point
+        right_range = (middle_point + 1):N
+
+        left_dependency = form_segment_tree_dependency!(left_range, paired_messages)
+        right_dependency = form_segment_tree_dependency!(right_range, paired_messages)
+
+        for left_fi in left_range
+            Cortex.add_dependency!(paired_messages[left_fi].to_factor, right_dependency; intermediate = true)
+        end
+
+        for right_fi in right_range
+            Cortex.add_dependency!(paired_messages[right_fi].to_factor, left_dependency; intermediate = true)
+        end
+
+        Cortex.add_dependency!(
+            Cortex.get_variable_marginal(model, VariableId(vi)), left_dependency; intermediate = true
+        )
+        Cortex.add_dependency!(
+            Cortex.get_variable_marginal(model, VariableId(vi)), right_dependency; intermediate = true
+        )
+    end
+
+    function form_segment_tree_dependency!(range, paired_messages)
+        @assert length(range) >= 1
+
+        if length(range) == 1
+            return paired_messages[range[1]].to_variable
+        end
+
+        middle_point = div(length(range), 2)
+        left_range = range[begin:middle_point]
+        right_range = range[(middle_point + 1):end]
+
+        left_dependency = form_segment_tree_dependency!(left_range, paired_messages)
+        right_dependency = form_segment_tree_dependency!(right_range, paired_messages)
+
+        for left_fi in left_range
+            Cortex.add_dependency!(@inbounds(paired_messages[left_fi].to_factor), right_dependency; intermediate = true)
+        end
+
+        for right_fi in right_range
+            Cortex.add_dependency!(@inbounds(paired_messages[right_fi].to_factor), left_dependency; intermediate = true)
+        end
+
+        intermediate = Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal)
+
+        Cortex.add_dependency!(intermediate, left_dependency; intermediate = true)
+        Cortex.add_dependency!(intermediate, right_dependency; intermediate = true)
+
+        return intermediate
+    end
+
     function resolve_dependencies!(model::Model, ::BeliefPropagation)
         # For each variable
         for vi in variables(model.graph)
-            for fi in neighbors(model.graph, vi)
-                # for a marginal of a variable, we add a dependency on the message to the variable from each of its neighbors
-                Cortex.add_dependency!(
-                    Cortex.get_variable_marginal(model, vi), Cortex.get_edge_message_to_variable(model, vi, fi)
-                )
-
-                # And for each individual edge, we add a dependency on the message from the factor to the variable
-                for e_fi in neighbors(model.graph, vi)
-                    if fi !== e_fi
-                        Cortex.add_dependency!(
-                            Cortex.get_edge_message_to_factor(model, vi, fi),
-                            Cortex.get_edge_message_to_variable(model, vi, e_fi)
-                        )
-                    end
-                end
-            end
+            resolve_variable_dependencies!(vi, model, BeliefPropagation())
         end
 
         # For each factor, we add a dependency on the inbound messages from its neighbors (excluding self-references)
@@ -171,8 +270,8 @@ end
                 for e_vi in neighbors(model.graph, fi)
                     if vi !== e_vi
                         Cortex.add_dependency!(
-                            Cortex.get_edge_message_to_variable(model, vi, fi),
-                            Cortex.get_edge_message_to_factor(model, e_vi, fi)
+                            Cortex.get_edge_message_to_variable(model, VariableId(vi), FactorId(fi)),
+                            Cortex.get_edge_message_to_factor(model, VariableId(e_vi), FactorId(fi))
                         )
                     end
                 end
@@ -197,16 +296,16 @@ end
     using .ModelUtils
 
     @testset let model = Model()
-        v = add_variable!(model.graph, Variable("x"))
-        f = add_factor!(model.graph, Factor(identity))
-        e = add_edge!(model.graph, v, f, Edge(v, f))
+        v = add_variable_to_model!(model, "x")
+        f = add_factor_to_model!(model, identity)
+        e = add_edge_to_model!(model, v, f)
 
         @test length(variables(model.graph)) == 1
         @test length(factors(model.graph)) == 1
         @test length(edges(model.graph)) == 1
 
-        @test neighbors(model.graph, v) == [f]
-        @test neighbors(model.graph, f) == [v]
+        @test Cortex.get_variable_neighbors(model, v) |> collect == [f]
+        @test Cortex.get_factor_neighbors(model, f) |> collect == [v]
     end
 end
 
@@ -215,10 +314,10 @@ end
     using .ModelUtils
 
     @testset let model = Model()
-        v = add_variable!(model.graph, Variable("x", 1))
-        f = add_factor!(model.graph, Factor(identity))
+        v = add_variable_to_model!(model, "x", 1)
+        f = add_factor_to_model!(model, identity)
 
-        add_edge!(model.graph, v, f, Edge(v, f))
+        add_edge_to_model!(model, v, f)
 
         @test Cortex.get_variable_display_name(model, v) == "x[1]"
         @test Cortex.get_factor_display_name(model, f) == "Factor(identity)"
@@ -229,8 +328,8 @@ end
         @test Cortex.get_edge_message_to_variable(model, v, f) isa Cortex.Signal
         @test Cortex.get_edge_message_to_factor(model, v, f) isa Cortex.Signal
 
-        @test Cortex.get_variable_neighbors(model, v) == [f]
-        @test Cortex.get_factor_neighbors(model, f) == [v]
+        @test Cortex.get_variable_neighbors(model, v) |> collect == [f]
+        @test Cortex.get_factor_neighbors(model, f) |> collect == [v]
     end
 end
 
@@ -240,17 +339,17 @@ end
 
     model = Model()
 
-    v1 = add_variable!(model.graph, Variable(:v1))
-    v2 = add_variable!(model.graph, Variable(:v2))
-    v3 = add_variable!(model.graph, Variable(:v3))
+    v1 = add_variable_to_model!(model, :v1)
+    v2 = add_variable_to_model!(model, :v2)
+    v3 = add_variable_to_model!(model, :v3)
 
-    f1 = add_factor!(model.graph, Factor(:f1))
-    f2 = add_factor!(model.graph, Factor(:f2))
+    f1 = add_factor_to_model!(model, :f1)
+    f2 = add_factor_to_model!(model, :f2)
 
-    add_edge!(model.graph, v1, f1, Edge(v1, f1))
-    add_edge!(model.graph, v2, f1, Edge(v2, f1))
-    add_edge!(model.graph, v2, f2, Edge(v2, f2))
-    add_edge!(model.graph, v3, f2, Edge(v3, f2))
+    add_edge_to_model!(model, v1, f1)
+    add_edge_to_model!(model, v2, f1)
+    add_edge_to_model!(model, v2, f2)
+    add_edge_to_model!(model, v3, f2)
 
     resolve_dependencies!(model, BeliefPropagation())
 

@@ -48,13 +48,15 @@ See also:
 """
 mutable struct Signal
     value::Any
-    type::UInt8
     metadata::Any
 
+    type::UInt8
+    is_potentially_pending::Bool
     is_pending::Bool
     age::UInt64
 
     weakmask::BitVector
+    intermediatemask::BitVector
     dependencies::Vector{Signal}
 
     listenmask::BitVector
@@ -62,12 +64,36 @@ mutable struct Signal
 
     # Constructor for creating an empty signal
     function Signal(; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
-        return new(UndefValue(), type, metadata, false, 0, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+        return new(
+            UndefValue(),
+            metadata,
+            type,
+            false,
+            false,
+            UInt64(0),
+            falses(0),
+            falses(0),
+            Vector{Signal}(),
+            trues(0),
+            Vector{Signal}()
+        )
     end
 
     # Constructor for creating a new signal with a value
     function Signal(value::Any; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
-        return new(value, type, metadata, false, 1, falses(0), Vector{Signal}(), trues(0), Vector{Signal}())
+        return new(
+            value,
+            metadata,
+            type,
+            false,
+            false,
+            UInt64(1),
+            falses(0),
+            falses(0),
+            Vector{Signal}(),
+            trues(0),
+            Vector{Signal}()
+        )
     end
 end
 
@@ -77,6 +103,7 @@ end
 Check if the signal `s` is marked as pending.
 """
 function is_pending(s::Signal)::Bool
+    check_and_set_pending!(s)
     return s.is_pending
 end
 
@@ -159,7 +186,7 @@ function set_value!(s::Signal, @nospecialize(value))
     # If the signal has no dependencies, we simply take the age of the signal and add 2
     # Interpret it as if the signal had actually a "ghost" dependency with an age equal to the `s.age + 1` 
     # thus the new age becomes `(s.age + 1) + 1`
-    next_age = isempty(get_dependencies(s)) ? s.age + 2 : maximum(d -> get_age(d), s.dependencies) + 1
+    next_age = isempty(get_dependencies(s)) ? s.age + UInt64(2) : maximum(d -> get_age(d), s.dependencies) + UInt64(1)
     s.age = next_age
 
     # We update the value of the signal
@@ -167,12 +194,13 @@ function set_value!(s::Signal, @nospecialize(value))
 
     # We unset the pending flag
     s.is_pending = false
+    s.is_potentially_pending = false
 
     # We notify all the signals that listen to this signal that it has been updated
     # We only notify the signals that are listening to the current signal
     for (is_listening, listener) in zip(s.listenmask, s.listeners)
         if is_listening
-            check_and_set_pending!(s, listener)
+            set_potentially_pending!(listener)
         end
     end
 
@@ -180,7 +208,7 @@ function set_value!(s::Signal, @nospecialize(value))
 end
 
 """
-    add_dependency!(signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true)
+    add_dependency!(signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true, intermediate::Bool = false)
 
 Add `dependency` to the list of dependencies for signal `signal`.
 Also adds `signal` to the list of listeners for `dependency`.
@@ -190,6 +218,9 @@ Arguments:
 - `dependency::Signal`: The signal to be added as a dependency.
 
 Keyword Arguments:
+- `intermediate::Bool = false`: If `true`, marks the dependency as intermediate. Intermediate dependencies
+have an effect on the `process_dependencies!` function. See the documentation of [`process_dependencies!`](@ref) for more details.
+By default, the added dependency is not intermediate.
 - `weak::Bool = false`: If `true`, marks the dependency as weak. Weak dependencies
   only require `is_computed` to be true (not necessarily older) for the dependent
   signal `signal` to potentially become pending.
@@ -203,7 +234,12 @@ further updates to `dependency` will not trigger notifications to `signal`.
 Note that this function does nothing if `signal === dependency`.
 """
 function add_dependency!(
-    signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true, check_computed::Bool = true
+    signal::Signal,
+    dependency::Signal;
+    weak::Bool = false,
+    listen::Bool = true,
+    check_computed::Bool = true,
+    intermediate::Bool = false
 )
     # We check that the dependency is not the same signal
     if signal === dependency
@@ -216,6 +252,14 @@ function add_dependency!(
         push!(signal.weakmask, true)
     else
         push!(signal.weakmask, false)
+    end
+
+    # If the dependency is intermediate, 
+    # we store `true` in the intermediatemask, `false` otherwise
+    if intermediate
+        push!(signal.intermediatemask, true)
+    else
+        push!(signal.intermediatemask, false)
     end
 
     push!(signal.dependencies, dependency)
@@ -234,7 +278,7 @@ function add_dependency!(
     # we immediately notify the current signal `s` as if it was already subscribed to the changes
     is_dependency_computed = is_computed(dependency)
     if check_computed && is_dependency_computed
-        check_and_set_pending!(dependency, signal)
+        set_potentially_pending!(signal)
     elseif check_computed && !is_dependency_computed
         signal.is_pending = false
     end
@@ -242,18 +286,34 @@ function add_dependency!(
     return nothing
 end
 
-function check_and_set_pending!(notifier::Signal, listener::Signal)
-    listener_age = get_age(listener)
+function set_potentially_pending!(signal::Signal)
+    signal.is_potentially_pending = true
+end
+
+function check_and_set_pending!(signal::Signal)
+    # If the listener is not potentially pending, we do nothing
+    # as there is nothing to check and set
+    if !signal.is_potentially_pending
+        return nothing
+    end
+
+    # If it was potentially pending, we set it to false
+    # since no matter what the outcome of the check is, 
+    # it will either be set pending to true and if not, 
+    # then it is not potentially pending anyway
+    signal.is_potentially_pending = false
+
+    listener_age = get_age(signal)
     # If notified, the listener will check its own dependencies 
     # to see if it needs to update its own `pending` state
     # The condition is that all weak dependencies are computed,
     # and all non-weak dependencies are older than the listener
-    should_update_pending = all(zip(listener.weakmask, listener.dependencies)) do (is_weak, dependency)
+    should_update_pending = all(zip(signal.weakmask, signal.dependencies)) do (is_weak, dependency)
         return !is_computed(dependency) ? false : (is_weak ? true : get_age(dependency) > listener_age)
     end
 
     if should_update_pending
-        listener.is_pending = true
+        signal.is_pending = true
     end
 
     return nothing
@@ -319,4 +379,23 @@ end
 
 function compute_value!(strategy::F, signal::Signal, dependencies::Vector{Signal}) where {F <: Function}
     return strategy(signal, dependencies)
+end
+
+# --- Processing Interface ---
+
+function process_dependencies!(f::F, signal::Signal; retry::Bool = false) where {F}
+    dependencies = get_dependencies(signal)
+    processed_at_least_once = false
+    for (is_intermediate, dependency) in zip(signal.intermediatemask, dependencies)
+        processed = f(dependency)
+        if is_intermediate && !processed
+            intermediate_processed_at_least_once = process_dependencies!(f, dependency; retry = retry)
+            if intermediate_processed_at_least_once && retry
+                processed = f(dependency)
+            end
+            processed_at_least_once = processed_at_least_once || intermediate_processed_at_least_once
+        end
+        processed_at_least_once = processed_at_least_once || processed
+    end
+    return processed_at_least_once
 end
