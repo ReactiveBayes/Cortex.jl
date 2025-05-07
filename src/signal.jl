@@ -310,11 +310,12 @@ function notify_listener!(listener::Signal, signal::Signal; update_potentially_p
 
     # Technically we can stop early here, but we allow duplicate dependencies
     # and also test against it, we can relax this?
-    for i in 1:length(listener.dependencies)
+    for i in eachindex(listener.dependencies)
         @inbounds dependency = listener.dependencies[i]
         if (dependency === signal)
-            set_dependency_fresh!(listener.dependencies_props, i)
-            set_dependency_computed!(listener.dependencies_props, i)
+            dependencies_props = listener.dependencies_props
+            set_dependency_fresh!(dependencies_props, i)
+            set_dependency_computed!(dependencies_props, i)
         end
     end
 
