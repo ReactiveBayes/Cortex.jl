@@ -14,7 +14,11 @@ makedocs(;
         edit_link = "main",
         assets = String[]
     ),
-    pages = ["Home" => "index.md", "Signals: The Core of Reactivity" => "signals.md"]
+    pages = [
+        "Home" => "index.md",
+        "Signals: The Core of Reactivity" => "signals.md",
+        "Probabilistic Model Interface" => "model.md"
+    ]
 )
 
 deploydocs(; repo = "github.com/ReactiveBayes/Cortex.jl", devbranch = "main")

@@ -15,165 +15,32 @@ struct UndefMetadata end
 
 # Stores properties of a `Signal`'s dependencies in a bit-packed format.
 #
-# Each dependency's properties are stored in 4 bits within a `UInt64` chunk. Therefore, each `UInt64` chunk can store properties for 16 dependencies.
+# Each dependency's properties are stored in 4 bits (nibbles) within a `UInt64` chunk. 
+# herefore, each `UInt64` chunk can store properties for 16 dependencies.
 #
 # The 4 bits for each dependency are used as follows (from LSB to MSB):
-# - Bit 1 (Mask `0x1`): `IsIntermediate` - Indicates if the dependency is intermediate.
-# - Bit 2 (Mask `0x2`): `IsWeak` - Indicates if the dependency is weak.
-# - Bit 3 (Mask `0x4`): `IsComputed` - Indicates if the dependency's value has been computed.
-# - Bit 4 (Mask `0x8`): `IsFresh` - Indicates if the dependency has a new, fresh value.
+# - Bit 1 (Mask `0x1`): `IsIntermediate` - Indicates if the dependency is intermediate or not.
+# - Bit 2 (Mask `0x2`): `IsWeak` - Indicates if the dependency is weak or not.
+# - Bit 3 (Mask `0x4`): `IsComputed` - Indicates if the dependency's value has been computed or not.
+# - Bit 4 (Mask `0x8`): `IsFresh` - Indicates if the dependency has a new, fresh (unused) value or not.
 #
 # !!! warning
 #     This is an internal type and should not be used directly. Use the functions defined in the `Signal` structure instead.
-#     This structure can be removed in the future.
+#     This structure can be removed in the future. The structure itself uses `@inbounds` annotations 
+#     to access the `chunks` array in the most efficient way possible. Incorrect usage of this structure
+#     may result in undefined behavior and memory corruption.
+# 
+# The lowlevel implementation of this structure and the associated functions is implemented under the `Signal` structure
+# Here we only need to defined this structure in order to properly define the `Signal` structure below
 mutable struct SignalDependenciesProps
-    ndependencies::Int
+    length::Int
     const chunks::Vector{UInt64}
-end
 
-function SignalDependenciesProps()
-    return SignalDependenciesProps(0, UInt64[])
-end
-
-const SignalDependenciesProps_IsIntermediateMask_SingleNibble::UInt64 = 0x1 # 0001
-const SignalDependenciesProps_IsWeakMask_SingleNibble::UInt64 = 0x2         # 0010
-const SignalDependenciesProps_IsComputedMask_SingleNibble::UInt64 = 0x4     # 0100
-const SignalDependenciesProps_IsFreshMask_SingleNibble::UInt64 = 0x8        # 1000
-
-const SignalDependenciesProps_IsIntermediateMask_AllNibbles::UInt64 = 0x1111_1111_1111_1111
-const SignalDependenciesProps_IsWeakMask_AllNibbles::UInt64 = 0x2222_2222_2222_2222
-const SignalDependenciesProps_IsComputedMask_AllNibbles::UInt64 = 0x4444_4444_4444_4444
-const SignalDependenciesProps_IsFreshMask_AllNibbles::UInt64 = 0x8888_8888_8888_8888
-
-function signal_dependencies_props_get_offset(index::Int)
-    chunk_index = div(index - 1, 16) + 1
-    offset_within_chunk = mod(index - 1, 16) << 2
-    return (chunk_index, offset_within_chunk)
-end
-
-function add_dependency!(props::SignalDependenciesProps)
-    props.ndependencies += 1
-
-    # we need 4 bits per nibble
-    nrequiredbits = 4 * props.ndependencies
-    # we have 64 bits per chunk
-    nrequiredchunks = div(nrequiredbits - 1, 64) + 1
-
-    nchunks = length(props.chunks)
-    if nchunks < nrequiredchunks
-        push!(props.chunks, UInt64(0))
+    function SignalDependenciesProps()
+        # It is reasonable to assume that a signal will have at least one dependency
+        # Thus we need to allocate at least one chunk
+        return new(0, UInt64[ UInt64(0) ]) 
     end
-
-    return props.ndependencies
-end
-
-function is_dependency_intermediate(props::SignalDependenciesProps, index::Int)
-    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    return (
-        props.chunks[chunk_index] & (SignalDependenciesProps_IsIntermediateMask_SingleNibble << offset_within_chunk)
-    ) != 0
-end
-
-function is_dependency_weak(props::SignalDependenciesProps, index::Int)
-    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    return (props.chunks[chunk_index] & (SignalDependenciesProps_IsWeakMask_SingleNibble << offset_within_chunk)) != 0
-end
-
-function is_dependency_computed(props::SignalDependenciesProps, index::Int)
-    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    return (props.chunks[chunk_index] & (SignalDependenciesProps_IsComputedMask_SingleNibble << offset_within_chunk)) !=
-           0
-end
-
-function is_dependency_fresh(props::SignalDependenciesProps, index::Int)
-    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    return (props.chunks[chunk_index] & (SignalDependenciesProps_IsFreshMask_SingleNibble << offset_within_chunk)) != 0
-end
-
-function set_dependency_intermediate!(props::SignalDependenciesProps, index::Int)
-    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    props.chunks[chunk_index] |= (SignalDependenciesProps_IsIntermediateMask_SingleNibble << offset_within_chunk)
-    return nothing
-end
-
-function set_dependency_weak!(props::SignalDependenciesProps, index::Int)
-    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    props.chunks[chunk_index] |= (SignalDependenciesProps_IsWeakMask_SingleNibble << offset_within_chunk)
-    return nothing
-end
-
-function set_dependency_computed!(props::SignalDependenciesProps, index::Int)
-    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    props.chunks[chunk_index] |= (SignalDependenciesProps_IsComputedMask_SingleNibble << offset_within_chunk)
-    return nothing
-end
-
-function set_dependency_fresh!(props::SignalDependenciesProps, index::Int)
-    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    props.chunks[chunk_index] |= (SignalDependenciesProps_IsFreshMask_SingleNibble << offset_within_chunk)
-    return nothing
-end
-
-function unset_dependency_intermediate!(props::SignalDependenciesProps, index::Int)
-    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    props.chunks[chunk_index] &= ~(SignalDependenciesProps_IsIntermediateMask_SingleNibble << offset_within_chunk)
-    return nothing
-end
-
-function unset_dependency_weak!(props::SignalDependenciesProps, index::Int)
-    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    props.chunks[chunk_index] &= ~(SignalDependenciesProps_IsWeakMask_SingleNibble << offset_within_chunk)
-    return nothing
-end
-
-function unset_dependency_computed!(props::SignalDependenciesProps, index::Int)
-    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    props.chunks[chunk_index] &= ~(SignalDependenciesProps_IsComputedMask_SingleNibble << offset_within_chunk)
-    return nothing
-end
-
-function unset_dependency_fresh!(props::SignalDependenciesProps, index::Int)
-    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    props.chunks[chunk_index] &= ~(SignalDependenciesProps_IsFreshMask_SingleNibble << offset_within_chunk)
-    return nothing
-end
-
-function unset_all_fresh!(props::SignalDependenciesProps)
-    for i in eachindex(props.chunks)
-        props.chunks[i] &= ~SignalDependenciesProps_IsFreshMask_AllNibbles
-    end
-    return nothing
-end
-
-function is_pending(props::SignalDependenciesProps)
-    if props.ndependencies == 0
-        return false
-    end
-
-    for i in 1:(length(props.chunks) - 1)
-        @inbounds chunk = props.chunks[i]
-        chunk_Weak = (chunk & SignalDependenciesProps_IsWeakMask_AllNibbles) >> 1
-        chunk_Computed = (chunk & SignalDependenciesProps_IsComputedMask_AllNibbles) >> 2
-        chunk_Fresh = (chunk & SignalDependenciesProps_IsFreshMask_AllNibbles) >> 3
-        chunk_Result = chunk_Computed & (chunk_Weak | chunk_Fresh)
-        if chunk_Result != 0x1111_1111_1111_1111
-            return false
-        end
-    end
-
-    _, last_offset = signal_dependencies_props_get_offset(props.ndependencies)
-    last_chunk_mask = 0xffff_ffff_ffff_ffff << (last_offset + 4)
-    last_chunk = props.chunks[end] | last_chunk_mask
-
-    last_chunk_Weak = (last_chunk & SignalDependenciesProps_IsWeakMask_AllNibbles) >> 1
-    last_chunk_Computed = (last_chunk & SignalDependenciesProps_IsComputedMask_AllNibbles) >> 2
-    last_chunk_Fresh = (last_chunk & SignalDependenciesProps_IsFreshMask_AllNibbles) >> 3
-    last_chunk_Result = last_chunk_Computed & (last_chunk_Weak | last_chunk_Fresh)
-    if last_chunk_Result != 0x1111_1111_1111_1111
-        return false
-    end
-
-    return true
 end
 
 """
@@ -196,18 +63,10 @@ A signal may become 'pending' if all its dependencies meet the following criteri
 
 A signal can depend on another signal without listening to it, see [`add_dependency!`](@ref) for more details.
 
-See also:
-- [`add_dependency!`](@ref): Establishes a dependency relationship between signals.
-- [`set_value!`](@ref): Updates the signal's value and notifies listeners.
-- [`compute!`](@ref): Function responsible for recomputing a signal's value.
-- [`is_pending`](@ref): Checks if the signal is marked for potential recomputation.
-- [`is_computed`](@ref): Checks if the signal currently holds a computed value (not `UndefValue`).
-- [`get_value`](@ref): Retrieves the current value stored in the signal.
-- [`get_type`](@ref): Retrieves the type identifier of the signal.
-- [`get_metadata`](@ref): Retrieves the metadata associated with the signal.
-- [`get_age`](@ref): Gets the computation age of the signal.
-- [`get_dependencies`](@ref): Returns the list of signals this signal depends on.
-- [`get_listeners`](@ref): Returns the list of signals that listen to this signal.
+The `type` field is an optional `UInt8` type identifier. 
+It might be useful to choose different computation strategies for different types of signals within the [`compute!`](@ref) function.
+
+See also: [`add_dependency!`](@ref), [`set_value!`](@ref), [`compute!`](@ref), [`process_dependencies!`](@ref)
 """
 mutable struct Signal
     value::Any
@@ -259,7 +118,8 @@ end
 """
     is_pending(s::Signal) -> Bool
 
-Check if the signal `s` is marked as pending.
+Check if the signal `s` is marked as pending. This usually indicates that the signal's value is stale and needs recomputation.
+See also: [`compute!`](@ref), [`process_dependencies!`](@ref).
 """
 function is_pending(s::Signal)::Bool
     # In case if the signal is potentially pending, we need to check if it is actually pending or not
@@ -269,7 +129,7 @@ function is_pending(s::Signal)::Bool
         return true
     end
     if _is_potentially_pending
-        new_is_pending = is_pending(s.dependencies_props)
+        new_is_pending = is_meeting_pending_criteria(s.dependencies_props)
         s.pending_state = (false, new_is_pending)
         return new_is_pending
     end
@@ -279,7 +139,8 @@ end
 """
     is_computed(s::Signal) -> Bool
 
-Check if the signal `s` has been computed (i.e., its value has been set at least once).
+Check if the signal `s` has been computed (i.e., its value is not equal to [`UndefValue()`](@ref)).
+See also: [`set_value!`](@ref).
 """
 function is_computed(s::Signal)::Bool
     return s.value !== UndefValue()
@@ -336,6 +197,12 @@ end
     set_value!(s::Signal, value::Any)
 
 Set the `value` of the signal `s`. Notifies all the active listeners of the signal.
+
+!!! note
+    This function is not a part of the public API. 
+    Additionally, it is implied that [`set_value!`](@ref) must be called only on signals that are pending.
+    Use [`compute!`](@ref) for a more general way to update signal values.
+
 """
 function set_value!(signal::Signal, @nospecialize(value))
 
@@ -343,7 +210,11 @@ function set_value!(signal::Signal, @nospecialize(value))
     signal.value = value
     signal.pending_state = (false, false)
 
-    unset_all_fresh!(signal.dependencies_props)
+    # This marks the current dependencies as "not fresh", meaning that they have been used 
+    # to set a new value on the current signal. The signal will not be pending anymore 
+    # as its dependencies are not fresh 
+    # (unless they are weak dependencies, which only required to be computed and not necessarily fresh)
+    unset_all_dependencies_fresh!(signal.dependencies_props)
 
     # We notify all the signals that listen to this signal that it has been updated
     # We only notify the signals that are listening to the current signal
@@ -441,11 +312,12 @@ function notify_listener!(listener::Signal, signal::Signal; update_potentially_p
 
     # Technically we can stop early here, but we allow duplicate dependencies
     # and also test against it, we can relax this?
-    for i in 1:length(listener.dependencies)
+    for i in eachindex(listener.dependencies)
         @inbounds dependency = listener.dependencies[i]
         if (dependency === signal)
-            set_dependency_fresh!(listener.dependencies_props, i)
-            set_dependency_computed!(listener.dependencies_props, i)
+            listener_dependencies_props = listener.dependencies_props
+            set_dependency_fresh!(listener_dependencies_props, i)
+            set_dependency_computed!(listener_dependencies_props, i)
         end
     end
 
@@ -516,10 +388,48 @@ end
 
 # --- Processing Interface ---
 
+"""
+    process_dependencies!(f::F, signal::Signal; retry::Bool = false) where {F}
+
+Recursively processes the dependencies of a `signal` using a provided function `f`.
+
+The function `f` is applied to each direct dependency of `signal`. If a dependency is marked as `intermediate` 
+and `f` returns `false` for it (indicating it was not processed by `f` according to its own criteria), 
+`process_dependencies!` will then be called recursively on that intermediate dependency.
+
+Arguments:
+- `f::F`: A function (or callable object) that takes a `Signal` (a dependency) as an argument and returns a `Bool`. 
+  It should return `true` if it considered the dependency processed, and `false` otherwise. The specific logic 
+  for this determination (e.g., checking if a dependency is pending before processing) is up to `f`.
+- `signal::Signal`: The signal whose dependencies are to be processed.
+
+Keyword Arguments:
+- `retry::Bool = false`: If `true`, and an intermediate dependency's own sub-dependencies were processed 
+  (i.e., the recursive call to `process_dependencies!` for the intermediate dependency returned `true` 
+  because `f` returned `true` for at least one sub-dependency), then the function `f` will be called 
+  again on the intermediate dependency itself. This allows for a second attempt by `f` to process the 
+  intermediate dependency after its own prerequisites might have been met by processing its sub-dependencies.
+
+Returns:
+- `Bool`: `true` if the function `f` returned `true` for at least one dependency encountered (either directly 
+  or recursively through an intermediate one). Returns `false` if `f` returned `false` for all dependencies 
+  it was applied to.
+
+Behavior Details:
+- For each dependency of `signal`:
+    1. `f(dependency)` is called.
+    2. If `f(dependency)` returns `true`, this dependency is considered processed by `f`.
+    3. If `f(dependency)` returns `false` AND the dependency is marked as `intermediate`:
+        a. `process_dependencies!(f, dependency; retry=retry)` is called recursively.
+        b. If this recursive call returns `true` (meaning `f` processed at least one sub-dependency of the 
+           intermediate one) AND `retry` is `true`, then `f(dependency)` is called again.
+- The function tracks whether `f` returned `true` for any dependency it was applied to, at any level of 
+  recursion (for intermediate dependencies) or direct application, and returns this aggregated result.
+"""
 function process_dependencies!(f::F, signal::Signal; retry::Bool = false) where {F}
     dependencies = get_dependencies(signal)
     processed_at_least_once = false
-    for i in 1:length(dependencies)
+    for i in eachindex(dependencies)
         @inbounds dependency = dependencies[i]
         # We first try to process the dependency itself
         processed = f(dependency)
@@ -540,4 +450,231 @@ function process_dependencies!(f::F, signal::Signal; retry::Bool = false) where 
     end
 
     return processed_at_least_once
+end
+
+# --- Lowlevel Interface of SignalDependenciesProps ---
+
+const SignalDependenciesProps_IsIntermediateMask_SingleNibble::UInt64 = UInt64(0x1) # 0001
+const SignalDependenciesProps_IsWeakMask_SingleNibble::UInt64 = UInt64(0x2)         # 0010
+const SignalDependenciesProps_IsComputedMask_SingleNibble::UInt64 = UInt64(0x4)     # 0100
+const SignalDependenciesProps_IsFreshMask_SingleNibble::UInt64 = UInt64(0x8)        # 1000
+
+const SignalDependenciesProps_IsIntermediateMask_AllNibbles::UInt64 = UInt64(0x1111_1111_1111_1111)
+const SignalDependenciesProps_IsWeakMask_AllNibbles::UInt64 = UInt64(0x2222_2222_2222_2222)
+const SignalDependenciesProps_IsComputedMask_AllNibbles::UInt64 = UInt64(0x4444_4444_4444_4444)
+const SignalDependenciesProps_IsFreshMask_AllNibbles::UInt64 = UInt64(0x8888_8888_8888_8888)
+
+# Target pattern if all dependency checks (C & (W | F)) pass for all 16 nibbles in a full chunk,
+# assuming the result (0 or 1 for each nibble) is aligned to the LSB of its conceptual 4-bit slot.
+const SignalDependenciesProps_AllNibblesPassTarget::UInt64 = UInt64(0x1111_1111_1111_1111)
+
+# This function returns the chunk index and the offset within the chunk for the given index
+@inline function signal_dependencies_props_get_offset(index::Int)
+    chunk_index = div(index - 1, 16) + 1
+    offset_within_chunk = mod(index - 1, 16) << 2
+    return (chunk_index, offset_within_chunk)
+end
+
+# This function adds a dependency to the signal dependencies props with a default (zeroed) nibble
+function add_dependency!(props::SignalDependenciesProps)
+    newlength = (props.length += 1)
+    chunks = props.chunks
+
+    # we need 4 bits per nibble
+    nrequiredbits = 4 * newlength
+    # we have 64 bits per chunk
+    nrequiredchunks = div(nrequiredbits - 1, 64) + 1
+
+    nchunks = length(chunks)
+    if nchunks < nrequiredchunks
+        push!(chunks, UInt64(0))
+    end
+
+    return newlength
+end
+
+@inline function is_dependency(props::SignalDependenciesProps, index::Int, mask::UInt64)::Bool
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    return @inbounds(props.chunks[chunk_index] & (mask << offset_within_chunk)) != 0
+end
+
+@inline is_dependency_intermediate(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
+    props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble
+)
+
+@inline is_dependency_weak(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
+    props, index, SignalDependenciesProps_IsWeakMask_SingleNibble
+)
+
+@inline is_dependency_computed(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
+    props, index, SignalDependenciesProps_IsComputedMask_SingleNibble
+)
+
+@inline is_dependency_fresh(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
+    props, index, SignalDependenciesProps_IsFreshMask_SingleNibble
+)
+
+@inline function set_dependency!(props::SignalDependenciesProps, index::Int, mask::UInt64)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    @inbounds props.chunks[chunk_index] |= (mask << offset_within_chunk)
+    return nothing
+end
+
+@inline set_dependency_intermediate!(props::SignalDependenciesProps, index::Int) = set_dependency!(
+    props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble
+)
+
+@inline set_dependency_weak!(props::SignalDependenciesProps, index::Int) = set_dependency!(
+    props, index, SignalDependenciesProps_IsWeakMask_SingleNibble
+)
+
+@inline set_dependency_computed!(props::SignalDependenciesProps, index::Int) = set_dependency!(
+    props, index, SignalDependenciesProps_IsComputedMask_SingleNibble
+)
+
+@inline set_dependency_fresh!(props::SignalDependenciesProps, index::Int) = set_dependency!(
+    props, index, SignalDependenciesProps_IsFreshMask_SingleNibble
+)
+
+@inline function unset_dependency!(props::SignalDependenciesProps, index::Int, mask::UInt64)
+    chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
+    @inbounds props.chunks[chunk_index] &= ~(mask << offset_within_chunk)
+    return nothing
+end
+
+@inline unset_dependency_intermediate!(props::SignalDependenciesProps, index::Int) = unset_dependency!(
+    props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble
+)
+
+@inline unset_dependency_weak!(props::SignalDependenciesProps, index::Int) = unset_dependency!(
+    props, index, SignalDependenciesProps_IsWeakMask_SingleNibble
+)
+
+@inline unset_dependency_computed!(props::SignalDependenciesProps, index::Int) = unset_dependency!(
+    props, index, SignalDependenciesProps_IsComputedMask_SingleNibble
+)
+
+@inline unset_dependency_fresh!(props::SignalDependenciesProps, index::Int) = unset_dependency!(
+    props, index, SignalDependenciesProps_IsFreshMask_SingleNibble
+)
+
+@inline function set_all_dependencies!(props::SignalDependenciesProps, mask::UInt64)
+    for i in eachindex(props.chunks)
+        @inbounds props.chunks[i] |= mask
+    end
+    return nothing
+end
+
+@inline set_all_dependencies_intermediate!(props::SignalDependenciesProps) = set_all_dependencies!(
+    props, SignalDependenciesProps_IsIntermediateMask_AllNibbles
+)
+
+@inline set_all_dependencies_weak!(props::SignalDependenciesProps) = set_all_dependencies!(
+    props, SignalDependenciesProps_IsWeakMask_AllNibbles
+)
+
+@inline set_all_dependencies_computed!(props::SignalDependenciesProps) = set_all_dependencies!(
+    props, SignalDependenciesProps_IsComputedMask_AllNibbles
+)
+
+@inline set_all_dependencies_fresh!(props::SignalDependenciesProps) = set_all_dependencies!(
+    props, SignalDependenciesProps_IsFreshMask_AllNibbles
+)
+
+@inline function unset_all_dependencies!(props::SignalDependenciesProps, mask::UInt64)
+    for i in eachindex(props.chunks)
+        @inbounds props.chunks[i] &= ~mask
+    end
+    return nothing
+end
+
+@inline unset_all_dependencies_intermediate!(props::SignalDependenciesProps) = unset_all_dependencies!(
+    props, SignalDependenciesProps_IsIntermediateMask_AllNibbles
+)
+
+@inline unset_all_dependencies_weak!(props::SignalDependenciesProps) = unset_all_dependencies!(
+    props, SignalDependenciesProps_IsWeakMask_AllNibbles
+)
+
+@inline unset_all_dependencies_computed!(props::SignalDependenciesProps) = unset_all_dependencies!(
+    props, SignalDependenciesProps_IsComputedMask_AllNibbles
+)
+
+@inline unset_all_dependencies_fresh!(props::SignalDependenciesProps) = unset_all_dependencies!(
+    props, SignalDependenciesProps_IsFreshMask_AllNibbles
+)
+
+# is_meeting_pending_criteria(props::SignalDependenciesProps) -> Bool
+#
+# Checks if the set of dependencies represented by `props` meets the criteria for the owning signal to be pending.
+# Returns `true` if and only if for **every** dependency `dep_i` tracked in `props`:
+#
+# `(IsComputed(dep_i) AND (IsWeak(dep_i) OR IsFresh(dep_i)))` is true.
+#
+# If `props.length` is 0, it returns `false` (as a signal with no dependencies cannot be pending based on them).
+#
+# The check is performed efficiently using bitwise operations on `UInt64` chunks, where each chunk stores
+# the properties for 16 dependencies.
+@inline function is_meeting_pending_criteria(props::SignalDependenciesProps)
+    ndependencies = props.length
+
+    if ndependencies == 0
+        return false
+    end
+
+    chunks = props.chunks
+    nchunks = length(chunks)
+
+    for i in 1:(nchunks - 1)
+        @inbounds chunk = chunks[i]
+        # These shifts align the specific property bit (W, C, or F) from each of the 16 nibbles
+        # to the LSB position of where a conceptual 4-bit status group would start (e.g., bit 0, 4, 8,...).
+        # This allows for parallel bitwise operations across all nibbles.
+        # Original nibble structure within the chunk: F C W I (MSB to LSB: b3 b2 b1 b0)
+        # After (chunk & MASK_W) >> 1 : all W bits are effectively at b0 of their group.
+        # After (chunk & MASK_C) >> 2 : all C bits are effectively at b0 of their group.
+        # After (chunk & MASK_F) >> 3 : all F bits are effectively at b0 of their group.
+        W_bits = (chunk & SignalDependenciesProps_IsWeakMask_AllNibbles) >> 1
+        C_bits = (chunk & SignalDependenciesProps_IsComputedMask_AllNibbles) >> 2
+        F_bits = (chunk & SignalDependenciesProps_IsFreshMask_AllNibbles) >> 3
+
+        # For each dependency i: Pass_i = C_i & (W_i | F_i).
+        # This is performed for all 16 dependencies in the chunk in parallel.
+        # If all pass, pass_results_for_chunk will equal SignalDependenciesProps_AllNibblesPassTarget.
+        pass_results_for_chunk = C_bits & (W_bits | F_bits)
+        if pass_results_for_chunk != SignalDependenciesProps_AllNibblesPassTarget
+            return false
+        end
+    end
+
+    # --- Handle the last chunk (which might be partially filled) ---
+    # The strategy is to create a temporary version of the last chunk where all unused
+    # higher-order nibbles are forced to a state that passes the C & (W | F) check.
+    # This allows the use of SignalDependenciesProps_AllNibblesPassTarget for the final comparison.
+
+    # Get the bit offset of the LSB of the last *used* nibble in the last chunk.
+    # If length = 1, offset_of_last_nibble_lsb = 0.
+    # If length = 16 (full chunk), offset_of_last_nibble_lsb = 60.
+    _chunk_idx_of_last_dep, offset_of_last_nibble_lsb = signal_dependencies_props_get_offset(ndependencies)
+
+    # Create a mask that, when ORed, sets all bits of unused higher nibbles to 1.
+    # (offset_of_last_nibble_lsb + 4) is the bit position immediately *after* the last used nibble.
+    # Shifting 0xFFFF... left by this amount makes all higher bits 1 (and lower bits 0).
+    # Example: For 1 dependency, offset_of_last_nibble_lsb = 0. Mask sets bits from position 4 upwards.
+    # If the chunk is full (e.g., 16 dependencies), offset_of_last_nibble_lsb = 60.
+    # Then (offset_of_last_nibble_lsb + 4) = 64. (0xFFFF... << 64) = 0. So, no change for a full chunk.
+    mask_to_make_unused_nibbles_pass = 0xffff_ffff_ffff_ffff << (offset_of_last_nibble_lsb + 4)
+    @inbounds modified_last_chunk = chunks[_chunk_idx_of_last_dep] | mask_to_make_unused_nibbles_pass
+
+    # Apply the same parallel check logic to the modified last chunk.
+    W_bits_last = (modified_last_chunk & SignalDependenciesProps_IsWeakMask_AllNibbles) >> 1
+    C_bits_last = (modified_last_chunk & SignalDependenciesProps_IsComputedMask_AllNibbles) >> 2
+    F_bits_last = (modified_last_chunk & SignalDependenciesProps_IsFreshMask_AllNibbles) >> 3
+    pass_results_last_chunk = C_bits_last & (W_bits_last | F_bits_last)
+
+    if pass_results_last_chunk != SignalDependenciesProps_AllNibblesPassTarget
+        return false
+    end
+
+    return true
 end
