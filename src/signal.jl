@@ -59,18 +59,10 @@ A signal may become 'pending' if all its dependencies meet the following criteri
 
 A signal can depend on another signal without listening to it, see [`add_dependency!`](@ref) for more details.
 
-See also:
-- [`add_dependency!`](@ref): Establishes a dependency relationship between signals.
-- [`set_value!`](@ref): Updates the signal's value and notifies listeners.
-- [`compute!`](@ref): Function responsible for recomputing a signal's value.
-- [`is_pending`](@ref): Checks if the signal is marked for potential recomputation.
-- [`is_computed`](@ref): Checks if the signal currently holds a computed value (not `UndefValue`).
-- [`get_value`](@ref): Retrieves the current value stored in the signal.
-- [`get_type`](@ref): Retrieves the type identifier of the signal.
-- [`get_metadata`](@ref): Retrieves the metadata associated with the signal.
-- [`get_age`](@ref): Gets the computation age of the signal.
-- [`get_dependencies`](@ref): Returns the list of signals this signal depends on.
-- [`get_listeners`](@ref): Returns the list of signals that listen to this signal.
+The `type` field is an optional `UInt8` type identifier. 
+It might be useful to choose different computation strategies for different types of signals within the [`compute!`](@ref) function.
+
+See also: [`add_dependency!`](@ref), [`set_value!`](@ref), [`compute!`](@ref), [`process_dependencies!`](@ref)
 """
 mutable struct Signal
     value::Any
@@ -122,7 +114,8 @@ end
 """
     is_pending(s::Signal) -> Bool
 
-Check if the signal `s` is marked as pending.
+Check if the signal `s` is marked as pending. This usually indicates that the signal's value is stale and needs recomputation.
+See also: [`compute!`](@ref), [`process_dependencies!`](@ref).
 """
 function is_pending(s::Signal)::Bool
     # In case if the signal is potentially pending, we need to check if it is actually pending or not
@@ -142,7 +135,8 @@ end
 """
     is_computed(s::Signal) -> Bool
 
-Check if the signal `s` has been computed (i.e., its value has been set at least once).
+Check if the signal `s` has been computed (i.e., its value is not equal to [`UndefValue()`](@ref)).
+See also: [`set_value!`](@ref).
 """
 function is_computed(s::Signal)::Bool
     return s.value !== UndefValue()
@@ -199,6 +193,12 @@ end
     set_value!(s::Signal, value::Any)
 
 Set the `value` of the signal `s`. Notifies all the active listeners of the signal.
+
+!!! note
+    This function is not a part of the public API. 
+    Additionally, it is implied that [`set_value!`](@ref) must be called only on signals that are pending.
+    Use [`compute!`](@ref) for a more general way to update signal values.
+
 """
 function set_value!(signal::Signal, @nospecialize(value))
 
