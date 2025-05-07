@@ -37,7 +37,9 @@ mutable struct SignalDependenciesProps
     const chunks::Vector{UInt64}
 
     function SignalDependenciesProps()
-        return new(0, UInt64[])
+        # It is reasonable to assume that a signal will have at least one dependency
+        # Thus we need to allocate at least one chunk
+        return new(0, UInt64[ UInt64(0) ]) 
     end
 end
 
