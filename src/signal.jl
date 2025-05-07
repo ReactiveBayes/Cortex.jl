@@ -26,12 +26,14 @@ struct UndefMetadata end
 #
 # !!! warning
 #     This is an internal type and should not be used directly. Use the functions defined in the `Signal` structure instead.
-#     This structure can be removed in the future.
+#     This structure can be removed in the future. The structure itself uses `@inbounds` annotations 
+#     to access the `chunks` array in the most efficient way possible. Incorrect usage of this structure
+#     may result in undefined behavior and memory corruption.
 # 
 # The lowlevel implementation of this structure and the associated functions is implemented under the `Signal` structure
 # Here we only need to defined this structure in order to properly define the `Signal` structure below
 mutable struct SignalDependenciesProps
-    ndependencies::Int
+    length::Int
     const chunks::Vector{UInt64}
 
     function SignalDependenciesProps()
@@ -424,7 +426,7 @@ Behavior Details:
 function process_dependencies!(f::F, signal::Signal; retry::Bool = false) where {F}
     dependencies = get_dependencies(signal)
     processed_at_least_once = false
-    for i in 1:length(dependencies)
+    for i in eachindex(dependencies)
         @inbounds dependency = dependencies[i]
         # We first try to process the dependency itself
         processed = f(dependency)
@@ -449,19 +451,19 @@ end
 
 # --- Lowlevel Interface of SignalDependenciesProps ---
 
-const SignalDependenciesProps_IsIntermediateMask_SingleNibble::UInt64 = 0x1 # 0001
-const SignalDependenciesProps_IsWeakMask_SingleNibble::UInt64 = 0x2         # 0010
-const SignalDependenciesProps_IsComputedMask_SingleNibble::UInt64 = 0x4     # 0100
-const SignalDependenciesProps_IsFreshMask_SingleNibble::UInt64 = 0x8        # 1000
+const SignalDependenciesProps_IsIntermediateMask_SingleNibble::UInt64 = UInt64(0x1) # 0001
+const SignalDependenciesProps_IsWeakMask_SingleNibble::UInt64 = UInt64(0x2)         # 0010
+const SignalDependenciesProps_IsComputedMask_SingleNibble::UInt64 = UInt64(0x4)     # 0100
+const SignalDependenciesProps_IsFreshMask_SingleNibble::UInt64 = UInt64(0x8)        # 1000
 
-const SignalDependenciesProps_IsIntermediateMask_AllNibbles::UInt64 = 0x1111_1111_1111_1111
-const SignalDependenciesProps_IsWeakMask_AllNibbles::UInt64 = 0x2222_2222_2222_2222
-const SignalDependenciesProps_IsComputedMask_AllNibbles::UInt64 = 0x4444_4444_4444_4444
-const SignalDependenciesProps_IsFreshMask_AllNibbles::UInt64 = 0x8888_8888_8888_8888
+const SignalDependenciesProps_IsIntermediateMask_AllNibbles::UInt64 = UInt64(0x1111_1111_1111_1111)
+const SignalDependenciesProps_IsWeakMask_AllNibbles::UInt64 = UInt64(0x2222_2222_2222_2222)
+const SignalDependenciesProps_IsComputedMask_AllNibbles::UInt64 = UInt64(0x4444_4444_4444_4444)
+const SignalDependenciesProps_IsFreshMask_AllNibbles::UInt64 = UInt64(0x8888_8888_8888_8888)
 
 # Target pattern if all dependency checks (C & (W | F)) pass for all 16 nibbles in a full chunk,
 # assuming the result (0 or 1 for each nibble) is aligned to the LSB of its conceptual 4-bit slot.
-const SignalDependenciesProps_AllNibblesPassTarget::UInt64 = 0x1111_1111_1111_1111
+const SignalDependenciesProps_AllNibblesPassTarget::UInt64 = UInt64(0x1111_1111_1111_1111)
 
 # This function returns the chunk index and the offset within the chunk for the given index
 @inline function signal_dependencies_props_get_offset(index::Int)
@@ -472,24 +474,25 @@ end
 
 # This function adds a dependency to the signal dependencies props with a default (zeroed) nibble
 function add_dependency!(props::SignalDependenciesProps)
-    props.ndependencies += 1
+    newlength = (props.length += 1)
+    chunks = props.chunks
 
     # we need 4 bits per nibble
-    nrequiredbits = 4 * props.ndependencies
+    nrequiredbits = 4 * newlength
     # we have 64 bits per chunk
     nrequiredchunks = div(nrequiredbits - 1, 64) + 1
 
-    nchunks = length(props.chunks)
+    nchunks = length(chunks)
     if nchunks < nrequiredchunks
-        push!(props.chunks, UInt64(0))
+        push!(chunks, UInt64(0))
     end
 
-    return props.ndependencies
+    return newlength
 end
 
 @inline function is_dependency(props::SignalDependenciesProps, index::Int, mask::UInt64)::Bool
     chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    return (props.chunks[chunk_index] & (mask << offset_within_chunk)) != 0
+    return @inbounds(props.chunks[chunk_index] & (mask << offset_within_chunk)) != 0
 end
 
 @inline is_dependency_intermediate(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
@@ -510,7 +513,7 @@ end
 
 @inline function set_dependency!(props::SignalDependenciesProps, index::Int, mask::UInt64)
     chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    props.chunks[chunk_index] |= (mask << offset_within_chunk)
+    @inbounds props.chunks[chunk_index] |= (mask << offset_within_chunk)
     return nothing
 end
 
@@ -532,7 +535,7 @@ end
 
 @inline function unset_dependency!(props::SignalDependenciesProps, index::Int, mask::UInt64)
     chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
-    props.chunks[chunk_index] &= ~(mask << offset_within_chunk)
+    @inbounds props.chunks[chunk_index] &= ~(mask << offset_within_chunk)
     return nothing
 end
 
@@ -554,7 +557,7 @@ end
 
 @inline function set_all_dependencies!(props::SignalDependenciesProps, mask::UInt64)
     for i in eachindex(props.chunks)
-        props.chunks[i] |= mask
+        @inbounds props.chunks[i] |= mask
     end
     return nothing
 end
@@ -577,7 +580,7 @@ end
 
 @inline function unset_all_dependencies!(props::SignalDependenciesProps, mask::UInt64)
     for i in eachindex(props.chunks)
-        props.chunks[i] &= ~mask
+        @inbounds props.chunks[i] &= ~mask
     end
     return nothing
 end
@@ -605,17 +608,22 @@ end
 #
 # `(IsComputed(dep_i) AND (IsWeak(dep_i) OR IsFresh(dep_i)))` is true.
 #
-# If `props.ndependencies` is 0, it returns `false` (as a signal with no dependencies cannot be pending based on them).
+# If `props.length` is 0, it returns `false` (as a signal with no dependencies cannot be pending based on them).
 #
 # The check is performed efficiently using bitwise operations on `UInt64` chunks, where each chunk stores
 # the properties for 16 dependencies.
 @inline function is_meeting_pending_criteria(props::SignalDependenciesProps)
-    if props.ndependencies == 0
+    ndependencies = props.length
+
+    if ndependencies == 0
         return false
     end
 
-    for i in 1:(length(props.chunks) - 1)
-        @inbounds chunk = props.chunks[i]
+    chunks = props.chunks
+    nchunks = length(chunks)
+
+    for i in 1:(nchunks - 1)
+        @inbounds chunk = chunks[i]
         # These shifts align the specific property bit (W, C, or F) from each of the 16 nibbles
         # to the LSB position of where a conceptual 4-bit status group would start (e.g., bit 0, 4, 8,...).
         # This allows for parallel bitwise operations across all nibbles.
@@ -642,9 +650,9 @@ end
     # This allows the use of SignalDependenciesProps_AllNibblesPassTarget for the final comparison.
 
     # Get the bit offset of the LSB of the last *used* nibble in the last chunk.
-    # If ndependencies = 1, offset_of_last_nibble_lsb = 0.
-    # If ndependencies = 16 (full chunk), offset_of_last_nibble_lsb = 60.
-    _chunk_idx_of_last_dep, offset_of_last_nibble_lsb = signal_dependencies_props_get_offset(props.ndependencies)
+    # If length = 1, offset_of_last_nibble_lsb = 0.
+    # If length = 16 (full chunk), offset_of_last_nibble_lsb = 60.
+    _chunk_idx_of_last_dep, offset_of_last_nibble_lsb = signal_dependencies_props_get_offset(ndependencies)
 
     # Create a mask that, when ORed, sets all bits of unused higher nibbles to 1.
     # (offset_of_last_nibble_lsb + 4) is the bit position immediately *after* the last used nibble.
@@ -653,7 +661,7 @@ end
     # If the chunk is full (e.g., 16 dependencies), offset_of_last_nibble_lsb = 60.
     # Then (offset_of_last_nibble_lsb + 4) = 64. (0xFFFF... << 64) = 0. So, no change for a full chunk.
     mask_to_make_unused_nibbles_pass = 0xffff_ffff_ffff_ffff << (offset_of_last_nibble_lsb + 4)
-    modified_last_chunk = props.chunks[end] | mask_to_make_unused_nibbles_pass
+    @inbounds modified_last_chunk = chunks[_chunk_idx_of_last_dep] | mask_to_make_unused_nibbles_pass
 
     # Apply the same parallel check logic to the modified last chunk.
     W_bits_last = (modified_last_chunk & SignalDependenciesProps_IsWeakMask_AllNibbles) >> 1
