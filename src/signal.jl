@@ -313,9 +313,9 @@ function notify_listener!(listener::Signal, signal::Signal; update_potentially_p
     for i in eachindex(listener.dependencies)
         @inbounds dependency = listener.dependencies[i]
         if (dependency === signal)
-            dependencies_props = listener.dependencies_props
-            set_dependency_fresh!(dependencies_props, i)
-            set_dependency_computed!(dependencies_props, i)
+            listener_dependencies_props = listener.dependencies_props
+            set_dependency_fresh!(listener_dependencies_props, i)
+            set_dependency_computed!(listener_dependencies_props, i)
         end
     end
 
