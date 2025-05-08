@@ -159,7 +159,7 @@ end
     add_edge_to_model!(model, o1, f1)
     add_edge_to_model!(model, o2, f2)
 
-    resolve_dependencies!(model, BeliefPropagation())
+    Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), model)
 
     # Set data
     Cortex.set_value!(Cortex.get_edge_message_to_factor(model, o1, f1), 1)
@@ -222,7 +222,7 @@ end
             add_edge_to_model!(model, oi, fi)
         end
 
-        resolve_dependencies!(model, BeliefPropagation())
+        Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), model)
 
         return model, p, o, f
     end
@@ -313,7 +313,7 @@ end
             add_edge_to_model!(model, x[i + 1], transition[i])
         end
 
-        resolve_dependencies!(model, BeliefPropagation())
+        Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), model)
 
         return model, x, y, likelihood, transition
     end

@@ -27,7 +27,9 @@ end
         get_edge_message_to_variable,
         get_edge_message_to_factor,
         get_factor_neighbors,
-        get_variable_neighbors
+        get_variable_neighbors,
+        get_variables,
+        get_factors
 
     struct IncorrectlyImplementedCortexModel <: AbstractCortexModel end
 
@@ -74,10 +76,19 @@ end
     @test_throws CortexModelInterfaceNotImplementedError(
         :get_variable_neighbors, IncorrectlyImplementedCortexModel(), (VariableId(1),)
     ) get_variable_neighbors(IncorrectlyImplementedCortexModel(), VariableId(1))
+
+    @test_throws CortexModelInterfaceNotImplementedError(:get_variables, IncorrectlyImplementedCortexModel(), ()) get_variables(
+        IncorrectlyImplementedCortexModel()
+    )
+
+    @test_throws CortexModelInterfaceNotImplementedError(:get_factors, IncorrectlyImplementedCortexModel(), ()) get_factors(
+        IncorrectlyImplementedCortexModel()
+    )
 end
 
 @testmodule ModelUtils begin
     using Reexport
+    using MappedArrays
 
     import Cortex
     import Cortex:
@@ -112,9 +123,8 @@ end
         index::Any
         marginal::Signal
 
-        Variable(name, index...) = new(
-            name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal, metadata = (name, index...))
-        )
+        Variable(name, index...) =
+            new(name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal, metadata = (name, index...)))
     end
 
     function Cortex.add_variable_to_model!(model::Model, name::Any, index...)
@@ -182,122 +192,12 @@ end
         return Iterators.map(FactorId, BipartiteFactorGraphs.neighbors(model.graph, v.id))
     end
 
-    export BeliefPropagation
-    export resolve_dependencies!
-
-    struct BeliefPropagation end
-
-    function resolve_variable_dependencies!(vi::Int, model::Model, ::BeliefPropagation)
-        paired_messages = map(BipartiteFactorGraphs.neighbors(model.graph, vi)) do fi
-            return (
-                to_factor = Cortex.get_edge_message_to_factor(model, VariableId(vi), FactorId(fi)),
-                to_variable = Cortex.get_edge_message_to_variable(model, VariableId(vi), FactorId(fi))
-            )
-        end
-
-        N = length(paired_messages)
-
-        if N < 2
-            Cortex.add_dependency!(
-                Cortex.get_variable_marginal(model, VariableId(vi)), paired_messages[1].to_variable; intermediate = true
-            )
-            return nothing
-        end
-
-        # Use a simplified approach for small numbers of neighbors
-        if N <= 5
-            for i in 1:N
-                Cortex.add_dependency!(
-                    Cortex.get_variable_marginal(model, VariableId(vi)),
-                    paired_messages[i].to_variable;
-                    intermediate = true
-                )
-
-                for k in 1:N
-                    if i !== k
-                        Cortex.add_dependency!(
-                            paired_messages[i].to_factor, paired_messages[k].to_variable; intermediate = true
-                        )
-                    end
-                end
-            end
-
-            return nothing
-        end
-
-        middle_point = div(N, 2)
-
-        left_range = 1:middle_point
-        right_range = (middle_point + 1):N
-
-        left_dependency = form_segment_tree_dependency!(left_range, paired_messages)
-        right_dependency = form_segment_tree_dependency!(right_range, paired_messages)
-
-        for left_fi in left_range
-            Cortex.add_dependency!(paired_messages[left_fi].to_factor, right_dependency; intermediate = true)
-        end
-
-        for right_fi in right_range
-            Cortex.add_dependency!(paired_messages[right_fi].to_factor, left_dependency; intermediate = true)
-        end
-
-        Cortex.add_dependency!(
-            Cortex.get_variable_marginal(model, VariableId(vi)), left_dependency; intermediate = true
-        )
-        Cortex.add_dependency!(
-            Cortex.get_variable_marginal(model, VariableId(vi)), right_dependency; intermediate = true
-        )
+    function Cortex.get_variables(model::Model)
+        return Iterators.map(VariableId, BipartiteFactorGraphs.variables(model.graph))
     end
 
-    function form_segment_tree_dependency!(range, paired_messages)
-        @assert length(range) >= 1
-
-        if length(range) == 1
-            return paired_messages[range[1]].to_variable
-        end
-
-        middle_point = div(length(range), 2)
-        left_range = range[begin:middle_point]
-        right_range = range[(middle_point + 1):end]
-
-        left_dependency = form_segment_tree_dependency!(left_range, paired_messages)
-        right_dependency = form_segment_tree_dependency!(right_range, paired_messages)
-
-        for left_fi in left_range
-            Cortex.add_dependency!(@inbounds(paired_messages[left_fi].to_factor), right_dependency; intermediate = true)
-        end
-
-        for right_fi in right_range
-            Cortex.add_dependency!(@inbounds(paired_messages[right_fi].to_factor), left_dependency; intermediate = true)
-        end
-
-        intermediate = Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal)
-
-        Cortex.add_dependency!(intermediate, left_dependency; intermediate = true)
-        Cortex.add_dependency!(intermediate, right_dependency; intermediate = true)
-
-        return intermediate
-    end
-
-    function resolve_dependencies!(model::Model, ::BeliefPropagation)
-        # For each variable
-        for vi in variables(model.graph)
-            resolve_variable_dependencies!(vi, model, BeliefPropagation())
-        end
-
-        # For each factor, we add a dependency on the inbound messages from its neighbors (excluding self-references)
-        for fi in factors(model.graph)
-            for vi in neighbors(model.graph, fi)
-                for e_vi in neighbors(model.graph, fi)
-                    if vi !== e_vi
-                        Cortex.add_dependency!(
-                            Cortex.get_edge_message_to_variable(model, VariableId(vi), FactorId(fi)),
-                            Cortex.get_edge_message_to_factor(model, VariableId(e_vi), FactorId(fi))
-                        )
-                    end
-                end
-            end
-        end
+    function Cortex.get_factors(model::Model)
+        return Iterators.map(FactorId, BipartiteFactorGraphs.factors(model.graph))
     end
 end
 
@@ -351,10 +251,13 @@ end
 
         @test Cortex.get_variable_neighbors(model, v) |> collect == [f]
         @test Cortex.get_factor_neighbors(model, f) |> collect == [v]
+
+        @test Cortex.get_variables(model) |> collect == [v]
+        @test Cortex.get_factors(model) |> collect == [f]
     end
 end
 
-@testitem "The BeliefPropagation algorithm should properly resolve dependencies #1" setup = [ModelUtils] begin
+@testitem "The default dependency resolution algorithm should properly resolve dependencies #1" setup = [ModelUtils] begin
     using BipartiteFactorGraphs
     using .ModelUtils
 
@@ -372,7 +275,7 @@ end
     add_edge_to_model!(model, v2, f2)
     add_edge_to_model!(model, v3, f2)
 
-    resolve_dependencies!(model, BeliefPropagation())
+    Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), model)
 
     v1_marginal = Cortex.get_variable_marginal(model, v1)
     v1_marginal_deps = Cortex.get_dependencies(v1_marginal)

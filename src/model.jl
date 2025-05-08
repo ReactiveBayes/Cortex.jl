@@ -92,3 +92,11 @@ end
 function get_variable_neighbors(model::AbstractCortexModel, variable::VariableId)
     throw(CortexModelInterfaceNotImplementedError(:get_variable_neighbors, model, (variable,)))
 end
+
+function get_variables(model::AbstractCortexModel)
+    throw(CortexModelInterfaceNotImplementedError(:get_variables, model, ()))
+end
+
+function get_factors(model::AbstractCortexModel)
+    throw(CortexModelInterfaceNotImplementedError(:get_factors, model, ()))
+end
