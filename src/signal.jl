@@ -454,6 +454,19 @@ end
 
 # --- Lowlevel Interface of SignalDependenciesProps ---
 
+function Base.show(io::IO, props::SignalDependenciesProps)
+    print(io, "SignalDependenciesProps(length=", props.length, ", deps=[")
+    for i in 1:props.length
+        print(io, "(")
+        print(io, ifelse(is_dependency_weak(props, i), "w,", "!w,")) 
+        print(io, ifelse(is_dependency_intermediate(props, i), "i,", "!i,"))
+        print(io, ifelse(is_dependency_computed(props, i), "c,", "!c,"))
+        print(io, ifelse(is_dependency_fresh(props, i), "f", "!f"))
+        print(io, ")")
+    end
+    print("])")
+end
+
 const SignalDependenciesProps_IsIntermediateMask_SingleNibble::UInt64 = UInt64(0x1) # 0001
 const SignalDependenciesProps_IsWeakMask_SingleNibble::UInt64 = UInt64(0x2)         # 0010
 const SignalDependenciesProps_IsComputedMask_SingleNibble::UInt64 = UInt64(0x4)     # 0100

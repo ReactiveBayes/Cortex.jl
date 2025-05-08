@@ -46,8 +46,8 @@ struct InferenceTaskComputer{F}
     f::F
 end
 
-function (computer::InferenceTaskComputer)(task::InferenceTask, signal::Signal)
-    compute!(signal) do signal, dependencies
+function (computer::InferenceTaskComputer)(task::InferenceTask, signal::Signal; force = false)
+    compute!(signal; force = force) do signal, dependencies
         computer.f(task.model, signal, dependencies)
     end
 end
@@ -98,9 +98,10 @@ function update_posterior!(
                 task = tasks[i]
                 task_has_been_processed_at_least_once = process_inference_task(callback, task)
 
-                if !task_has_been_processed_at_least_once
+                if is_pending(task.marginal)
                     tmask[i] = true
                 end
+
                 _should_continue = _should_continue || task_has_been_processed_at_least_once
             end
         end
@@ -112,7 +113,7 @@ function update_posterior!(
     end
 
     for task in tasks
-        callback(task, task.marginal)
+        callback(task, task.marginal; force = true)
     end
 
     return nothing

@@ -538,6 +538,34 @@ end
     end
 end
 
+@testitem "TODO (broken?) test: Signal Should always be pending if it only has weak dependencies and they are computed" begin
+    # I'm not sure if this functionality is what we want
+    
+    import Cortex: Signal, add_dependency!, get_value, set_value!, is_pending
+
+    s1 = Signal()
+    s2 = Signal()
+
+    derived = Signal()
+
+    add_dependency!(derived, s1; weak = true)
+    add_dependency!(derived, s2; weak = true)
+
+    @test !is_pending(derived)
+
+    set_value!(s1, 1)
+
+    @test !is_pending(derived)
+
+    set_value!(s2, 2)
+
+    @test is_pending(derived)
+
+    set_value!(derived, 10)
+    
+    @test is_pending(derived)
+end
+
 @testitem "A Chain Of Signals" begin
     import Cortex: Signal, add_dependency!, get_value, set_value!, is_pending
 

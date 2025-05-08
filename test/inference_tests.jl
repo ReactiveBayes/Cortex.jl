@@ -283,7 +283,7 @@ end
     @test answer.b ≈ known_answer.b
 end
 
-@testitem "Inference in a simple SSM model" setup = [ModelUtils] begin
+@testitem "Inference in a simple SSM model - Belief Propagation" setup = [ModelUtils] begin
     using .ModelUtils
     using JET, BipartiteFactorGraphs, StableRNGs
 
@@ -364,4 +364,174 @@ end
     dataset = rand(rng, 100)
 
     answer = experiment(dataset)
+end
+
+@testitem "Inference in a simple SSM model - Mean Field" setup = [ModelUtils] begin
+    using .ModelUtils
+    using JET, BipartiteFactorGraphs, StableRNGs
+
+    struct Normal
+        mean::Float64
+        precision::Float64
+    end
+
+    struct Gamma
+        shape::Float64
+        scale::Float64
+    end
+
+    mean(g::Gamma) = g.shape * g.scale
+
+
+    mean(n::Normal) = n.mean
+    var(n::Normal) = 1 / n.precision
+
+    struct MeanFieldResolver <: Cortex.AbstractDependencyResolver end
+
+    function Cortex.resolve_variable_dependencies!(resolver::MeanFieldResolver, model::Model, variable)
+        factors_connected_to_variable = Cortex.get_variable_neighbors(model, variable)
+
+        marginal = Cortex.get_variable_marginal(model, variable)
+        for factor in factors_connected_to_variable
+            Cortex.add_dependency!(
+                marginal, Cortex.get_edge_message_to_variable(model, variable, factor); intermediate = true
+            )
+        end
+
+        return nothing
+    end
+
+    function Cortex.resolve_factor_dependencies!(resolver::MeanFieldResolver, model::Model, factor)
+        variables_connected_to_factor = Cortex.get_factor_neighbors(model, factor)
+
+        for v1 in variables_connected_to_factor, v2 in variables_connected_to_factor
+            if v1 !== v2
+                Cortex.add_dependency!(
+                    Cortex.get_edge_message_to_variable(model, v1, factor),
+                    Cortex.get_variable_marginal(model, v2);
+                    weak = true
+                )
+            end
+        end
+    end
+
+    function make_ssm_model(n)
+        model = Model()
+
+        ssnoise = add_variable_to_model!(model, :ssnoise)
+        obsnoise = add_variable_to_model!(model, :obsnoise)
+
+        x = [add_variable_to_model!(model, :x, i) for i in 1:n]
+        y = [add_variable_to_model!(model, :y, i) for i in 1:n]
+
+        likelihood = [add_factor_to_model!(model, :likelihood) for i in 1:n]
+        transition = [add_factor_to_model!(model, :transition) for i in 1:(n - 1)]
+
+        for i in 1:n
+            add_edge_to_model!(model, y[i], likelihood[i])
+            add_edge_to_model!(model, x[i], likelihood[i])
+            add_edge_to_model!(model, obsnoise, likelihood[i])
+        end
+
+        for i in 1:(n - 1)
+            add_edge_to_model!(model, x[i], transition[i])
+            add_edge_to_model!(model, x[i + 1], transition[i])
+            add_edge_to_model!(model, ssnoise, transition[i])
+        end
+
+        Cortex.resolve_dependencies!(MeanFieldResolver(), model)
+
+        # Initial marginals
+        Cortex.set_value!(Cortex.get_variable_marginal(model, ssnoise), Gamma(1.0, 1.0))
+        Cortex.set_value!(Cortex.get_variable_marginal(model, obsnoise), Gamma(1.0, 1.0))
+
+        for i in 1:n
+            Cortex.set_value!(Cortex.get_variable_marginal(model, x[i]), Normal(0.0, 1.0))
+        end
+
+        return model, x, y, obsnoise, ssnoise, likelihood, transition
+    end
+
+    function product(left::Normal, right::Normal)
+        xi = left.mean * left.precision + right.mean * right.precision
+        w = left.precision + right.precision
+        precision = w
+        mean = (1 / precision) * xi
+        return Normal(mean, precision)
+    end
+
+    function product(left::Gamma, right::Gamma)
+        return Gamma(left.shape + right.shape - 1, (left.scale * right.scale) / (left.scale + right.scale))
+    end
+
+    function computer(model::Model, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
+        if signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
+            return reduce(product, Cortex.get_value.(dependencies))
+        elseif signal.type == Cortex.InferenceSignalTypes.MessageToFactor
+            return reduce(product, Cortex.get_value.(dependencies))
+        elseif signal.type == Cortex.InferenceSignalTypes.MessageToVariable
+            @assert length(dependencies) == 2
+
+            x = findfirst(d -> first(d.metadata) == :x, dependencies)
+            y = findfirst(d -> first(d.metadata) == :y, dependencies)
+            ssnoise = findfirst(d -> first(d.metadata) == :ssnoise, dependencies)
+            obsnoise = findfirst(d -> first(d.metadata) == :obsnoise, dependencies)
+
+            if !isnothing(x) && !isnothing(ssnoise)
+                return Normal(mean(Cortex.get_value(dependencies[x])), mean(Cortex.get_value(dependencies[ssnoise])))
+            end
+
+            if !isnothing(y) && !isnothing(obsnoise)
+                return Normal(Cortex.get_value(dependencies[y]), mean(Cortex.get_value(dependencies[obsnoise])))
+            end
+
+            if !isnothing(y) && !isnothing(x)
+                q_out = Cortex.get_value(dependencies[y])
+                q_μ = Cortex.get_value(dependencies[x])
+                θ = 2 / (var(q_μ) + abs2(q_out - mean(q_μ)))
+                α = convert(typeof(θ), 1.5)
+                return Gamma(α, θ)
+            end
+
+            if filter(d -> first(d.metadata) == :x, dependencies) |> collect |> length == 2 
+                q_out = Cortex.get_value(dependencies[1])
+                q_μ = Cortex.get_value(dependencies[2])
+                θ = 2 / (var(q_out) + var(q_μ) + abs2(mean(q_out) - mean(q_μ)))
+                α = convert(typeof(θ), 1.5)
+                return Gamma(α, θ)
+            end
+
+            error("Unreachable reached", dependencies)
+        end
+
+        error("Unreachable reached")
+    end
+
+    function experiment(dataset, vmp_iterations)
+        n = length(dataset)
+        model, x, y, obsnoise, ssnoise, likelihood, transition = make_ssm_model(n)
+
+        for i in 1:n
+            Cortex.set_value!(Cortex.get_variable_marginal(model, y[i]), dataset[i])
+        end
+
+        for iteration in 1:vmp_iterations
+            Cortex.update_posterior!(computer, model, x)
+            Cortex.update_posterior!(computer, model, ssnoise)
+            Cortex.update_posterior!(computer, model, obsnoise)
+        end
+
+        return (
+            x = Cortex.get_value.(Cortex.get_variable_marginal.(model, x)),
+            ssnoise = Cortex.get_value(Cortex.get_variable_marginal(model, ssnoise)),
+            obsnoise = Cortex.get_value(Cortex.get_variable_marginal(model, obsnoise))
+        )
+    end
+
+    rng = StableRNG(1234)
+    dataset = rand(rng, 10)
+
+    answer = experiment(dataset, 100)
+
+    @show answer.ssnoise
 end
