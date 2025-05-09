@@ -170,7 +170,7 @@ end
 
     function computer(model::Model, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
         if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
-            v, f = signal.metadata
+            f = Cortex.get_metadata(signal, :f, Int)
 
             factor = get_factor_data(model.graph, f)
 
@@ -229,7 +229,7 @@ end
 
     function computer(model::Model, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
         if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
-            v, f = signal.metadata
+            f = Cortex.get_metadata(signal, :f, Int)
 
             factor = get_factor_data(model.graph, f)
 
@@ -382,7 +382,6 @@ end
 
     mean(g::Gamma) = g.shape * g.scale
 
-
     mean(n::Normal) = n.mean
     var(n::Normal) = 1 / n.precision
 
@@ -472,10 +471,10 @@ end
         elseif signal.type == Cortex.InferenceSignalTypes.MessageToVariable
             @assert length(dependencies) == 2
 
-            x = findfirst(d -> first(d.metadata) == :x, dependencies)
-            y = findfirst(d -> first(d.metadata) == :y, dependencies)
-            ssnoise = findfirst(d -> first(d.metadata) == :ssnoise, dependencies)
-            obsnoise = findfirst(d -> first(d.metadata) == :obsnoise, dependencies)
+            x = findfirst(d -> Cortex.get_metadata(d, :name, Symbol) == :x, dependencies)
+            y = findfirst(d -> Cortex.get_metadata(d, :name, Symbol) == :y, dependencies)
+            ssnoise = findfirst(d -> Cortex.get_metadata(d, :name, Symbol) == :ssnoise, dependencies)
+            obsnoise = findfirst(d -> Cortex.get_metadata(d, :name, Symbol) == :obsnoise, dependencies)
 
             if !isnothing(x) && !isnothing(ssnoise)
                 return Normal(mean(Cortex.get_value(dependencies[x])), mean(Cortex.get_value(dependencies[ssnoise])))
@@ -493,7 +492,7 @@ end
                 return Gamma(α, θ)
             end
 
-            if filter(d -> first(d.metadata) == :x, dependencies) |> collect |> length == 2 
+            if filter(d -> Cortex.get_metadata(d, :name, Symbol) == :x, dependencies) |> collect |> length == 2
                 q_out = Cortex.get_value(dependencies[1])
                 q_μ = Cortex.get_value(dependencies[2])
                 θ = 2 / (var(q_out) + var(q_μ) + abs2(mean(q_out) - mean(q_μ)))

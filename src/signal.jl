@@ -6,13 +6,6 @@ This indicates that the signal has not yet been computed or has been invalidated
 """
 struct UndefValue end
 
-"""
-    UndefMetadata
-
-A singleton type used to represent undefined metadata within a [`Signal`](@ref).
-"""
-struct UndefMetadata end
-
 # Stores properties of a `Signal`'s dependencies in a bit-packed format.
 #
 # Each dependency's properties are stored in 4 bits (nibbles) within a `UInt64` chunk. 
@@ -39,16 +32,23 @@ mutable struct SignalDependenciesProps
     function SignalDependenciesProps()
         # It is reasonable to assume that a signal will have at least one dependency
         # Thus we need to allocate at least one chunk
-        return new(0, UInt64[ UInt64(0) ]) 
+        return new(0, UInt64[UInt64(0)])
     end
+end
+
+# Stores the properties of a `Signal` in a single structure to avoid excessive memory accesses
+Base.@kwdef struct SignalProps
+    is_potentially_pending::Bool = false
+    is_pending::Bool = false
 end
 
 """
     Signal()
-    Signal(value; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
+    Signal(value; type::UInt8 = 0x00, metadata::Dict{Symbol, Any} = Dict{Symbol, Any}())
 
 A reactive signal that holds a value and tracks dependencies as well as notifies listeners when the value changes.
 If created without an initial value, the signal is initialized with [`UndefValue()`](@ref).
+The `metadata` field is a dictionary that can be used to store arbitrary metadata about the signal.
 
 A signal is said to be 'pending' if it is ready for potential recomputation (due to updated dependencies).
 However, a signal is not recomputed immediately when it becomes pending. Moreover, a Signal does not know 
@@ -70,15 +70,10 @@ See also: [`add_dependency!`](@ref), [`set_value!`](@ref), [`compute!`](@ref), [
 """
 mutable struct Signal
     value::Any
-    metadata::Any
+    metadata::Dict{Symbol, Any}
 
     type::UInt8
-
-    # Pending state
-    # - is_potentially_pending: Whether the signal is potentially pending
-    # - is_pending: Whether the signal is actually pending
-    # We store it as a single tuple in order to avoid excessive memory accesses
-    pending_state::Tuple{Bool, Bool}
+    props::SignalProps
 
     const dependencies_props::SignalDependenciesProps
     const dependencies::Vector{Signal}
@@ -87,12 +82,12 @@ mutable struct Signal
     const listeners::Vector{Signal}
 
     # Constructor for creating an empty signal
-    function Signal(; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
+    function Signal(; type::UInt8 = 0x00, metadata::Dict{Symbol, Any} = Dict{Symbol, Any}())
         return new(
             UndefValue(),
             metadata,
             type,
-            (false, false),
+            SignalProps(),
             SignalDependenciesProps(),
             Vector{Signal}(),
             trues(0),
@@ -101,12 +96,12 @@ mutable struct Signal
     end
 
     # Constructor for creating a new signal with a value
-    function Signal(value::Any; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
+    function Signal(value::Any; type::UInt8 = 0x00, metadata::Dict{Symbol, Any} = Dict{Symbol, Any}())
         return new(
             value,
             metadata,
             type,
-            (false, false),
+            SignalProps(),
             SignalDependenciesProps(),
             Vector{Signal}(),
             trues(0),
@@ -124,13 +119,13 @@ See also: [`compute!`](@ref), [`process_dependencies!`](@ref).
 function is_pending(s::Signal)::Bool
     # In case if the signal is potentially pending, we need to check if it is actually pending or not
     # and reset the potential pending state
-    (_is_potentially_pending, _is_pending) = s.pending_state
-    if _is_pending
+    props = s.props
+    if props.is_pending
         return true
     end
-    if _is_potentially_pending
+    if props.is_potentially_pending
         new_is_pending = is_meeting_pending_criteria(s.dependencies_props)
-        s.pending_state = (false, new_is_pending)
+        s.props = SignalProps(is_potentially_pending = false, is_pending = new_is_pending)
         return new_is_pending
     end
     return false
@@ -169,10 +164,47 @@ end
     get_metadata(s::Signal)
 
 Get the metadata associated with the signal `s`.
-Defaults to `UndefMetadata()` if not specified during construction.
 """
 function get_metadata(s::Signal)
     return s.metadata
+end
+
+"""
+    get_metadata(s::Signal, key::Symbol, ::Type{T} = Any) where {T}
+
+Get the metadata associated with the signal `s` for the given key. If type `T` is provided, return the metadata for the given key cast to the given type.
+"""
+function get_metadata(s::Signal, key::Symbol, ::Type{T} = Any) where {T}
+    return (convert(T, s.metadata[key]))::T
+end
+
+"""
+    has_metadata(s::Signal, key::Symbol)
+
+Check if the signal `s` has metadata for the given key.
+"""
+function has_metadata(s::Signal, key::Symbol)::Bool
+    return haskey(s.metadata, key)::Bool
+end
+
+"""
+    set_metadata!(s::Signal, key::Symbol, value::Any)
+
+Set the metadata for the signal `s` to the given key and value.
+"""
+function set_metadata!(s::Signal, key::Symbol, @nospecialize(value))
+    s.metadata[key] = value
+    return nothing
+end
+
+"""
+    unset_metadata!(s::Signal, key::Symbol)
+
+Unset the metadata for the signal `s` for the given key.
+"""
+function unset_metadata!(s::Signal, key::Symbol)
+    delete!(s.metadata, key)
+    return nothing
 end
 
 """
@@ -208,13 +240,14 @@ function set_value!(signal::Signal, @nospecialize(value))
 
     # We update the value of the signal
     signal.value = value
-    signal.pending_state = (false, false)
 
     # This marks the current dependencies as "not fresh", meaning that they have been used 
     # to set a new value on the current signal. The signal will not be pending anymore 
     # as its dependencies are not fresh 
     # (unless they are weak dependencies, which only required to be computed and not necessarily fresh)
     unset_all_dependencies_fresh!(signal.dependencies_props)
+
+    signal.props = SignalProps(is_potentially_pending = false, is_pending = false)
 
     # We notify all the signals that listen to this signal that it has been updated
     # We only notify the signals that are listening to the current signal
@@ -250,6 +283,7 @@ By default, the added dependency is not intermediate.
 If so, it will notify `signal` immediately. Note that if `listen` is set to false, 
 further updates to `dependency` will not trigger notifications to `signal`.
 
+The same dependency should not be added multiple times. Doing so will result in wrong notification behaviour and likely will lead to incorrect results.
 Note that this function does nothing if `signal === dependency`.
 """
 function add_dependency!(
@@ -297,9 +331,9 @@ function add_dependency!(
         if !is_computed(signal)
             set_dependency_fresh!(dependencies_props, dependencies_props_index)
         end
-        signal.pending_state = (true, false)
+        signal.props = SignalProps(is_potentially_pending = true, is_pending = false)
     elseif check_computed && !is_computed(dependency)
-        signal.pending_state = (false, false)
+        signal.props = SignalProps(is_potentially_pending = false, is_pending = false)
     end
 
     return nothing
@@ -307,17 +341,17 @@ end
 
 function notify_listener!(listener::Signal, signal::Signal; update_potentially_pending::Bool = false)
     if update_potentially_pending
-        listener.pending_state = (true, false)
+        listener.props = SignalProps(is_potentially_pending = true, is_pending = false)
     end
 
-    # Technically we can stop early here, but we allow duplicate dependencies
-    # and also test against it, we can relax this?
+    # Duplicate dependencies will never received a notification
     for i in eachindex(listener.dependencies)
         @inbounds dependency = listener.dependencies[i]
         if (dependency === signal)
             listener_dependencies_props = listener.dependencies_props
             set_dependency_fresh!(listener_dependencies_props, i)
             set_dependency_computed!(listener_dependencies_props, i)
+            break
         end
     end
 
@@ -336,8 +370,12 @@ function Base.show(io::IO, s::Signal)
     if get_type(s) !== 0x00
         print(io, ", type=", type_str)                               # New order
     end
-    if meta !== UndefMetadata()                                     # Check against UndefMetadata
-        print(io, ", metadata=", repr(meta))
+    if !isempty(meta)
+        print(io, ", metadata=(")
+        for (key, value) in pairs(meta)
+            print(io, ":", key, "=>", repr(value), ",")
+        end
+        print(io, ")")
     end
     print(io, ")")
 end
@@ -358,14 +396,13 @@ Keyword Arguments:
 - `force::Bool = false`: If `true`, the signal will be computed even if it is not pending.
 """
 function compute!(strategy, signal::Signal; force::Bool = false)
-    if !is_pending(signal) && !force
+    if !force && !is_pending(signal)
         throw(
             ArgumentError(
                 "Signal is not pending. Cannot compute a non-pending signal. Use `force=true` to force computation."
             )
         )
     end
-
     dependencies = get_dependencies(signal)
     new_value = compute_value!(strategy, signal, dependencies)
     set_value!(signal, new_value)
@@ -456,9 +493,9 @@ end
 
 function Base.show(io::IO, props::SignalDependenciesProps)
     print(io, "SignalDependenciesProps(length=", props.length, ", deps=[")
-    for i in 1:props.length
+    for i in 1:(props.length)
         print(io, "(")
-        print(io, ifelse(is_dependency_weak(props, i), "w,", "!w,")) 
+        print(io, ifelse(is_dependency_weak(props, i), "w,", "!w,"))
         print(io, ifelse(is_dependency_intermediate(props, i), "i,", "!i,"))
         print(io, ifelse(is_dependency_computed(props, i), "c,", "!c,"))
         print(io, ifelse(is_dependency_fresh(props, i), "f", "!f"))
@@ -511,21 +548,17 @@ end
     return @inbounds(props.chunks[chunk_index] & (mask << offset_within_chunk)) != 0
 end
 
-@inline is_dependency_intermediate(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
-    props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble
-)
+@inline is_dependency_intermediate(props::SignalDependenciesProps, index::Int)::Bool =
+    is_dependency(props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble)
 
-@inline is_dependency_weak(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
-    props, index, SignalDependenciesProps_IsWeakMask_SingleNibble
-)
+@inline is_dependency_weak(props::SignalDependenciesProps, index::Int)::Bool =
+    is_dependency(props, index, SignalDependenciesProps_IsWeakMask_SingleNibble)
 
-@inline is_dependency_computed(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
-    props, index, SignalDependenciesProps_IsComputedMask_SingleNibble
-)
+@inline is_dependency_computed(props::SignalDependenciesProps, index::Int)::Bool =
+    is_dependency(props, index, SignalDependenciesProps_IsComputedMask_SingleNibble)
 
-@inline is_dependency_fresh(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
-    props, index, SignalDependenciesProps_IsFreshMask_SingleNibble
-)
+@inline is_dependency_fresh(props::SignalDependenciesProps, index::Int)::Bool =
+    is_dependency(props, index, SignalDependenciesProps_IsFreshMask_SingleNibble)
 
 @inline function set_dependency!(props::SignalDependenciesProps, index::Int, mask::UInt64)
     chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
@@ -533,21 +566,17 @@ end
     return nothing
 end
 
-@inline set_dependency_intermediate!(props::SignalDependenciesProps, index::Int) = set_dependency!(
-    props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble
-)
+@inline set_dependency_intermediate!(props::SignalDependenciesProps, index::Int) =
+    set_dependency!(props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble)
 
-@inline set_dependency_weak!(props::SignalDependenciesProps, index::Int) = set_dependency!(
-    props, index, SignalDependenciesProps_IsWeakMask_SingleNibble
-)
+@inline set_dependency_weak!(props::SignalDependenciesProps, index::Int) =
+    set_dependency!(props, index, SignalDependenciesProps_IsWeakMask_SingleNibble)
 
-@inline set_dependency_computed!(props::SignalDependenciesProps, index::Int) = set_dependency!(
-    props, index, SignalDependenciesProps_IsComputedMask_SingleNibble
-)
+@inline set_dependency_computed!(props::SignalDependenciesProps, index::Int) =
+    set_dependency!(props, index, SignalDependenciesProps_IsComputedMask_SingleNibble)
 
-@inline set_dependency_fresh!(props::SignalDependenciesProps, index::Int) = set_dependency!(
-    props, index, SignalDependenciesProps_IsFreshMask_SingleNibble
-)
+@inline set_dependency_fresh!(props::SignalDependenciesProps, index::Int) =
+    set_dependency!(props, index, SignalDependenciesProps_IsFreshMask_SingleNibble)
 
 @inline function unset_dependency!(props::SignalDependenciesProps, index::Int, mask::UInt64)
     chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
@@ -555,21 +584,17 @@ end
     return nothing
 end
 
-@inline unset_dependency_intermediate!(props::SignalDependenciesProps, index::Int) = unset_dependency!(
-    props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble
-)
+@inline unset_dependency_intermediate!(props::SignalDependenciesProps, index::Int) =
+    unset_dependency!(props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble)
 
-@inline unset_dependency_weak!(props::SignalDependenciesProps, index::Int) = unset_dependency!(
-    props, index, SignalDependenciesProps_IsWeakMask_SingleNibble
-)
+@inline unset_dependency_weak!(props::SignalDependenciesProps, index::Int) =
+    unset_dependency!(props, index, SignalDependenciesProps_IsWeakMask_SingleNibble)
 
-@inline unset_dependency_computed!(props::SignalDependenciesProps, index::Int) = unset_dependency!(
-    props, index, SignalDependenciesProps_IsComputedMask_SingleNibble
-)
+@inline unset_dependency_computed!(props::SignalDependenciesProps, index::Int) =
+    unset_dependency!(props, index, SignalDependenciesProps_IsComputedMask_SingleNibble)
 
-@inline unset_dependency_fresh!(props::SignalDependenciesProps, index::Int) = unset_dependency!(
-    props, index, SignalDependenciesProps_IsFreshMask_SingleNibble
-)
+@inline unset_dependency_fresh!(props::SignalDependenciesProps, index::Int) =
+    unset_dependency!(props, index, SignalDependenciesProps_IsFreshMask_SingleNibble)
 
 @inline function set_all_dependencies!(props::SignalDependenciesProps, mask::UInt64)
     for i in eachindex(props.chunks)
@@ -578,21 +603,17 @@ end
     return nothing
 end
 
-@inline set_all_dependencies_intermediate!(props::SignalDependenciesProps) = set_all_dependencies!(
-    props, SignalDependenciesProps_IsIntermediateMask_AllNibbles
-)
+@inline set_all_dependencies_intermediate!(props::SignalDependenciesProps) =
+    set_all_dependencies!(props, SignalDependenciesProps_IsIntermediateMask_AllNibbles)
 
-@inline set_all_dependencies_weak!(props::SignalDependenciesProps) = set_all_dependencies!(
-    props, SignalDependenciesProps_IsWeakMask_AllNibbles
-)
+@inline set_all_dependencies_weak!(props::SignalDependenciesProps) =
+    set_all_dependencies!(props, SignalDependenciesProps_IsWeakMask_AllNibbles)
 
-@inline set_all_dependencies_computed!(props::SignalDependenciesProps) = set_all_dependencies!(
-    props, SignalDependenciesProps_IsComputedMask_AllNibbles
-)
+@inline set_all_dependencies_computed!(props::SignalDependenciesProps) =
+    set_all_dependencies!(props, SignalDependenciesProps_IsComputedMask_AllNibbles)
 
-@inline set_all_dependencies_fresh!(props::SignalDependenciesProps) = set_all_dependencies!(
-    props, SignalDependenciesProps_IsFreshMask_AllNibbles
-)
+@inline set_all_dependencies_fresh!(props::SignalDependenciesProps) =
+    set_all_dependencies!(props, SignalDependenciesProps_IsFreshMask_AllNibbles)
 
 @inline function unset_all_dependencies!(props::SignalDependenciesProps, mask::UInt64)
     for i in eachindex(props.chunks)
@@ -601,21 +622,17 @@ end
     return nothing
 end
 
-@inline unset_all_dependencies_intermediate!(props::SignalDependenciesProps) = unset_all_dependencies!(
-    props, SignalDependenciesProps_IsIntermediateMask_AllNibbles
-)
+@inline unset_all_dependencies_intermediate!(props::SignalDependenciesProps) =
+    unset_all_dependencies!(props, SignalDependenciesProps_IsIntermediateMask_AllNibbles)
 
-@inline unset_all_dependencies_weak!(props::SignalDependenciesProps) = unset_all_dependencies!(
-    props, SignalDependenciesProps_IsWeakMask_AllNibbles
-)
+@inline unset_all_dependencies_weak!(props::SignalDependenciesProps) =
+    unset_all_dependencies!(props, SignalDependenciesProps_IsWeakMask_AllNibbles)
 
-@inline unset_all_dependencies_computed!(props::SignalDependenciesProps) = unset_all_dependencies!(
-    props, SignalDependenciesProps_IsComputedMask_AllNibbles
-)
+@inline unset_all_dependencies_computed!(props::SignalDependenciesProps) =
+    unset_all_dependencies!(props, SignalDependenciesProps_IsComputedMask_AllNibbles)
 
-@inline unset_all_dependencies_fresh!(props::SignalDependenciesProps) = unset_all_dependencies!(
-    props, SignalDependenciesProps_IsFreshMask_AllNibbles
-)
+@inline unset_all_dependencies_fresh!(props::SignalDependenciesProps) =
+    unset_all_dependencies!(props, SignalDependenciesProps_IsFreshMask_AllNibbles)
 
 # is_meeting_pending_criteria(props::SignalDependenciesProps) -> Bool
 #

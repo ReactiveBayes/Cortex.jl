@@ -12,7 +12,11 @@ struct InferenceTask{M}
 end
 
 function create_inference_task(model, variable)
-    return InferenceTask(model, Cortex.get_variable_marginal(model, variable))
+    marginal = Cortex.get_variable_marginal(model, variable)
+    for dependency in get_dependencies(marginal)
+        dependency.props = SignalProps(is_potentially_pending = true, is_pending = false)
+    end
+    return InferenceTask(model, marginal)
 end
 
 function process_inference_task(callback::F, task::InferenceTask) where {F}
@@ -82,7 +86,7 @@ function update_posterior!(
     tmask = falses(length(tasks))
 
     indices         = 1:1:length(tasks)
-    indices_reverse = reverse(indices)
+    indices_reverse = reverse(indices)::typeof(indices)
 
     # We begin with a forward pass
     # After each pass, we alternate the order
