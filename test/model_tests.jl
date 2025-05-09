@@ -123,14 +123,8 @@ end
         index::Any
         marginal::Signal
 
-        Variable(name, index...) = new(
-            name,
-            index,
-            Signal(
-                type = Cortex.InferenceSignalTypes.IndividualMarginal,
-                metadata = Dict{Symbol, Any}(:name => name, :index => index)
-            )
-        )
+        Variable(name, index...) =
+            new(name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal, metadata = (name, index)))
     end
 
     function Cortex.add_variable_to_model!(model::Model, name::Any, index...)
@@ -142,12 +136,8 @@ end
         message_to_factor::Signal
 
         function Edge(v, f)
-            message_to_variable = Signal(
-                type = Cortex.InferenceSignalTypes.MessageToVariable, metadata = Dict{Symbol, Any}(:v => v, :f => f)
-            )
-            message_to_factor = Signal(
-                type = Cortex.InferenceSignalTypes.MessageToFactor, metadata = Dict{Symbol, Any}(:v => v, :f => f)
-            )
+            message_to_variable = Signal(type = Cortex.InferenceSignalTypes.MessageToVariable, metadata = (v, f))
+            message_to_factor = Signal(type = Cortex.InferenceSignalTypes.MessageToFactor, metadata = (v, f))
             return new(message_to_variable, message_to_factor)
         end
     end

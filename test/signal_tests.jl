@@ -11,68 +11,34 @@
 end
 
 @testitem "Signal Type and Metadata" begin
-    import Cortex: Signal, get_type, get_metadata, has_metadata, set_metadata!, unset_metadata!
+    import Cortex: Signal, get_type, get_metadata, UndefMetadata
 
     @testset "Default Values" begin
         s = Signal(42)
         @test get_type(s) === 0x00
-        @test isempty(get_metadata(s))
-        @test !has_metadata(s, :a)
-        @test !has_metadata(s, :b)
+        @test get_metadata(s) === UndefMetadata()
         s_empty = Signal()
         @test get_type(s_empty) === 0x00
-        @test isempty(get_metadata(s_empty))
-        @test !has_metadata(s_empty, :a)
-        @test !has_metadata(s_empty, :b)
+        @test get_metadata(s_empty) === UndefMetadata()
     end
 
     @testset "Custom Type" begin
         s = Signal(42; type = 0x05)
         @test get_type(s) === 0x05
-        @test isempty(get_metadata(s))
-        @test !has_metadata(s, :a)
-        @test !has_metadata(s, :b)
+        @test get_metadata(s) === UndefMetadata()
     end
 
     @testset "Custom Metadata" begin
-        meta = Dict{Symbol, Any}(:info => "extra data")
-        s = Signal(42; metadata = meta)
+        s = Signal(42; metadata = Dict{Symbol, Any}(:info => "extra data"))
         @test get_type(s) === 0x00
-        @test get_metadata(s) === meta
-        @test has_metadata(s, :info)
-        @test get_metadata(s, :info) == "extra data"
-        @test !has_metadata(s, :a)
-        @test !has_metadata(s, :b)
+        @test get_metadata(s) == Dict{Symbol, Any}(:info => "extra data")
+        @test get_metadata(s)[:info] == "extra data"
     end
 
     @testset "Custom Type and Metadata" begin
-        s = Signal(42; type = 0xff, metadata = Dict{Symbol, Any}(:a => 1))
+        s = Signal(42; type = 0xff, metadata = 1)
         @test get_type(s) === 0xff
-        @test has_metadata(s, :a)
-        @test !has_metadata(s, :b)
-        @test get_metadata(s) == Dict(:a => 1)
-        @test get_metadata(s, :a) == 1
-        @test get_metadata(s, :a, Int) == 1
-        @test get_metadata(s, :a, Float64) == 1.0
-        @test_throws Exception get_metadata(s, :a, String)
-    end
-
-    @testset "Setting metadata" begin
-        s = Signal()
-        @test !has_metadata(s, :a)
-        set_metadata!(s, :a, 1)
-        @test has_metadata(s, :a)
-        @test get_metadata(s, :a) == 1
-    end
-
-    @testset "Removing metadata" begin
-        s = Signal()
-        @test !has_metadata(s, :a)
-        set_metadata!(s, :a, 1)
-        @test has_metadata(s, :a)
-        @test get_metadata(s, :a) == 1
-        unset_metadata!(s, :a)
-        @test !has_metadata(s, :a)
+        @test get_metadata(s) === 1
     end
 end
 

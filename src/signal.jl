@@ -6,6 +6,14 @@ This indicates that the signal has not yet been computed or has been invalidated
 """
 struct UndefValue end
 
+"""
+    UndefMetadata
+
+A singleton type used to represent an undefined or uninitialized state within a [`Signal`](@ref).
+This indicates that the signal has no metadata.
+"""
+struct UndefMetadata end
+
 # Stores properties of a `Signal`'s dependencies in a bit-packed format.
 #
 # Each dependency's properties are stored in 4 bits (nibbles) within a `UInt64` chunk. 
@@ -44,11 +52,11 @@ end
 
 """
     Signal()
-    Signal(value; type::UInt8 = 0x00, metadata::Dict{Symbol, Any} = Dict{Symbol, Any}())
+    Signal(value; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
 
 A reactive signal that holds a value and tracks dependencies as well as notifies listeners when the value changes.
 If created without an initial value, the signal is initialized with [`UndefValue()`](@ref).
-The `metadata` field is a dictionary that can be used to store arbitrary metadata about the signal.
+The `metadata` field can be used to store arbitrary metadata about the signal. Default value is [`UndefMetadata()`](@ref).
 
 A signal is said to be 'pending' if it is ready for potential recomputation (due to updated dependencies).
 However, a signal is not recomputed immediately when it becomes pending. Moreover, a Signal does not know 
@@ -70,7 +78,7 @@ See also: [`add_dependency!`](@ref), [`set_value!`](@ref), [`compute!`](@ref), [
 """
 mutable struct Signal
     value::Any
-    metadata::Dict{Symbol, Any}
+    metadata::Any
 
     type::UInt8
     props::SignalProps
@@ -82,7 +90,7 @@ mutable struct Signal
     const listeners::Vector{Signal}
 
     # Constructor for creating an empty signal
-    function Signal(; type::UInt8 = 0x00, metadata::Dict{Symbol, Any} = Dict{Symbol, Any}())
+    function Signal(; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
         return new(
             UndefValue(),
             metadata,
@@ -96,7 +104,7 @@ mutable struct Signal
     end
 
     # Constructor for creating a new signal with a value
-    function Signal(value::Any; type::UInt8 = 0x00, metadata::Dict{Symbol, Any} = Dict{Symbol, Any}())
+    function Signal(value::Any; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
         return new(
             value,
             metadata,
@@ -167,44 +175,6 @@ Get the metadata associated with the signal `s`.
 """
 function get_metadata(s::Signal)
     return s.metadata
-end
-
-"""
-    get_metadata(s::Signal, key::Symbol, ::Type{T} = Any) where {T}
-
-Get the metadata associated with the signal `s` for the given key. If type `T` is provided, return the metadata for the given key cast to the given type.
-"""
-function get_metadata(s::Signal, key::Symbol, ::Type{T} = Any) where {T}
-    return (convert(T, s.metadata[key]))::T
-end
-
-"""
-    has_metadata(s::Signal, key::Symbol)
-
-Check if the signal `s` has metadata for the given key.
-"""
-function has_metadata(s::Signal, key::Symbol)::Bool
-    return haskey(s.metadata, key)::Bool
-end
-
-"""
-    set_metadata!(s::Signal, key::Symbol, value::Any)
-
-Set the metadata for the signal `s` to the given key and value.
-"""
-function set_metadata!(s::Signal, key::Symbol, @nospecialize(value))
-    s.metadata[key] = value
-    return nothing
-end
-
-"""
-    unset_metadata!(s::Signal, key::Symbol)
-
-Unset the metadata for the signal `s` for the given key.
-"""
-function unset_metadata!(s::Signal, key::Symbol)
-    delete!(s.metadata, key)
-    return nothing
 end
 
 """
