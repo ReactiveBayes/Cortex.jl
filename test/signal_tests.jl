@@ -44,12 +44,21 @@ end
 
 @testitem "Empty Signal Creation" begin
     import Cortex:
-        Signal, UndefValue, get_value, get_dependencies, get_listeners, get_type, get_metadata, is_pending, is_computed
+        Signal,
+        UndefValue,
+        UndefMetadata,
+        get_value,
+        get_dependencies,
+        get_listeners,
+        get_type,
+        get_metadata,
+        is_pending,
+        is_computed
 
     s = Signal()
     @test get_value(s) === UndefValue()
     @test get_type(s) === 0x00
-    @test isempty(get_metadata(s))
+    @test get_metadata(s) === UndefMetadata()
     @test isempty(get_dependencies(s))
     @test isempty(get_listeners(s))
     @test !is_pending(s)
@@ -697,35 +706,35 @@ end
         s_no_meta = Signal()
         @test repr(s_no_meta) == "Signal(value=#undef, pending=false)"
 
-        s_meta = Signal(metadata = Dict{Symbol, Any}(:test => 1))
-        @test repr(s_meta) == "Signal(value=#undef, pending=false, metadata=(:test=>1,))"
+        s_meta = Signal(metadata = (test = 1,))
+        @test repr(s_meta) == "Signal(value=#undef, pending=false, metadata=(test = 1,))"
 
         s_type = Signal(type = 0x01)
         @test repr(s_type) == "Signal(value=#undef, pending=false, type=0x01)"
 
-        s_both = Signal(type = 0xab, metadata = Dict{Symbol, Any}(:a => 1, :b => 2))
-        @test repr(s_both) == "Signal(value=#undef, pending=false, type=0xab, metadata=(:a=>1,:b=>2,))"
+        s_both = Signal(type = 0xab, metadata = 2.3)
+        @test repr(s_both) == "Signal(value=#undef, pending=false, type=0xab, metadata=2.3)"
     end
 
     @testset "Initialized Signal" begin
         s_int = Signal(123)
         @test repr(s_int) == "Signal(value=123, pending=false)"
 
-        s_str_meta = Signal("test"; metadata = Dict{Symbol, Any}(:info => "some info"))
-        @test repr(s_str_meta) == "Signal(value=\"test\", pending=false, metadata=(:info=>\"some info\",))"
+        s_str_meta = Signal("test"; metadata = "some info")
+        @test repr(s_str_meta) == "Signal(value=\"test\", pending=false, metadata=\"some info\")"
     end
 
     @testset "Pending Signal" begin
         s1 = Signal(1)
-        s_pending = Signal(type = 0x1f, metadata = Dict{Symbol, Any}(:meta => 1.0))
+        s_pending = Signal(type = 0x1f, metadata = 1)
         add_dependency!(s_pending, s1)
-        @test repr(s_pending) == "Signal(value=#undef, pending=true, type=0x1f, metadata=(:meta=>1.0,))"
+        @test repr(s_pending) == "Signal(value=#undef, pending=true, type=0x1f, metadata=1)"
 
         set_value!(s_pending, 50)
-        @test repr(s_pending) == "Signal(value=50, pending=false, type=0x1f, metadata=(:meta=>1.0,))"
+        @test repr(s_pending) == "Signal(value=50, pending=false, type=0x1f, metadata=1)"
 
         set_value!(s1, 2)
-        @test repr(s_pending) == "Signal(value=50, pending=true, type=0x1f, metadata=(:meta=>1.0,))"
+        @test repr(s_pending) == "Signal(value=50, pending=true, type=0x1f, metadata=1)"
     end
 end
 

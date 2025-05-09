@@ -123,8 +123,9 @@ end
         index::Any
         marginal::Signal
 
-        Variable(name, index...) =
-            new(name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal, metadata = (name, index)))
+        Variable(name, index...) = new(
+            name, index, Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal, metadata = (name, index))
+        )
     end
 
     function Cortex.add_variable_to_model!(model::Model, name::Any, index...)
