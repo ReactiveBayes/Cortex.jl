@@ -216,8 +216,9 @@ get_connected_factor_ids(engine::InferenceEngine, variable_id) =
 module InferenceSignalTypes
 const MessageToVariable = UInt8(0x01)
 const MessageToFactor = UInt8(0x02)
-const IndividualMarginal = UInt8(0x03)
-const JointMarginal = UInt8(0x04)
+const ProductOfMessages = UInt8(0x03)
+const IndividualMarginal = UInt8(0x04)
+const JointMarginal = UInt8(0x05)
 end
 
 function prepare_signals_metadata!(engine::InferenceEngine)

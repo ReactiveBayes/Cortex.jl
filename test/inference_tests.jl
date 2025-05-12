@@ -409,7 +409,8 @@ end
             elseif factor.fform === :prior
                 error("Should not be invoked")
             end
-        elseif signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
+        elseif signal.type == Cortex.InferenceSignalTypes.IndividualMarginal ||
+            signal.type == Cortex.InferenceSignalTypes.ProductOfMessages
             answer = Cortex.get_value(dependencies[1])::Beta
             for i in 2:length(dependencies)
                 @inbounds next = Cortex.get_value(dependencies[i])::Beta
