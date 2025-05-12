@@ -1,12 +1,21 @@
 struct InferenceEngine{M}
     model_backend::M
 
-    function InferenceEngine(; model_backend::M) where {M}
-        return new{M}(throw_if_backend_unsupported(model_backend))
+    function InferenceEngine(; model_backend::M, prepare_signals_metadata::Bool = true) where {M}
+        checked_backend = throw_if_backend_unsupported(model_backend)::M
+        engine = new{M}(checked_backend)
+
+        if prepare_signals_metadata
+            prepare_signals_metadata!(engine)
+        end
+
+        return engine
     end
 end
 
 get_model_backend(engine::InferenceEngine) = engine.model_backend
+
+Base.broadcastable(engine::InferenceEngine) = Ref(engine)
 
 struct UnsupportedModelBackendError{B} <: Exception
     backend::B
@@ -209,6 +218,27 @@ const MessageToVariable = UInt8(0x01)
 const MessageToFactor = UInt8(0x02)
 const IndividualMarginal = UInt8(0x03)
 const JointMarginal = UInt8(0x04)
+end
+
+function prepare_signals_metadata!(engine::InferenceEngine)
+    for variable_id in get_variable_ids(engine)
+        marginal = get_marginal(engine, variable_id)::Cortex.Signal
+        marginal.type = Cortex.InferenceSignalTypes.IndividualMarginal
+        marginal.metadata = (variable_id,)
+    end
+
+    for factor_id in get_factor_ids(engine)
+        variable_ids = get_connected_variable_ids(engine, factor_id)
+        for variable_id in variable_ids
+            message_to_factor = get_message_to_factor(engine, variable_id, factor_id)::Cortex.Signal
+            message_to_factor.type = Cortex.InferenceSignalTypes.MessageToFactor
+            message_to_factor.metadata = (variable_id, factor_id)
+
+            message_to_variable = get_message_to_variable(engine, variable_id, factor_id)::Cortex.Signal
+            message_to_variable.type = Cortex.InferenceSignalTypes.MessageToVariable
+            message_to_variable.metadata = (variable_id, factor_id)
+        end
+    end
 end
 
 struct InferenceTask{E}

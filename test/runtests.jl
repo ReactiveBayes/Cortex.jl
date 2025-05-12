@@ -20,7 +20,7 @@ using TestItemRunner
         marginal::Cortex.Signal
 
         function Variable(name, index...)
-            return new(name, index, Cortex.Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal))
+            return new(name, index, Cortex.Signal())
         end
     end
 
@@ -40,15 +40,8 @@ using TestItemRunner
         message_to_variable::Cortex.Signal
         message_to_factor::Cortex.Signal
 
-        function Connection(variable_id, factor_id, label, index = 0)
-            return new(
-                label,
-                index,
-                Cortex.Signal(
-                    type = Cortex.InferenceSignalTypes.MessageToVariable, metadata = (variable_id, factor_id)
-                ),
-                Cortex.Signal(type = Cortex.InferenceSignalTypes.MessageToFactor, metadata = (variable_id, factor_id))
-            )
+        function Connection(label, index = 0)
+            return new(label, index, Cortex.Signal(), Cortex.Signal())
         end
     end
 
