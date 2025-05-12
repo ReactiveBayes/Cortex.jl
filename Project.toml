@@ -3,6 +3,12 @@ uuid = "39612bbb-57ff-4bee-a8f8-6b0371679005"
 authors = ["Bagaev Dmitry <bvdmitri@gmail.com> and contributors"]
 version = "0.1.0"
 
+[weakdeps]
+BipartiteFactorGraphs = "b30351d1-6332-4c89-82f4-633fdf76981a"
+
+[extensions]
+BipartiteFactorGraphsExt = "BipartiteFactorGraphs"
+
 [compat]
 Aqua = "0.8"
 BenchmarkTools = "1.6"

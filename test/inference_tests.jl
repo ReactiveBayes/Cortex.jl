@@ -1,3 +1,152 @@
+@testitem "It should not be possible to create an inference engine for an unsupported model backend" begin
+    import Cortex: UnsupportedModelBackendError
+
+    @test_throws UnsupportedModelBackendError(1) Cortex.InferenceEngine(model_backend = 1)
+    @test_throws UnsupportedModelBackendError("string") Cortex.InferenceEngine(model_backend = "string")
+
+    @test_throws "The model backend of type `Int64` is not supported." Cortex.InferenceEngine(model_backend = 1)
+    @test_throws "The model backend of type `String` is not supported." Cortex.InferenceEngine(model_backend = "string")
+end
+
+@testitem "`BipartiteFactorGraphs` backend should be supported through extensions" begin
+    using BipartiteFactorGraphs
+
+    graph = BipartiteFactorGraphs.BipartiteFactorGraph()
+
+    engine = Cortex.InferenceEngine(model_backend = graph)
+
+    # This test checks that the inference engine is created without errors
+    @test engine isa Cortex.InferenceEngine
+end
+
+@testmodule InferenceUtils begin
+    using Reexport
+    @reexport using BipartiteFactorGraphs
+    @reexport using Cortex
+
+    export Variable, Factor, Connection
+
+    # For testing purposes we define a simple `Variable` type that is used to test the inference engine
+    # It contains a `marginal` field that is a `Signal` object.
+    # A name and index are also stored to make it easier to identify the variable in tests.
+    struct Variable
+        name::Symbol
+        index::Any
+        marginal::Cortex.Signal
+
+        function Variable(name, index...)
+            return new(name, index, Cortex.Signal(type = Cortex.InferenceSignalTypes.IndividualMarginal))
+        end
+    end
+
+    # For testing purposes we define a simple `Factor` type that is used to test the inference engine
+    # It contains a `fform` field that is a symbol that represents the factor's form.
+    struct Factor
+        fform::Any
+    end
+
+    # For testing purposes we define a simple `Connection` type that is used to test the inference engine
+    # It contains a `label` field that is a symbol that represents the connection's label, an `index` field that is an integer that represents the connection's index,
+    # a `message_to_variable` field that is a `Signal` object that represents the message to the variable, 
+    # and a `message_to_factor` field that is a `Signal` object that represents the message to the factor.
+    struct Connection
+        label::Symbol
+        index::Int
+        message_to_variable::Cortex.Signal
+        message_to_factor::Cortex.Signal
+
+        function Connection(label, index = 0)
+            return new(
+                label,
+                index,
+                Cortex.Signal(type = Cortex.InferenceSignalTypes.MessageToVariable),
+                Cortex.Signal(type = Cortex.InferenceSignalTypes.MessageToFactor)
+            )
+        end
+    end
+
+    # This is required to be implemented a variable data structure returned from the inference engine's backend
+    Cortex.get_marginal(variable::Variable) = variable.marginal
+
+    # This is required to be implemented a connection data structure returned from the inference engine's backend
+    Cortex.get_connection_label(connection::Connection) = connection.label
+    Cortex.get_connection_index(connection::Connection) = connection.index
+    Cortex.get_message_to_variable(connection::Connection) = connection.message_to_variable
+    Cortex.get_message_to_factor(connection::Connection) = connection.message_to_factor
+end
+
+@testitem "Test inference related functions for custom inference engine in `InferenceUtils`" setup = [InferenceUtils] begin
+    using .InferenceUtils
+    using BipartiteFactorGraphs
+
+    graph = BipartiteFactorGraph()
+
+    variable_id_1 = add_variable!(graph, Variable(:a))
+    variable_id_2 = add_variable!(graph, Variable(:b, 1))
+    variable_id_3 = add_variable!(graph, Variable(:c, 2, 3))
+
+    inference_engine = Cortex.InferenceEngine(model_backend = graph)
+
+    @test Cortex.get_variable(inference_engine, variable_id_1).name == :a
+    @test Cortex.get_variable(inference_engine, variable_id_2).name == :b
+    @test Cortex.get_variable(inference_engine, variable_id_3).name == :c
+    @test Cortex.get_variable(inference_engine, variable_id_1).index == ()
+    @test Cortex.get_variable(inference_engine, variable_id_2).index == (1,)
+    @test Cortex.get_variable(inference_engine, variable_id_3).index == (2, 3)
+
+    @test Cortex.get_marginal(Cortex.get_variable(inference_engine, variable_id_1)) isa Cortex.Signal
+    @test Cortex.get_marginal(Cortex.get_variable(inference_engine, variable_id_2)) isa Cortex.Signal
+    @test Cortex.get_marginal(Cortex.get_variable(inference_engine, variable_id_3)) isa Cortex.Signal
+
+    @test Cortex.get_marginal(inference_engine, variable_id_1) ===
+        Cortex.get_marginal(Cortex.get_variable(inference_engine, variable_id_1))
+    @test Cortex.get_marginal(inference_engine, variable_id_2) ===
+        Cortex.get_marginal(Cortex.get_variable(inference_engine, variable_id_2))
+    @test Cortex.get_marginal(inference_engine, variable_id_3) ===
+        Cortex.get_marginal(Cortex.get_variable(inference_engine, variable_id_3))
+
+    factor_id_1 = add_factor!(graph, Factor(:f1))
+    factor_id_2 = add_factor!(graph, Factor(:f2))
+
+    @test Cortex.get_factor(inference_engine, factor_id_1).fform === :f1
+    @test Cortex.get_factor(inference_engine, factor_id_2).fform === :f2
+
+    add_edge!(graph, variable_id_1, factor_id_1, Connection(:out))
+    add_edge!(graph, variable_id_2, factor_id_2, Connection(:theta))
+
+    @test Cortex.get_connection(inference_engine, variable_id_1, factor_id_1) isa Connection
+    @test Cortex.get_connection(inference_engine, variable_id_2, factor_id_2) isa Connection
+
+    @test Cortex.get_connection_label(Cortex.get_connection(inference_engine, variable_id_1, factor_id_1)) === :out
+    @test Cortex.get_connection_label(Cortex.get_connection(inference_engine, variable_id_2, factor_id_2)) === :theta
+
+    @test Cortex.get_connection_label(inference_engine, variable_id_1, factor_id_1) ===
+        Cortex.get_connection_label(Cortex.get_connection(inference_engine, variable_id_1, factor_id_1))
+    @test Cortex.get_connection_label(inference_engine, variable_id_2, factor_id_2) ===
+        Cortex.get_connection_label(Cortex.get_connection(inference_engine, variable_id_2, factor_id_2))
+
+    @test Cortex.get_connection_index(Cortex.get_connection(inference_engine, variable_id_1, factor_id_1)) === 0
+    @test Cortex.get_connection_index(Cortex.get_connection(inference_engine, variable_id_2, factor_id_2)) === 0
+
+    @test Cortex.get_message_to_variable(Cortex.get_connection(inference_engine, variable_id_1, factor_id_1)) isa
+        Cortex.Signal
+    @test Cortex.get_message_to_variable(Cortex.get_connection(inference_engine, variable_id_2, factor_id_2)) isa
+        Cortex.Signal
+
+    @test Cortex.get_message_to_factor(Cortex.get_connection(inference_engine, variable_id_1, factor_id_1)) isa
+        Cortex.Signal
+    @test Cortex.get_message_to_factor(Cortex.get_connection(inference_engine, variable_id_2, factor_id_2)) isa
+        Cortex.Signal
+
+    @test Cortex.get_message_to_variable(inference_engine, variable_id_1, factor_id_1) ===
+        Cortex.get_message_to_variable(Cortex.get_connection(inference_engine, variable_id_1, factor_id_1))
+    @test Cortex.get_message_to_variable(inference_engine, variable_id_2, factor_id_2) ===
+        Cortex.get_message_to_variable(Cortex.get_connection(inference_engine, variable_id_2, factor_id_2))
+
+    @test_throws Exception Cortex.get_connection(inference_engine, variable_id_1, factor_id_2)
+    @test_throws Exception Cortex.get_connection(inference_engine, variable_id_2, factor_id_1)
+end
+
 @testitem "An empty inference round should be created for an empty model that has no pending messages" setup = [
     ModelUtils
 ] begin
