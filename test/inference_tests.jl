@@ -170,8 +170,8 @@ end
 
         inference_engine = Cortex.InferenceEngine(model_backend = graph)
 
-        inference_task = Cortex.create_inference_task(inference_engine, vc)
-        inference_steps = Cortex.scan_inference_task(inference_task)
+        inference_request = Cortex.request_inference_for(inference_engine, vc)
+        inference_steps = Cortex.scan_inference_request(inference_request)
 
         @test length(inference_steps) == 0
     end
@@ -211,8 +211,8 @@ end
     @testset let (inference_engine, f1, f2, vc, left, right) = make_small_node_variable_node_model()
         Cortex.set_value!(left, 1.0)
 
-        inference_task = Cortex.create_inference_task(inference_engine, vc)
-        inference_steps = Cortex.scan_inference_task(inference_task)
+        inference_request = Cortex.request_inference_for(inference_engine, vc)
+        inference_steps = Cortex.scan_inference_request(inference_request)
 
         @test length(inference_steps) == 1
         @test inference_steps[1] == Cortex.get_message_to_variable(inference_engine, vc, f1)
@@ -222,8 +222,8 @@ end
     @testset let (inference_engine, f1, f2, vc, left, right) = make_small_node_variable_node_model()
         Cortex.set_value!(right, 1.0)
 
-        inference_task = Cortex.create_inference_task(inference_engine, vc)
-        inference_steps = Cortex.scan_inference_task(inference_task)
+        inference_request = Cortex.request_inference_for(inference_engine, vc)
+        inference_steps = Cortex.scan_inference_request(inference_request)
 
         @test length(inference_steps) == 1
         @test inference_steps[1] == Cortex.get_message_to_variable(inference_engine, vc, f2)
@@ -234,8 +234,8 @@ end
         Cortex.set_value!(left, 1.0)
         Cortex.set_value!(right, 1.0)
 
-        inference_task = Cortex.create_inference_task(inference_engine, vc)
-        inference_steps = Cortex.scan_inference_task(inference_task)
+        inference_request = Cortex.request_inference_for(inference_engine, vc)
+        inference_steps = Cortex.scan_inference_request(inference_request)
 
         @test length(inference_steps) == 2
         @test inference_steps[1] == Cortex.get_message_to_variable(inference_engine, vc, f1)
@@ -288,8 +288,8 @@ end
     Cortex.set_value!(Cortex.get_message_to_factor(inference_engine, v1, f1), 1.0)
     Cortex.set_value!(Cortex.get_message_to_factor(inference_engine, v3, f2), 1.0)
 
-    inference_task = Cortex.create_inference_task(inference_engine, v2)
-    inference_steps = Cortex.scan_inference_task(inference_task)
+    inference_request = Cortex.request_inference_for(inference_engine, v2)
+    inference_steps = Cortex.scan_inference_request(inference_request)
 
     @test length(inference_steps) == 2
     @test inference_steps[1] == Cortex.get_message_to_variable(inference_engine, v2, f1)
@@ -354,7 +354,7 @@ end
         error("Unreachable reached")
     end
 
-    Cortex.update_posterior!(computer, inference_engine, p)
+    Cortex.update_marginals!(computer, inference_engine, p)
 
     @test Cortex.get_value(Cortex.get_marginal(inference_engine, p)) == 9
 end
@@ -430,7 +430,7 @@ end
             Cortex.set_value!(Cortex.get_message_to_factor(engine, o[i], f[i]), dataset[i])
         end
 
-        Cortex.update_posterior!(computer, engine, p)
+        Cortex.update_marginals!(computer, engine, p)
 
         return Cortex.get_value(Cortex.get_marginal(engine, p))
     end
@@ -528,7 +528,7 @@ end
             Cortex.set_value!(Cortex.get_message_to_factor(engine, y[i], likelihood[i]), dataset[i])
         end
 
-        Cortex.update_posterior!(computer, engine, x)
+        Cortex.update_marginals!(computer, engine, x)
 
         return Cortex.get_value.(Cortex.get_marginal.(engine, x))
     end
@@ -541,12 +541,14 @@ end
 
 @testitem "Inference in a simple SSM model - Mean Field" setup = [TestUtils] begin
     using .TestUtils
-    using JET, BipartiteFactorGraphs, StableRNGs
+    using JET, BipartiteFactorGraphs, StableRNGs, Random
 
     struct Normal
         mean::Float64
         precision::Float64
     end
+
+    Random.rand(rng::AbstractRNG, n::Normal) = n.mean + randn(rng) / sqrt(n.precision)
 
     struct Gamma
         shape::Float64
@@ -691,9 +693,24 @@ end
         end
 
         for iteration in 1:vmp_iterations
-            Cortex.update_posterior!(computer, engine, x)
-            Cortex.update_posterior!(computer, engine, ssnoise)
-            Cortex.update_posterior!(computer, engine, obsnoise)
+            # Check that the marginals can be updated in any order
+            if div(iteration, 2) == 0
+                Cortex.update_marginals!(computer, engine, x)
+                Cortex.update_marginals!(computer, engine, ssnoise)
+                Cortex.update_marginals!(computer, engine, obsnoise)
+            else
+                Cortex.update_marginals!(computer, engine, obsnoise)
+                Cortex.update_marginals!(computer, engine, ssnoise)
+                Cortex.update_marginals!(computer, engine, x)
+            end
+
+            # Check that the marginals can be updated several times
+            Cortex.update_marginals!(computer, engine, obsnoise)
+            Cortex.update_marginals!(computer, engine, obsnoise)
+            Cortex.update_marginals!(computer, engine, obsnoise)
+
+            # Check that the updates can be merged into a single update
+            Cortex.update_marginals!(computer, engine, [ssnoise, obsnoise])
         end
 
         return (
@@ -704,9 +721,26 @@ end
     end
 
     rng = StableRNG(1234)
-    dataset = rand(rng, 10)
 
-    answer = experiment(dataset, 100)
+    n = 100
+    ssnoise_real = 100.0
+    obsnoise_real = 100.0
+    random_walk = [0.0]
+    for i in 2:n
+        push!(random_walk, rand(rng, Normal(random_walk[i - 1], ssnoise_real)))
+    end
 
-    @show answer.ssnoise
+    observations = []
+    for i in 1:n
+        push!(observations, rand(rng, Normal(random_walk[i], obsnoise_real)))
+    end
+
+    vmp_iterations = 100
+    answer = experiment(observations, vmp_iterations)
+
+    # The actual answer isn't precise because of the mean-field assumption
+    # as well as the fact that the convergence of the VMP updates 
+    # depends on the initial conditions and order of updates
+    @test mean(answer.obsnoise) > 50.0
+    @test mean(answer.ssnoise) > 50.0
 end

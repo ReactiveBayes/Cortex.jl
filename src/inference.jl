@@ -13,8 +13,16 @@ struct InferenceEngine{M}
     end
 end
 
+"""
+    get_model_backend(engine::InferenceEngine)
+
+Get the model backend of the inference engine.
+
+See also: [`InferenceEngine`](@ref)
+"""
 get_model_backend(engine::InferenceEngine) = engine.model_backend
 
+# This is needed to make the engine broadcastable
 Base.broadcastable(engine::InferenceEngine) = Ref(engine)
 
 struct UnsupportedModelBackendError{B} <: Exception
@@ -25,9 +33,20 @@ function Base.showerror(io::IO, e::UnsupportedModelBackendError)
     print(io, "The model backend of type `$(typeof(e.backend))` is not supported.")
 end
 
+"A trait object that represents a supported model backend."
 struct SupportedModelBackend end
+
+"A trait object that represents an unsupported model backend."
 struct UnsupportedModelBackend end
 
+"""
+    is_backend_supported(backend::Any) -> SupportedModelBackend | UnsupportedModelBackend
+
+Check if the model backend is supported. 
+Returns a `SupportedModelBackend()` if the backend is supported, otherwise a `UnsupportedModelBackend()`.
+
+See also: [`throw_if_backend_unsupported`](@ref), [`SupportedModelBackend`](@ref), [`UnsupportedModelBackend`](@ref)
+"""
 is_backend_supported(::Any) = UnsupportedModelBackend()
 
 throw_if_backend_unsupported(backend::Any) = throw_if_backend_unsupported(is_backend_supported(backend), backend)
@@ -108,8 +127,9 @@ Must return an object which implements the following functions:
 
 See also: [`get_message_to_variable`](@ref), [`get_message_to_factor`](@ref), [`Signal`](@ref)
 """
-get_connection(engine::InferenceEngine, variable_id, factor_id) =
-    get_connection(get_model_backend(engine), variable_id, factor_id)
+get_connection(engine::InferenceEngine, variable_id, factor_id) = get_connection(
+    get_model_backend(engine), variable_id, factor_id
+)
 
 """
     get_connection_label(connection)
@@ -128,8 +148,9 @@ An alias function that simply calls `get_connection_label(get_connection(engine,
 
 See also: [`get_connection`](@ref)
 """
-get_connection_label(engine::InferenceEngine, variable_id, factor_id) =
-    get_connection_label(get_connection(engine, variable_id, factor_id))
+get_connection_label(engine::InferenceEngine, variable_id, factor_id) = get_connection_label(
+    get_connection(engine, variable_id, factor_id)
+)
 
 """
     get_connection_index(connection) -> Int
@@ -148,8 +169,9 @@ An alias function that simply calls `get_connection_index(get_connection(engine,
 
 See also: [`get_connection`](@ref)
 """
-get_connection_index(engine::InferenceEngine, variable_id, factor_id) =
-    get_connection_index(get_connection(engine, variable_id, factor_id))
+get_connection_index(engine::InferenceEngine, variable_id, factor_id) = get_connection_index(
+    get_connection(engine, variable_id, factor_id)
+)
 
 """
     get_message_to_variable(connection) -> Cortex.Signal
@@ -168,8 +190,9 @@ An alias function that simply calls `get_message_to_variable(get_connection(engi
 
 See also: [`get_connection`](@ref), [`Cortex.Signal`](@ref)
 """
-get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) =
-    get_message_to_variable(get_connection(engine, variable_id, factor_id))
+get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) = get_message_to_variable(
+    get_connection(engine, variable_id, factor_id)
+)
 
 """
     get_message_to_factor(connection) -> Cortex.Signal
@@ -188,8 +211,9 @@ An alias function that simply calls `get_message_to_factor(get_connection(engine
 
 See also: [`get_connection`](@ref), [`Cortex.Signal`](@ref)
 """
-get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) =
-    get_message_to_factor(get_connection(engine, variable_id, factor_id))
+get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) = get_message_to_factor(
+    get_connection(engine, variable_id, factor_id)
+)
 
 """
     get_connected_variable_ids(engine::InferenceEngine, factor_id)
@@ -199,8 +223,9 @@ This function must be implemented for each model backend as it simply calls the 
 
 See also: [`get_connection`](@ref)
 """
-get_connected_variable_ids(engine::InferenceEngine, factor_id) =
-    get_connected_variable_ids(get_model_backend(engine), factor_id)
+get_connected_variable_ids(engine::InferenceEngine, factor_id) = get_connected_variable_ids(
+    get_model_backend(engine), factor_id
+)
 
 """
     get_connected_factor_ids(engine::InferenceEngine, variable_id)
@@ -210,17 +235,49 @@ This function must be implemented for each model backend as it simply calls the 
 
 See also: [`get_connection`](@ref)
 """
-get_connected_factor_ids(engine::InferenceEngine, variable_id) =
-    get_connected_factor_ids(get_model_backend(engine), variable_id)
+get_connected_factor_ids(engine::InferenceEngine, variable_id) = get_connected_factor_ids(
+    get_model_backend(engine), variable_id
+)
 
+"""
+    InferenceSignalTypes
+
+A module that contains constants for the types of signals used in the inference engine.
+Available types are:
+- `MessageToVariable` - A signal that represents a message to a variable from a factor.
+- `MessageToFactor` - A signal that represents a message to a factor from a variable.
+- `ProductOfMessages` - A signal that represents the product of messages. Usually used as an intermediate dependency to `IndividualMarginal`.
+- `IndividualMarginal` - A signal that represents the marginal of a variable.
+- `JointMarginal` - A signal that represents the joint marginal of a set of variables.
+
+See also: [`prepare_signals_metadata!`](@ref)
+"""
 module InferenceSignalTypes
+
+"A signal that represents a message to a variable from a factor."
 const MessageToVariable = UInt8(0x01)
+
+"A signal that represents a message to a factor from a variable."
 const MessageToFactor = UInt8(0x02)
+
+"A signal that represents the product of messages. Usually used as an intermediate dependency to `IndividualMarginal`."
 const ProductOfMessages = UInt8(0x03)
+
+"A signal that represents the marginal of a variable."
 const IndividualMarginal = UInt8(0x04)
+
+"A signal that represents the joint marginal of a set of variables."
 const JointMarginal = UInt8(0x05)
 end
 
+"""
+    prepare_signals_metadata!(engine::InferenceEngine)
+
+Prepare the signals metadata for the inference engine.
+This function will set appropriate types and metadata for each signal in the engine.
+
+See also: [`InferenceSignalTypes`](@ref)
+"""
 function prepare_signals_metadata!(engine::InferenceEngine)
     for variable_id in get_variable_ids(engine)
         marginal = get_marginal(engine, variable_id)::Cortex.Signal
@@ -242,23 +299,37 @@ function prepare_signals_metadata!(engine::InferenceEngine)
     end
 end
 
-struct InferenceTask{E}
+## -- Inference requests -- ##
+
+struct InferenceRequest{E, V, M}
     engine::E
-    marginal::Cortex.Signal
+    variable_ids::V
+    marginals::M
+    readines_status::BitVector
 end
 
-function create_inference_task(engine::InferenceEngine, variable)
-    marginal = get_marginal(engine, variable)
-    for dependency in get_dependencies(marginal)
-        dependency.props = SignalProps(is_potentially_pending = true, is_pending = false)
+function request_inference_for(engine::InferenceEngine, variable_id)
+    return request_inference_for(engine, (variable_id,))
+end
+
+function request_inference_for(engine::InferenceEngine, variable_ids::Union{AbstractVector, Tuple})
+    marginals = map(variable_id -> get_marginal(engine, variable_id)::Cortex.Signal, variable_ids)
+
+    for marginal in marginals
+        for dependency in get_dependencies(marginal)
+            dependency.props = SignalProps(is_potentially_pending = true, is_pending = false)
+        end
     end
-    return InferenceTask(engine, marginal)
+
+    readines_status = falses(length(variable_ids))
+
+    return InferenceRequest(engine, variable_ids, marginals, readines_status)
 end
 
-function process_inference_task(callback::F, task::InferenceTask) where {F}
-    processed_at_least_once = process_dependencies!(task.marginal; retry = true) do dependency
+function process_inference_request(callback::F, request::InferenceRequest, variable_id, marginal) where {F}
+    processed_at_least_once = process_dependencies!(marginal; retry = true) do dependency
         if is_pending(dependency)
-            callback(task, dependency)
+            callback(request.engine, variable_id, marginal, dependency)
             return true
         end
         return false
@@ -272,54 +343,47 @@ struct InferenceTaskScanner
     InferenceTaskScanner() = new(Signal[])
 end
 
-function (scanner::InferenceTaskScanner)(::InferenceTask, signal::Signal)
-    push!(scanner.signals, signal)
+function (scanner::InferenceTaskScanner)(engine::InferenceEngine, variable_id, marginal::Signal, dependency::Signal)
+    push!(scanner.signals, dependency)
 end
 
-function scan_inference_task(task::InferenceTask)
+function scan_inference_request(request::InferenceRequest)
     scanner = InferenceTaskScanner()
-    process_inference_task(scanner, task)
+    for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
+        process_inference_request(scanner, request, variable_id, marginal)
+    end
     return scanner.signals
 end
 
-struct InferenceTaskComputer{F}
+struct InferenceRequestProcessor{F}
     f::F
 end
 
-function (computer::InferenceTaskComputer)(task::InferenceTask, signal::Signal; force = false)
-    compute!(signal; force = force) do signal, dependencies
-        computer.f(task.engine, signal, dependencies)
+Base.convert(::Type{InferenceRequestProcessor}, f::F) where {F <: Function} = InferenceRequestProcessor{F}(f)
+Base.convert(::Type{InferenceRequestProcessor}, f::InferenceRequestProcessor) = f
+
+function (processor::InferenceRequestProcessor)(
+    engine::InferenceEngine, variable_id, marginal::Signal, dependency::Signal; force = false
+)
+    compute!(dependency; force = force) do signal, dependencies
+        processor.f(engine, signal, dependencies)
     end
 end
 
-struct VerboseTaskComputer{F}
-    f::F
+function update_marginals!(f::F, engine::InferenceEngine, variable_ids) where {F <: Function}
+    return update_marginals!(f, engine, (variable_ids,))
 end
 
-function update_posterior!(f::F, engine::InferenceEngine, variable_id) where {F <: Function}
+function update_marginals!(
+    f::F, engine::InferenceEngine, variable_ids::Union{AbstractVector, Tuple}
+) where {F <: Function}
     should_continue = true
 
-    callback = InferenceTaskComputer(f)
-    task = create_inference_task(engine, variable_id)
+    callback = convert(InferenceRequestProcessor, f)
 
-    while should_continue
-        should_continue = process_inference_task(callback, task)
-    end
+    request = request_inference_for(engine, variable_ids)
 
-    callback(task, task.marginal)
-
-    return nothing
-end
-
-function update_posterior!(f::F, engine::InferenceEngine, variable_ids::AbstractVector) where {F <: Function}
-    should_continue = true
-
-    callback = InferenceTaskComputer(f)
-
-    tasks = [create_inference_task(engine, variable) for variable in variable_ids]
-    tmask = falses(length(tasks))
-
-    indices         = 1:1:length(tasks)
+    indices         = 1:1:length(variable_ids)
     indices_reverse = reverse(indices)::typeof(indices)
 
     # We begin with a forward pass
@@ -332,15 +396,17 @@ function update_posterior!(f::F, engine::InferenceEngine, variable_ids::Abstract
         current_order = is_reverse ? indices_reverse : indices
 
         @inbounds for i in current_order
-            if !tmask[i]
-                task = tasks[i]
-                task_has_been_processed_at_least_once = process_inference_task(callback, task)
+            if !request.readines_status[i]
+                variable_id = variable_ids[i]
+                marginal = request.marginals[i]
 
-                if is_pending(task.marginal)
-                    tmask[i] = true
+                has_been_processed_at_least_once = process_inference_request(callback, request, variable_id, marginal)
+
+                if is_pending(marginal)
+                    request.readines_status[i] = true
                 end
 
-                _should_continue = _should_continue || task_has_been_processed_at_least_once
+                _should_continue = _should_continue || has_been_processed_at_least_once
             end
         end
 
@@ -350,8 +416,8 @@ function update_posterior!(f::F, engine::InferenceEngine, variable_ids::Abstract
         should_continue = _should_continue
     end
 
-    for task in tasks
-        callback(task, task.marginal; force = true)
+    for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
+        callback(request.engine, variable_id, marginal, marginal; force = true)
     end
 
     return nothing
