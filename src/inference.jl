@@ -170,17 +170,17 @@ const IndividualMarginal = UInt8(0x03)
 const JointMarginal = UInt8(0x04)
 end
 
-struct InferenceTask{M}
-    model::M
-    marginal::Signal
+struct InferenceTask{E}
+    engine::E
+    marginal::Cortex.Signal
 end
 
-function create_inference_task(model, variable)
-    marginal = Cortex.get_variable_marginal(model, variable)
+function create_inference_task(engine::InferenceEngine, variable)
+    marginal = get_marginal(engine, variable)
     for dependency in get_dependencies(marginal)
         dependency.props = SignalProps(is_potentially_pending = true, is_pending = false)
     end
-    return InferenceTask(model, marginal)
+    return InferenceTask(engine, marginal)
 end
 
 function process_inference_task(callback::F, task::InferenceTask) where {F}
