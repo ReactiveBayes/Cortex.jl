@@ -296,123 +296,6 @@ end
     @test inference_steps[2] == Cortex.get_message_to_variable(inference_engine, v2, f2)
 end
 
-@testitem "An inference in a simple IID model" setup = [TestUtils] begin
-    using .TestUtils
-    using JET, BipartiteFactorGraphs
-
-    function computer(engine::Cortex.InferenceEngine, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
-        if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
-            _, factor_id = (signal.metadata::Tuple{Int, Int})
-
-            factor = Cortex.get_factor_data(engine, factor_id)
-
-            if factor.fform === :likelihood1
-                return 2 * Cortex.get_value(dependencies[1])
-            elseif factor.fform === :likelihood2
-                return 2 * Cortex.get_value(dependencies[1])
-            elseif factor.fform === :prior
-                error("Should not be invoked")
-            end
-        elseif signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
-            return sum(Cortex.get_value.(dependencies))
-        end
-
-        error("Unreachable reached")
-    end
-
-    graph = BipartiteFactorGraph()
-
-    # The "center" of the model
-    p = add_variable!(graph, Variable(:p))
-
-    # The observed outcomes
-    o1 = add_variable!(graph, Variable(:y1))
-    o2 = add_variable!(graph, Variable(:y2))
-
-    # Priors
-    fp = add_factor!(graph, Factor(:prior))
-
-    # Likelihoods
-    f1 = add_factor!(graph, Factor(:likelihood1))
-    f2 = add_factor!(graph, Factor(:likelihood2))
-
-    # Connections between the parameter `p` and the factors
-    add_edge!(graph, p, fp, Connection(:out))
-    add_edge!(graph, p, f1, Connection(:in))
-    add_edge!(graph, p, f2, Connection(:in))
-
-    # Connections between the observed outcomes and the likelihoods
-    add_edge!(graph, o1, f1, Connection(:out))
-    add_edge!(graph, o2, f2, Connection(:out))
-
-    inference_engine = Cortex.InferenceEngine(
-        model_backend = graph, inference_request_processor = computer, trace = true
-    )
-
-    Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), inference_engine)
-
-    # Set data
-    o1_value = 1
-    o2_value = 2
-
-    Cortex.set_value!(Cortex.get_message_to_factor(inference_engine, o1, f1), o1_value)
-    Cortex.set_value!(Cortex.get_message_to_factor(inference_engine, o2, f2), o2_value)
-
-    # Set prior
-    Cortex.set_value!(Cortex.get_message_to_variable(inference_engine, p, fp), 3)
-
-    Cortex.update_marginals!(inference_engine, p)
-
-    @test Cortex.get_value(Cortex.get_marginal(inference_engine, p)) == 9
-
-    trace = Cortex.get_trace(inference_engine)
-
-    @test length(trace.inference_requests) == 1
-
-    traced_update_request = trace.inference_requests[1]
-
-    @test traced_update_request.request.variable_ids == (p,)
-    @test traced_update_request.total_time_in_ns > 0
-    @test length(traced_update_request.rounds) == 2
-
-    @test length(traced_update_request.rounds[1].executions) == 2
-    @test traced_update_request.rounds[1].total_time_in_ns > 0
-    @test traced_update_request.rounds[1].executions[1].variable_id == p
-    @test traced_update_request.rounds[1].executions[1].signal.type == Cortex.InferenceSignalTypes.MessageToVariable
-    @test traced_update_request.rounds[1].executions[1].signal.metadata == (p, f1)
-    @test traced_update_request.rounds[1].executions[1].total_time_in_ns > 0
-    @test traced_update_request.rounds[1].executions[1].value_before_execution == Cortex.UndefValue()
-    @test traced_update_request.rounds[1].executions[1].value_after_execution == 2 * o1_value
-
-    @test traced_update_request.rounds[1].executions[2].variable_id == p
-    @test traced_update_request.rounds[1].executions[2].signal.type == Cortex.InferenceSignalTypes.MessageToVariable
-    @test traced_update_request.rounds[1].executions[2].signal.metadata == (p, f2)
-    @test traced_update_request.rounds[1].executions[2].total_time_in_ns > 0
-    @test traced_update_request.rounds[1].executions[2].value_before_execution == Cortex.UndefValue()
-    @test traced_update_request.rounds[1].executions[2].value_after_execution == 2 * o2_value
-
-    @test length(traced_update_request.rounds[2].executions) == 1
-    @test traced_update_request.rounds[2].total_time_in_ns > 0
-    @test traced_update_request.rounds[2].executions[1].variable_id == p
-    @test traced_update_request.rounds[2].executions[1].signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
-    @test traced_update_request.rounds[2].executions[1].signal.metadata == (p, )
-    @test traced_update_request.rounds[2].executions[1].total_time_in_ns > 0
-    @test traced_update_request.rounds[2].executions[1].value_before_execution == Cortex.UndefValue()
-    @test traced_update_request.rounds[2].executions[1].value_after_execution == 9
-
-    io = IOBuffer()
-    show(io, trace)
-
-    trace_string_representation = String(take!(io))
-
-    @test !isempty(trace_string_representation)
-
-    @test occursin("MessageToVariable(from = likelihood1, to = p)", trace_string_representation)
-    @test occursin("MessageToVariable(from = likelihood2, to = p)", trace_string_representation)
-
-    @test occursin("IndividualMarginal(p)", trace_string_representation)
-end
-
 @testitem "Inference in Beta-Bernoulli model" setup = [TestUtils] begin
     using .TestUtils
     using JET, BipartiteFactorGraphs, StableRNGs
@@ -797,4 +680,121 @@ end
     # depends on the initial conditions and order of updates
     @test mean(answer.obsnoise) > 50.0
     @test mean(answer.ssnoise) > 50.0
+end
+
+@testitem "Tracing inference in a simple IID model" setup = [TestUtils] begin
+    using .TestUtils
+    using JET, BipartiteFactorGraphs
+
+    function computer(engine::Cortex.InferenceEngine, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
+        if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
+            _, factor_id = (signal.metadata::Tuple{Int, Int})
+
+            factor = Cortex.get_factor_data(engine, factor_id)
+
+            if factor.fform === :likelihood1
+                return 2 * Cortex.get_value(dependencies[1])
+            elseif factor.fform === :likelihood2
+                return 2 * Cortex.get_value(dependencies[1])
+            elseif factor.fform === :prior
+                error("Should not be invoked")
+            end
+        elseif signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
+            return sum(Cortex.get_value.(dependencies))
+        end
+
+        error("Unreachable reached")
+    end
+
+    graph = BipartiteFactorGraph()
+
+    # The "center" of the model
+    p = add_variable!(graph, Variable(:p))
+
+    # The observed outcomes
+    o1 = add_variable!(graph, Variable(:y1))
+    o2 = add_variable!(graph, Variable(:y2))
+
+    # Priors
+    fp = add_factor!(graph, Factor(:prior))
+
+    # Likelihoods
+    f1 = add_factor!(graph, Factor(:likelihood1))
+    f2 = add_factor!(graph, Factor(:likelihood2))
+
+    # Connections between the parameter `p` and the factors
+    add_edge!(graph, p, fp, Connection(:out))
+    add_edge!(graph, p, f1, Connection(:in))
+    add_edge!(graph, p, f2, Connection(:in))
+
+    # Connections between the observed outcomes and the likelihoods
+    add_edge!(graph, o1, f1, Connection(:out))
+    add_edge!(graph, o2, f2, Connection(:out))
+
+    inference_engine = Cortex.InferenceEngine(
+        model_backend = graph, inference_request_processor = computer, trace = true
+    )
+
+    Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), inference_engine)
+
+    # Set data
+    o1_value = 1
+    o2_value = 2
+
+    Cortex.set_value!(Cortex.get_message_to_factor(inference_engine, o1, f1), o1_value)
+    Cortex.set_value!(Cortex.get_message_to_factor(inference_engine, o2, f2), o2_value)
+
+    # Set prior
+    Cortex.set_value!(Cortex.get_message_to_variable(inference_engine, p, fp), 3)
+
+    Cortex.update_marginals!(inference_engine, p)
+
+    @test Cortex.get_value(Cortex.get_marginal(inference_engine, p)) == 9
+
+    trace = Cortex.get_trace(inference_engine)
+
+    @test length(trace.inference_requests) == 1
+
+    traced_update_request = trace.inference_requests[1]
+
+    @test traced_update_request.request.variable_ids == (p,)
+    @test traced_update_request.total_time_in_ns > 0
+    @test length(traced_update_request.rounds) == 2
+
+    @test length(traced_update_request.rounds[1].executions) == 2
+    @test traced_update_request.rounds[1].total_time_in_ns > 0
+    @test traced_update_request.rounds[1].executions[1].variable_id == p
+    @test traced_update_request.rounds[1].executions[1].signal.type == Cortex.InferenceSignalTypes.MessageToVariable
+    @test traced_update_request.rounds[1].executions[1].signal.metadata == (p, f1)
+    @test traced_update_request.rounds[1].executions[1].total_time_in_ns > 0
+    @test traced_update_request.rounds[1].executions[1].value_before_execution == Cortex.UndefValue()
+    @test traced_update_request.rounds[1].executions[1].value_after_execution == 2 * o1_value
+
+    @test traced_update_request.rounds[1].executions[2].variable_id == p
+    @test traced_update_request.rounds[1].executions[2].signal.type == Cortex.InferenceSignalTypes.MessageToVariable
+    @test traced_update_request.rounds[1].executions[2].signal.metadata == (p, f2)
+    @test traced_update_request.rounds[1].executions[2].total_time_in_ns > 0
+    @test traced_update_request.rounds[1].executions[2].value_before_execution == Cortex.UndefValue()
+    @test traced_update_request.rounds[1].executions[2].value_after_execution == 2 * o2_value
+
+    @test length(traced_update_request.rounds[2].executions) == 1
+    @test traced_update_request.rounds[2].total_time_in_ns > 0
+    @test traced_update_request.rounds[2].executions[1].variable_id == p
+    @test traced_update_request.rounds[2].executions[1].signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
+    @test traced_update_request.rounds[2].executions[1].signal.metadata == (p,)
+    @test traced_update_request.rounds[2].executions[1].total_time_in_ns > 0
+    @test traced_update_request.rounds[2].executions[1].value_before_execution == Cortex.UndefValue()
+    @test traced_update_request.rounds[2].executions[1].value_after_execution == 9
+
+    io = IOBuffer()
+    show(io, trace)
+
+    trace_string_representation = String(take!(io))
+
+    @test !isempty(trace_string_representation)
+
+    @test occursin("MessageToVariable(from = likelihood1, to = p)", trace_string_representation)
+    @test occursin("MessageToVariable(from = likelihood2, to = p)", trace_string_representation)
+
+    @test occursin("IndividualMarginal(p)", trace_string_representation)
 end
