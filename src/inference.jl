@@ -795,18 +795,13 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
             should_continue = _should_continue
         end
 
-        # This is the final round that computes the marginals
-        for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
-            process!(processor, request.engine, variable_id, marginal)
+        trace_inference_round(inference_request_trace) do inference_round_trace
+            for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
+                trace_inference_execution(inference_round_trace, variable_id, marginal) do
+                    process!(processor, request.engine, variable_id, marginal)
+                end
+            end
         end
-
-        # trace_inference_round(inference_request_trace) do inference_round_trace
-        #     for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
-        #         trace_inference_execution(inference_round_trace, variable_id, marginal) do
-        #             process!(processor, request.engine, variable_id, marginal)
-        #         end
-        #     end
-        # end
     end
 
     return nothing
@@ -832,19 +827,19 @@ function Base.show(io::IO, execution::TracedInferenceExecution)
     print(io, "TracedInferenceExecution(for = $(variable_data), type = ")
 
     if signal_type === Cortex.InferenceSignalTypes.MessageToVariable
-        v_id, f_id = signal.metadata
+        (v_id, f_id) = signal.metadata
         v_data = get_variable_data(execution.engine, v_id)
         f_data = get_factor_data(execution.engine, f_id)
         print(io, "MessageToVariable(from = $(f_data), to = $(v_data))")
     elseif signal_type === Cortex.InferenceSignalTypes.MessageToFactor
-        v_id, f_id = signal.metadata
+        (v_id, f_id) = signal.metadata
         v_data = get_variable_data(execution.engine, v_id)
         f_data = get_factor_data(execution.engine, f_id)
         print(io, "MessageToFactor(from = $(v_data), to = $(f_data))")
     elseif signal_type === Cortex.InferenceSignalTypes.ProductOfMessages
         print(io, "ProductOfMessages(?)")
     elseif signal_type === Cortex.InferenceSignalTypes.IndividualMarginal
-        v_id = signal.metadata
+        (v_id,) = signal.metadata
         v_data = get_variable_data(execution.engine, v_id)
         print(io, "IndividualMarginal($(v_data))")
     elseif signal_type === Cortex.InferenceSignalTypes.JointMarginal
@@ -910,6 +905,8 @@ function trace_inference_request(
 
     # We add the inference request to the tracer
     push!(tracer.inference_requests, TracedInferenceRequest(engine, total_time_in_ns, request, rounds))
+
+    return nothing
 end
 
 function trace_inference(tracer::InferenceEngineTracer, processor::AbstractInferenceRequestProcessor)
@@ -947,7 +944,7 @@ function trace_inference_round(
         push!(rounds, TracedInferenceRound(engine, total_time_in_ns, executions))
     end
 
-    return f(trace)
+    return nothing
 end
 
 function trace_inference_execution(f::F, ::Nothing, variable_id, dependency::Signal) where {F}
@@ -985,4 +982,6 @@ function trace_inference_execution(
             engine, variable_id, dependency, total_time_in_ns, value_before_execution, value_after_execution
         )
     )
+
+    return nothing
 end

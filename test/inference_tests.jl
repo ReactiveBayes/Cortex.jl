@@ -373,10 +373,10 @@ end
 
     @test traced_update_request.request.variable_ids == (p,)
     @test traced_update_request.total_time_in_ns > 0
-    @test length(traced_update_request.rounds) == 1
-    @test traced_update_request.rounds[1].total_time_in_ns > 0
-    @test length(traced_update_request.rounds[1].executions) == 2
+    @test length(traced_update_request.rounds) == 2
 
+    @test length(traced_update_request.rounds[1].executions) == 2
+    @test traced_update_request.rounds[1].total_time_in_ns > 0
     @test traced_update_request.rounds[1].executions[1].variable_id == p
     @test traced_update_request.rounds[1].executions[1].signal.type == Cortex.InferenceSignalTypes.MessageToVariable
     @test traced_update_request.rounds[1].executions[1].signal.metadata == (p, f1)
@@ -391,13 +391,14 @@ end
     @test traced_update_request.rounds[1].executions[2].value_before_execution == Cortex.UndefValue()
     @test traced_update_request.rounds[1].executions[2].value_after_execution == 2 * o2_value
 
-    # @test length(traced_update_request.rounds[2].executions) == 1
-    # @test traced_update_request.rounds[2].executions[1].variable_id == p
-    # @test traced_update_request.rounds[2].executions[1].signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
-    # @test traced_update_request.rounds[2].executions[1].signal.metadata == (p, )
-    # @test traced_update_request.rounds[2].executions[1].total_time_in_ns > 0
-    # @test traced_update_request.rounds[2].executions[1].value_before_execution == Cortex.UndefValue()
-    # @test traced_update_request.rounds[2].executions[1].value_after_execution == 9
+    @test length(traced_update_request.rounds[2].executions) == 1
+    @test traced_update_request.rounds[2].total_time_in_ns > 0
+    @test traced_update_request.rounds[2].executions[1].variable_id == p
+    @test traced_update_request.rounds[2].executions[1].signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
+    @test traced_update_request.rounds[2].executions[1].signal.metadata == (p, )
+    @test traced_update_request.rounds[2].executions[1].total_time_in_ns > 0
+    @test traced_update_request.rounds[2].executions[1].value_before_execution == Cortex.UndefValue()
+    @test traced_update_request.rounds[2].executions[1].value_after_execution == 9
 
     io = IOBuffer()
     show(io, trace)
@@ -408,6 +409,8 @@ end
 
     @test occursin("MessageToVariable(from = likelihood1, to = p)", trace_string_representation)
     @test occursin("MessageToVariable(from = likelihood2, to = p)", trace_string_representation)
+
+    @test occursin("IndividualMarginal(p)", trace_string_representation)
 end
 
 @testitem "Inference in Beta-Bernoulli model" setup = [TestUtils] begin
