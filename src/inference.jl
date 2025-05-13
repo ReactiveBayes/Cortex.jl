@@ -35,12 +35,18 @@ The engine interacts with the `model_backend` through a defined interface (e.g.,
 - [`request_inference_for`](@ref)
 - [`Signal`](@ref Cortex.Signal)
 """
-struct InferenceEngine{M}
+struct InferenceEngine{M, P}
     model_backend::M
+    inference_request_processor::P
 
-    function InferenceEngine(; model_backend::M, prepare_signals_metadata::Bool = true) where {M}
+    function InferenceEngine(;
+        model_backend::M,
+        inference_request_processor::P = InferenceRequestScanner(),
+        prepare_signals_metadata::Bool = true
+    ) where {M, P}
         checked_backend = throw_if_backend_unsupported(model_backend)::M
-        engine = new{M}(checked_backend)
+        checked_processor = convert(AbstractInferenceRequestProcessor, inference_request_processor)
+        engine = new{typeof(checked_backend), typeof(checked_processor)}(checked_backend, checked_processor)
 
         if prepare_signals_metadata
             prepare_signals_metadata!(engine)
@@ -68,6 +74,8 @@ The model backend object stored within the engine.
 - [`InferenceEngine`](@ref)
 """
 get_model_backend(engine::InferenceEngine) = engine.model_backend
+
+get_inference_request_processor(engine::InferenceEngine) = engine.inference_request_processor
 
 # This is needed to make the engine broadcastable
 Base.broadcastable(engine::InferenceEngine) = Ref(engine)
@@ -657,11 +665,21 @@ function request_inference_for(engine::InferenceEngine, variable_ids::Union{Abst
     return InferenceRequest(engine, variable_ids, marginals, readines_status)
 end
 
+abstract type AbstractInferenceRequestProcessor end
+
+function process!(
+    processor::AbstractInferenceRequestProcessor, engine::InferenceEngine, variable_id, dependency::Signal
+)
+    throw(MethodError(process!, (processor, engine, variable_id, dependency)))
+end
+
 "Internal function to process dependencies for an inference request."
-function process_inference_request(callback::F, request::InferenceRequest, variable_id, marginal) where {F}
+function process_inference_request(
+    processor::AbstractInferenceRequestProcessor, request::InferenceRequest, variable_id, marginal
+)
     processed_at_least_once = process_dependencies!(marginal; retry = true) do dependency
         if is_pending(dependency)
-            callback(request.engine, variable_id, marginal, dependency)
+            process!(processor, request.engine, variable_id, dependency)
             return true
         end
         return false
@@ -670,20 +688,20 @@ function process_inference_request(callback::F, request::InferenceRequest, varia
 end
 
 "Internal struct used to scan and collect pending signals from an inference request."
-struct InferenceTaskScanner
+struct InferenceRequestScanner <: AbstractInferenceRequestProcessor
     signals::Vector{Signal}
 
-    InferenceTaskScanner() = new(Signal[])
+    InferenceRequestScanner() = new(Signal[])
 end
 
 "Internal functor for `InferenceTaskScanner` to collect dependencies."
-function (scanner::InferenceTaskScanner)(engine::InferenceEngine, variable_id, marginal::Signal, dependency::Signal)
+function process!(scanner::InferenceRequestScanner, engine::InferenceEngine, variable_id, dependency::Signal)
     push!(scanner.signals, dependency)
 end
 
 "Internal function to scan an `InferenceRequest` and return all pending (dependent) signals."
 function scan_inference_request(request::InferenceRequest)
-    scanner = InferenceTaskScanner()
+    scanner = InferenceRequestScanner()
     for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
         process_inference_request(scanner, request, variable_id, marginal)
     end
@@ -691,56 +709,31 @@ function scan_inference_request(request::InferenceRequest)
 end
 
 "Internal struct that wraps a user-provided computation function for processing by `update_marginals!`."
-struct InferenceRequestProcessor{F}
+struct CallbackInferenceRequestProcessor{F} <: AbstractInferenceRequestProcessor
     f::F
 end
 
-Base.convert(::Type{InferenceRequestProcessor}, f::F) where {F <: Function} = InferenceRequestProcessor{F}(f)
-Base.convert(::Type{InferenceRequestProcessor}, f::InferenceRequestProcessor) = f
+Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} =
+    CallbackInferenceRequestProcessor{F}(f)
 
 "Internal functor for `InferenceRequestProcessor` to apply the computation logic."
-function (processor::InferenceRequestProcessor)(
-    engine::InferenceEngine, variable_id, marginal::Signal, dependency::Signal; force = false
+function process!(
+    processor::CallbackInferenceRequestProcessor, engine::InferenceEngine, variable_id, dependency::Signal
 )
-    compute!(dependency; force = force) do signal, dependencies
+    compute!(dependency) do signal, dependencies
         processor.f(engine, signal, dependencies)
     end
 end
 
-"""
-    update_marginals!(computation_strategy::Function, engine::InferenceEngine, variable_id_or_ids)
-
-Performs inference to update the marginals for the specified `variable_id_or_ids` using the given `computation_strategy`.
-
-This is the primary function for executing inference. It iteratively processes dependencies and applies the `computation_strategy` to update signals until all requested marginals are computed.
-The `computation_strategy` is a function `f(engine, signal, dependencies)` that defines how to calculate the value of a `signal` given its `dependencies` and the `engine`.
-
-Supports updating a single variable ID or a collection (Tuple or AbstractVector) of variable IDs.
-
-## Arguments
-
-- `computation_strategy::Function`: A function that takes `(engine, signal, dependencies)` and returns the computed value for `signal`.
-- `engine::InferenceEngine`: The inference engine instance.
-- `variable_id_or_ids`: A single variable identifier or a collection of variable identifiers whose marginals are to be updated.
-
-## See Also
-
-- [`request_inference_for`](@ref)
-- [`InferenceEngine`](@ref)
-- [`Signal`](@ref Cortex.Signal)
-"""
-function update_marginals!(f::F, engine::InferenceEngine, variable_ids) where {F <: Function}
-    return update_marginals!(f, engine, (variable_ids,))
+function update_marginals!(engine::InferenceEngine, variable_ids) where {F <: Function}
+    return update_marginals!(engine, (variable_ids,))
 end
 
-function update_marginals!(
-    f::F, engine::InferenceEngine, variable_ids::Union{AbstractVector, Tuple}
-) where {F <: Function}
+function update_marginals!(engine::InferenceEngine, variable_ids::Union{AbstractVector, Tuple})
     should_continue = true
 
-    callback = convert(InferenceRequestProcessor, f)
-
     request = request_inference_for(engine, variable_ids)
+    processor = get_inference_request_processor(engine)
 
     indices         = 1:1:length(variable_ids)
     indices_reverse = reverse(indices)::typeof(indices)
@@ -759,7 +752,7 @@ function update_marginals!(
                 variable_id = variable_ids[i]
                 marginal = request.marginals[i]
 
-                has_been_processed_at_least_once = process_inference_request(callback, request, variable_id, marginal)
+                has_been_processed_at_least_once = process_inference_request(processor, request, variable_id, marginal)
 
                 if is_pending(marginal)
                     request.readines_status[i] = true
@@ -776,7 +769,7 @@ function update_marginals!(
     end
 
     for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
-        callback(request.engine, variable_id, marginal, marginal; force = true)
+        process!(processor, request.engine, variable_id, marginal)
     end
 
     return nothing

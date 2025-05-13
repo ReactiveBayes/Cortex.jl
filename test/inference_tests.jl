@@ -300,6 +300,24 @@ end
     using .TestUtils
     using JET, BipartiteFactorGraphs
 
+    function computer(engine::Cortex.InferenceEngine, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
+        if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
+            _, factor_id = (signal.metadata::Tuple{Int, Int})
+
+            factor = Cortex.get_factor_data(engine, factor_id)
+
+            if factor.fform === :likelihood
+                return 2 * Cortex.get_value(dependencies[1])
+            elseif factor.fform === :prior
+                error("Should not be invoked")
+            end
+        elseif signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
+            return sum(Cortex.get_value.(dependencies))
+        end
+
+        error("Unreachable reached")
+    end
+
     graph = BipartiteFactorGraph()
 
     # The "center" of the model
@@ -325,7 +343,7 @@ end
     add_edge!(graph, o1, f1, Connection(:out))
     add_edge!(graph, o2, f2, Connection(:out))
 
-    inference_engine = Cortex.InferenceEngine(model_backend = graph)
+    inference_engine = Cortex.InferenceEngine(model_backend = graph, inference_request_processor = computer)
 
     Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), inference_engine)
 
@@ -336,25 +354,7 @@ end
     # Set prior
     Cortex.set_value!(Cortex.get_message_to_variable(inference_engine, p, fp), 3)
 
-    function computer(engine::Cortex.InferenceEngine, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
-        if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
-            _, factor_id = (signal.metadata::Tuple{Int, Int})
-
-            factor = Cortex.get_factor_data(engine, factor_id)
-
-            if factor.fform === :likelihood
-                return 2 * Cortex.get_value(dependencies[1])
-            elseif factor.fform === :prior
-                error("Should not be invoked")
-            end
-        elseif signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
-            return sum(Cortex.get_value.(dependencies))
-        end
-
-        error("Unreachable reached")
-    end
-
-    Cortex.update_marginals!(computer, inference_engine, p)
+    Cortex.update_marginals!(inference_engine, p)
 
     @test Cortex.get_value(Cortex.get_marginal(inference_engine, p)) == 9
 end
@@ -370,31 +370,6 @@ end
 
     struct Bernoulli
         y::Bool
-    end
-
-    function make_beta_bernoulli_model(n)
-        graph = BipartiteFactorGraph()
-
-        p = add_variable!(graph, Variable(:p))
-        o = []
-        f = []
-
-        for i in 1:n
-            oi = add_variable!(graph, Variable(:o, i))
-            fi = add_factor!(graph, Factor(:bernoulli))
-
-            push!(o, oi)
-            push!(f, fi)
-
-            add_edge!(graph, p, fi, Connection(:out))
-            add_edge!(graph, oi, fi, Connection(:out))
-        end
-
-        engine = Cortex.InferenceEngine(model_backend = graph)
-
-        Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), engine)
-
-        return engine, p, o, f
     end
 
     function computer(engine::Cortex.InferenceEngine, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
@@ -422,6 +397,31 @@ end
         error("Unreachable reached")
     end
 
+    function make_beta_bernoulli_model(n)
+        graph = BipartiteFactorGraph()
+
+        p = add_variable!(graph, Variable(:p))
+        o = []
+        f = []
+
+        for i in 1:n
+            oi = add_variable!(graph, Variable(:o, i))
+            fi = add_factor!(graph, Factor(:bernoulli))
+
+            push!(o, oi)
+            push!(f, fi)
+
+            add_edge!(graph, p, fi, Connection(:out))
+            add_edge!(graph, oi, fi, Connection(:out))
+        end
+
+        engine = Cortex.InferenceEngine(model_backend = graph, inference_request_processor = computer)
+
+        Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), engine)
+
+        return engine, p, o, f
+    end
+
     function experiment(dataset)
         n = length(dataset)
         engine, p, o, f = make_beta_bernoulli_model(n)
@@ -430,7 +430,7 @@ end
             Cortex.set_value!(Cortex.get_message_to_factor(engine, o[i], f[i]), dataset[i])
         end
 
-        Cortex.update_marginals!(computer, engine, p)
+        Cortex.update_marginals!(engine, p)
 
         return Cortex.get_value(Cortex.get_marginal(engine, p))
     end
@@ -463,42 +463,6 @@ end
         variance::Float64
     end
 
-    # In this model, we assume that both the likelihood and the transition are Normal
-    # with fixed variance equal to 1.0.
-    function make_ssm_model(n)
-        graph = BipartiteFactorGraph()
-
-        x = [add_variable!(graph, Variable(:x, i)) for i in 1:n]
-        y = [add_variable!(graph, Variable(:y, i)) for i in 1:n]
-
-        likelihood = [add_factor!(graph, Factor(:likelihood)) for i in 1:n]
-        transition = [add_factor!(graph, Factor(:transition)) for i in 1:(n - 1)]
-
-        for i in 1:n
-            add_edge!(graph, y[i], likelihood[i], Connection(:out))
-            add_edge!(graph, x[i], likelihood[i], Connection(:out))
-        end
-
-        for i in 1:(n - 1)
-            add_edge!(graph, x[i], transition[i], Connection(:out))
-            add_edge!(graph, x[i + 1], transition[i], Connection(:in))
-        end
-
-        engine = Cortex.InferenceEngine(model_backend = graph)
-
-        Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), engine)
-
-        return engine, x, y, likelihood, transition
-    end
-
-    function product(left::Normal, right::Normal)
-        xi = left.mean / left.variance + right.mean / right.variance
-        w = 1 / left.variance + 1 / right.variance
-        variance = 1 / w
-        mean = variance * xi
-        return Normal(mean, variance)
-    end
-
     function computer(engine::Cortex.InferenceEngine, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
         if signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
             return reduce(product, Cortex.get_value.(dependencies))
@@ -520,6 +484,42 @@ end
         error("Unreachable reached")
     end
 
+    # In this model, we assume that both the likelihood and the transition are Normal
+    # with fixed variance equal to 1.0.
+    function make_ssm_model(n)
+        graph = BipartiteFactorGraph()
+
+        x = [add_variable!(graph, Variable(:x, i)) for i in 1:n]
+        y = [add_variable!(graph, Variable(:y, i)) for i in 1:n]
+
+        likelihood = [add_factor!(graph, Factor(:likelihood)) for i in 1:n]
+        transition = [add_factor!(graph, Factor(:transition)) for i in 1:(n - 1)]
+
+        for i in 1:n
+            add_edge!(graph, y[i], likelihood[i], Connection(:out))
+            add_edge!(graph, x[i], likelihood[i], Connection(:out))
+        end
+
+        for i in 1:(n - 1)
+            add_edge!(graph, x[i], transition[i], Connection(:out))
+            add_edge!(graph, x[i + 1], transition[i], Connection(:in))
+        end
+
+        engine = Cortex.InferenceEngine(model_backend = graph, inference_request_processor = computer)
+
+        Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), engine)
+
+        return engine, x, y, likelihood, transition
+    end
+
+    function product(left::Normal, right::Normal)
+        xi = left.mean / left.variance + right.mean / right.variance
+        w = 1 / left.variance + 1 / right.variance
+        variance = 1 / w
+        mean = variance * xi
+        return Normal(mean, variance)
+    end
+
     function experiment(dataset)
         n = length(dataset)
         engine, x, y, likelihood, transition = make_ssm_model(n)
@@ -528,7 +528,7 @@ end
             Cortex.set_value!(Cortex.get_message_to_factor(engine, y[i], likelihood[i]), dataset[i])
         end
 
-        Cortex.update_marginals!(computer, engine, x)
+        Cortex.update_marginals!(engine, x)
 
         return Cortex.get_value.(Cortex.get_marginal.(engine, x))
     end
@@ -584,45 +584,6 @@ end
                 )
             end
         end
-    end
-
-    function make_ssm_model(n)
-        graph = BipartiteFactorGraph()
-
-        ssnoise = add_variable!(graph, Variable(:ssnoise))
-        obsnoise = add_variable!(graph, Variable(:obsnoise))
-
-        x = [add_variable!(graph, Variable(:x, i)) for i in 1:n]
-        y = [add_variable!(graph, Variable(:y, i)) for i in 1:n]
-
-        likelihood = [add_factor!(graph, Factor(:likelihood)) for i in 1:n]
-        transition = [add_factor!(graph, Factor(:transition)) for i in 1:(n - 1)]
-
-        for i in 1:n
-            add_edge!(graph, y[i], likelihood[i], Connection(:out))
-            add_edge!(graph, x[i], likelihood[i], Connection(:out))
-            add_edge!(graph, obsnoise, likelihood[i], Connection(:out))
-        end
-
-        for i in 1:(n - 1)
-            add_edge!(graph, x[i], transition[i], Connection(:out))
-            add_edge!(graph, x[i + 1], transition[i], Connection(:in))
-            add_edge!(graph, ssnoise, transition[i], Connection(:out))
-        end
-
-        engine = Cortex.InferenceEngine(model_backend = graph)
-
-        Cortex.resolve_dependencies!(MeanFieldResolver(), engine)
-
-        # Initial marginals
-        Cortex.set_value!(Cortex.get_marginal(engine, ssnoise), Gamma(1.0, 1.0))
-        Cortex.set_value!(Cortex.get_marginal(engine, obsnoise), Gamma(1.0, 1.0))
-
-        for i in 1:n
-            Cortex.set_value!(Cortex.get_marginal(engine, x[i]), Normal(0.0, 1.0))
-        end
-
-        return engine, x, y, obsnoise, ssnoise, likelihood, transition
     end
 
     function product(left::Normal, right::Normal)
@@ -684,6 +645,45 @@ end
         error("Unreachable reached")
     end
 
+    function make_ssm_model(n)
+        graph = BipartiteFactorGraph()
+
+        ssnoise = add_variable!(graph, Variable(:ssnoise))
+        obsnoise = add_variable!(graph, Variable(:obsnoise))
+
+        x = [add_variable!(graph, Variable(:x, i)) for i in 1:n]
+        y = [add_variable!(graph, Variable(:y, i)) for i in 1:n]
+
+        likelihood = [add_factor!(graph, Factor(:likelihood)) for i in 1:n]
+        transition = [add_factor!(graph, Factor(:transition)) for i in 1:(n - 1)]
+
+        for i in 1:n
+            add_edge!(graph, y[i], likelihood[i], Connection(:out))
+            add_edge!(graph, x[i], likelihood[i], Connection(:out))
+            add_edge!(graph, obsnoise, likelihood[i], Connection(:out))
+        end
+
+        for i in 1:(n - 1)
+            add_edge!(graph, x[i], transition[i], Connection(:out))
+            add_edge!(graph, x[i + 1], transition[i], Connection(:in))
+            add_edge!(graph, ssnoise, transition[i], Connection(:out))
+        end
+
+        engine = Cortex.InferenceEngine(model_backend = graph, inference_request_processor = computer)
+
+        Cortex.resolve_dependencies!(MeanFieldResolver(), engine)
+
+        # Initial marginals
+        Cortex.set_value!(Cortex.get_marginal(engine, ssnoise), Gamma(1.0, 1.0))
+        Cortex.set_value!(Cortex.get_marginal(engine, obsnoise), Gamma(1.0, 1.0))
+
+        for i in 1:n
+            Cortex.set_value!(Cortex.get_marginal(engine, x[i]), Normal(0.0, 1.0))
+        end
+
+        return engine, x, y, obsnoise, ssnoise, likelihood, transition
+    end
+
     function experiment(dataset, vmp_iterations)
         n = length(dataset)
         engine, x, y, obsnoise, ssnoise, likelihood, transition = make_ssm_model(n)
@@ -695,22 +695,22 @@ end
         for iteration in 1:vmp_iterations
             # Check that the marginals can be updated in any order
             if div(iteration, 2) == 0
-                Cortex.update_marginals!(computer, engine, x)
-                Cortex.update_marginals!(computer, engine, ssnoise)
-                Cortex.update_marginals!(computer, engine, obsnoise)
+                Cortex.update_marginals!(engine, x)
+                Cortex.update_marginals!(engine, ssnoise)
+                Cortex.update_marginals!(engine, obsnoise)
             else
-                Cortex.update_marginals!(computer, engine, obsnoise)
-                Cortex.update_marginals!(computer, engine, ssnoise)
-                Cortex.update_marginals!(computer, engine, x)
+                Cortex.update_marginals!(engine, obsnoise)
+                Cortex.update_marginals!(engine, ssnoise)
+                Cortex.update_marginals!(engine, x)
             end
 
             # Check that the marginals can be updated several times
-            Cortex.update_marginals!(computer, engine, obsnoise)
-            Cortex.update_marginals!(computer, engine, obsnoise)
-            Cortex.update_marginals!(computer, engine, obsnoise)
+            Cortex.update_marginals!(engine, obsnoise)
+            Cortex.update_marginals!(engine, obsnoise)
+            Cortex.update_marginals!(engine, obsnoise)
 
             # Check that the updates can be merged into a single update
-            Cortex.update_marginals!(computer, engine, [ssnoise, obsnoise])
+            Cortex.update_marginals!(engine, [ssnoise, obsnoise])
         end
 
         return (
