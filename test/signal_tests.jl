@@ -29,17 +29,16 @@ end
     end
 
     @testset "Custom Metadata" begin
-        meta = Dict("info" => "extra data")
-        s = Signal(42; metadata = meta)
+        s = Signal(42; metadata = Dict{Symbol, Any}(:info => "extra data"))
         @test get_type(s) === 0x00
-        @test get_metadata(s) === meta
+        @test get_metadata(s) == Dict{Symbol, Any}(:info => "extra data")
+        @test get_metadata(s)[:info] == "extra data"
     end
 
     @testset "Custom Type and Metadata" begin
-        meta = (:a, 1)
-        s = Signal(42; type = 0xff, metadata = meta)
+        s = Signal(42; type = 0xff, metadata = 1)
         @test get_type(s) === 0xff
-        @test get_metadata(s) === meta
+        @test get_metadata(s) === 1
     end
 end
 
@@ -47,12 +46,12 @@ end
     import Cortex:
         Signal,
         UndefValue,
+        UndefMetadata,
         get_value,
         get_dependencies,
         get_listeners,
         get_type,
         get_metadata,
-        UndefMetadata,
         is_pending,
         is_computed
 
@@ -391,7 +390,7 @@ end
     end
 end
 
-@testitem "Edge Case: Duplicate Dependencies Are Allowed" begin
+@testitem "Edge Case: Duplicate Dependencies Are Not Allowed - Leads to Weird Behaviour" begin
     import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, set_value!, is_pending
 
     s1 = Signal()
@@ -409,7 +408,11 @@ end
 
     set_value!(s2, 1)
 
-    @test is_pending(s1)
+    # We expect the signal to not be pending because the second duplicate dependency was not notified
+    # this is not ideal, but it allows to short circuit when notifiying the listeners
+    # this means that the second duplicate dependency is ignored and never notified
+    # this edge case should be documented in the docs strings
+    @test !is_pending(s1)
 end
 
 @testitem "Edge Case: Circular Dependencies" begin
@@ -697,20 +700,20 @@ end
 end
 
 @testitem "Signal Representation" begin
-    import Cortex: Signal, set_value!, add_dependency!, get_type, get_metadata, UndefMetadata
+    import Cortex: Signal, set_value!, add_dependency!, get_type, get_metadata
 
     @testset "Uninitialized Signal" begin
         s_no_meta = Signal()
         @test repr(s_no_meta) == "Signal(value=#undef, pending=false)"
 
-        s_meta = Signal(metadata = :test)
-        @test repr(s_meta) == "Signal(value=#undef, pending=false, metadata=:test)"
+        s_meta = Signal(metadata = (test = 1,))
+        @test repr(s_meta) == "Signal(value=#undef, pending=false, metadata=(test = 1,))"
 
         s_type = Signal(type = 0x01)
         @test repr(s_type) == "Signal(value=#undef, pending=false, type=0x01)"
 
-        s_both = Signal(type = 0xab, metadata = [1, 2])
-        @test repr(s_both) == "Signal(value=#undef, pending=false, type=0xab, metadata=[1, 2])"
+        s_both = Signal(type = 0xab, metadata = 2.3)
+        @test repr(s_both) == "Signal(value=#undef, pending=false, type=0xab, metadata=2.3)"
     end
 
     @testset "Initialized Signal" begin
@@ -723,20 +726,20 @@ end
 
     @testset "Pending Signal" begin
         s1 = Signal(1)
-        s_pending = Signal(type = 0x1f, metadata = ("meta", 1.0))
+        s_pending = Signal(type = 0x1f, metadata = 1)
         add_dependency!(s_pending, s1)
-        @test repr(s_pending) == "Signal(value=#undef, pending=true, type=0x1f, metadata=(\"meta\", 1.0))"
+        @test repr(s_pending) == "Signal(value=#undef, pending=true, type=0x1f, metadata=1)"
 
         set_value!(s_pending, 50)
-        @test repr(s_pending) == "Signal(value=50, pending=false, type=0x1f, metadata=(\"meta\", 1.0))"
+        @test repr(s_pending) == "Signal(value=50, pending=false, type=0x1f, metadata=1)"
 
         set_value!(s1, 2)
-        @test repr(s_pending) == "Signal(value=50, pending=true, type=0x1f, metadata=(\"meta\", 1.0))"
+        @test repr(s_pending) == "Signal(value=50, pending=true, type=0x1f, metadata=1)"
     end
 end
 
 @testitem "Signal JET Coverage" begin
-    import Cortex: Signal, UndefMetadata
+    import Cortex: Signal
     import JET
 
     # Test default constructors
@@ -746,9 +749,9 @@ end
     # Test constructors with keywords
     JET.@test_opt Cortex.Signal(type = 0x01)
     JET.@test_opt Cortex.Signal(metadata = :meta)
-    JET.@test_opt Cortex.Signal(metadata = UndefMetadata())
+    JET.@test_opt Cortex.Signal(metadata = Dict{Symbol, Any}())
     JET.@test_opt Cortex.Signal(1; type = 0x02, metadata = "meta")
-    JET.@test_opt Cortex.Signal(1; metadata = UndefMetadata())
+    JET.@test_opt Cortex.Signal(1; metadata = Dict{Symbol, Any}())
 
     # Test getters
     JET.@test_opt Cortex.is_pending(Cortex.Signal())
@@ -776,7 +779,7 @@ end
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
     JET.@test_opt Cortex.get_type(Cortex.Signal())
     JET.@test_opt Cortex.get_metadata(Cortex.Signal())
-    JET.@test_opt Cortex.get_metadata(Cortex.Signal(metadata = 123))
+    JET.@test_opt Cortex.get_metadata(Cortex.Signal(metadata = Dict{Symbol, Any}(:a => 1)))
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
 end
 
