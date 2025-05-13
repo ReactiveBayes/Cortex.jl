@@ -343,7 +343,9 @@ end
     add_edge!(graph, o1, f1, Connection(:out))
     add_edge!(graph, o2, f2, Connection(:out))
 
-    inference_engine = Cortex.InferenceEngine(model_backend = graph, inference_request_processor = computer)
+    inference_engine = Cortex.InferenceEngine(
+        model_backend = graph, inference_request_processor = computer, trace = true
+    )
 
     Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), inference_engine)
 
@@ -357,6 +359,18 @@ end
     Cortex.update_marginals!(inference_engine, p)
 
     @test Cortex.get_value(Cortex.get_marginal(inference_engine, p)) == 9
+
+    trace = Cortex.get_trace(inference_engine)
+
+    @test length(trace.inference_requests) == 1
+
+    traced_update_request = trace.inference_requests[1]
+
+    @test traced_update_request.request.variable_ids == (p,)
+    @test traced_update_request.total_time_in_ns > 0
+    @test length(traced_update_request.rounds) == 1
+    @test traced_update_request.rounds[1].total_time_in_ns > 0
+    @test length(traced_update_request.rounds[1].executions) == 2
 end
 
 @testitem "Inference in Beta-Bernoulli model" setup = [TestUtils] begin
