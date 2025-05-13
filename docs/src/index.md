@@ -10,6 +10,7 @@ Cortex is a simple, efficient and modular framework for running message passing 
 ## Where To Go Next?
 
 - [Signals](@ref signals) - Read about core reactive programming concepts with the `Signal` type.
+- [Inference](@ref inference) - Learn how Cortex uses the `InferenceEngine` to perform inference on a probabilistic model.
 
 # Index
 
