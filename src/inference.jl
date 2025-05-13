@@ -36,7 +36,7 @@ The engine interacts with the `model_backend` through a defined interface (e.g.,
 - [`request_inference_for`](@ref)
 - [`Signal`](@ref Cortex.Signal)
 """
-struct InferenceEngine{M, P, T}
+mutable struct InferenceEngine{M, P, T}
     model_backend::M
     inference_request_processor::P
     tracer::T
@@ -61,6 +61,16 @@ struct InferenceEngine{M, P, T}
 
         return engine
     end
+end
+
+function Base.show(io::IO, engine::InferenceEngine)
+    print(io, "InferenceEngine(")
+    if !isnothing(get_trace(engine))
+        print(io, "trace = true")
+    else
+        print(io, "trace = false")
+    end
+    print(io, ")")
 end
 
 """
@@ -299,9 +309,8 @@ A backend-specific data structure for the connection.
 - [`get_message_to_factor`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_connection(engine::InferenceEngine, variable_id, factor_id) = get_connection(
-    get_model_backend(engine), variable_id, factor_id
-)
+get_connection(engine::InferenceEngine, variable_id, factor_id) =
+    get_connection(get_model_backend(engine), variable_id, factor_id)
 
 """
     get_connection_label(connection_object)
@@ -348,9 +357,8 @@ This is a convenience function calling `get_connection_label(get_connection(engi
 - [`get_connection_label(::Any)`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_connection_label(engine::InferenceEngine, variable_id, factor_id) = get_connection_label(
-    get_connection(engine, variable_id, factor_id)
-)
+get_connection_label(engine::InferenceEngine, variable_id, factor_id) =
+    get_connection_label(get_connection(engine, variable_id, factor_id))
 
 """
     get_connection_index(connection_object) -> Int
@@ -398,9 +406,8 @@ This is a convenience function calling `get_connection_index(get_connection(engi
 - [`get_connection_index(::Any)`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_connection_index(engine::InferenceEngine, variable_id, factor_id) = get_connection_index(
-    get_connection(engine, variable_id, factor_id)
-)
+get_connection_index(engine::InferenceEngine, variable_id, factor_id) =
+    get_connection_index(get_connection(engine, variable_id, factor_id))
 
 """
     get_message_to_variable(connection_object) -> Cortex.Signal
@@ -447,9 +454,8 @@ This is a convenience function calling `get_message_to_variable(get_connection(e
 - [`get_message_to_variable(::Any)`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) = get_message_to_variable(
-    get_connection(engine, variable_id, factor_id)
-)
+get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) =
+    get_message_to_variable(get_connection(engine, variable_id, factor_id))
 
 """
     get_message_to_factor(connection_object) -> Cortex.Signal
@@ -496,9 +502,8 @@ This is a convenience function calling `get_message_to_factor(get_connection(eng
 - [`get_message_to_factor(::Any)`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) = get_message_to_factor(
-    get_connection(engine, variable_id, factor_id)
-)
+get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) =
+    get_message_to_factor(get_connection(engine, variable_id, factor_id))
 
 """
     get_connected_variable_ids(engine::InferenceEngine, factor_id)
@@ -522,9 +527,8 @@ An iterator of connected variable identifiers.
 - [`get_connection`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_connected_variable_ids(engine::InferenceEngine, factor_id) = get_connected_variable_ids(
-    get_model_backend(engine), factor_id
-)
+get_connected_variable_ids(engine::InferenceEngine, factor_id) =
+    get_connected_variable_ids(get_model_backend(engine), factor_id)
 
 """
     get_connected_factor_ids(engine::InferenceEngine, variable_id)
@@ -548,9 +552,8 @@ An iterator of connected factor identifiers.
 - [`get_connection`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_connected_factor_ids(engine::InferenceEngine, variable_id) = get_connected_factor_ids(
-    get_model_backend(engine), variable_id
-)
+get_connected_factor_ids(engine::InferenceEngine, variable_id) =
+    get_connected_factor_ids(get_model_backend(engine), variable_id)
 
 """
     InferenceSignalTypes
@@ -731,11 +734,8 @@ struct CallbackInferenceRequestProcessor{F} <: AbstractInferenceRequestProcessor
     f::F
 end
 
-Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} = CallbackInferenceRequestProcessor{
-    F
-}(
-    f
-)
+Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} =
+    CallbackInferenceRequestProcessor{F}(f)
 
 "Internal functor for `InferenceRequestProcessor` to apply the computation logic."
 function process!(
@@ -756,7 +756,7 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
     request = request_inference_for(engine, variable_ids)
     processor = get_inference_request_processor(engine)
 
-    trace_inference_request(engine.tracer, request) do inference_request_trace
+    trace_inference_request(engine.tracer, engine, request) do inference_request_trace
         indices         = 1:1:length(variable_ids)
         indices_reverse = reverse(indices)::typeof(indices)
 
@@ -769,6 +769,7 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
 
             current_order = is_reverse ? indices_reverse : indices
 
+            # These rounds compute mostly the messages needed to compute the marginals
             trace_inference_round(inference_request_trace) do inference_round_trace
                 @inbounds for i in current_order
                     if !request.readines_status[i]
@@ -794,9 +795,18 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
             should_continue = _should_continue
         end
 
+        # This is the final round that computes the marginals
         for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
             process!(processor, request.engine, variable_id, marginal)
         end
+
+        # trace_inference_round(inference_request_trace) do inference_round_trace
+        #     for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
+        #         trace_inference_execution(inference_round_trace, variable_id, marginal) do
+        #             process!(processor, request.engine, variable_id, marginal)
+        #         end
+        #     end
+        # end
     end
 
     return nothing
@@ -805,6 +815,7 @@ end
 ## -- Inference tracing -- ##
 
 struct TracedInferenceExecution
+    engine::InferenceEngine
     variable_id::Any
     signal::Cortex.Signal
     total_time_in_ns::UInt64
@@ -812,12 +823,55 @@ struct TracedInferenceExecution
     value_after_execution::Any
 end
 
+function Base.show(io::IO, execution::TracedInferenceExecution)
+    variable_data = get_variable_data(execution.engine, execution.variable_id)
+
+    signal = execution.signal
+    signal_type = signal.type
+
+    print(io, "TracedInferenceExecution(for = $(variable_data), type = ")
+
+    if signal_type === Cortex.InferenceSignalTypes.MessageToVariable
+        v_id, f_id = signal.metadata
+        v_data = get_variable_data(execution.engine, v_id)
+        f_data = get_factor_data(execution.engine, f_id)
+        print(io, "MessageToVariable(from = $(f_data), to = $(v_data))")
+    elseif signal_type === Cortex.InferenceSignalTypes.MessageToFactor
+        v_id, f_id = signal.metadata
+        v_data = get_variable_data(execution.engine, v_id)
+        f_data = get_factor_data(execution.engine, f_id)
+        print(io, "MessageToFactor(from = $(v_data), to = $(f_data))")
+    elseif signal_type === Cortex.InferenceSignalTypes.ProductOfMessages
+        print(io, "ProductOfMessages(?)")
+    elseif signal_type === Cortex.InferenceSignalTypes.IndividualMarginal
+        v_id = signal.metadata
+        v_data = get_variable_data(execution.engine, v_id)
+        print(io, "IndividualMarginal($(v_data))")
+    elseif signal_type === Cortex.InferenceSignalTypes.JointMarginal
+        print(io, "JointMarginal(?)")
+    end
+
+    print(
+        io,
+        ", total_time = ",
+        format_time_ns(execution.total_time_in_ns),
+        ", value_before_execution = ",
+        execution.value_before_execution,
+        ", value_after_execution = ",
+        execution.value_after_execution
+    )
+
+    print(io, ")")
+end
+
 struct TracedInferenceRound
+    engine::InferenceEngine
     total_time_in_ns::UInt64
     executions::Vector{TracedInferenceExecution}
 end
 
 struct TracedInferenceRequest
+    engine::InferenceEngine
     total_time_in_ns::UInt64
     request::InferenceRequest
     rounds::Vector{TracedInferenceRound}
@@ -830,11 +884,13 @@ struct InferenceEngineTracer
 end
 
 # If the tracer is not provided, we just execute the function
-function trace_inference_request(f::F, ::Nothing, request::InferenceRequest) where {F}
+function trace_inference_request(f::F, ::Nothing, engine::InferenceEngine, request::InferenceRequest) where {F}
     return f(nothing)
 end
 
-function trace_inference_request(f::F, tracer::InferenceEngineTracer, request::InferenceRequest) where {F}
+function trace_inference_request(
+    f::F, tracer::InferenceEngineTracer, engine::InferenceEngine, request::InferenceRequest
+) where {F}
     # We collect the rounds of the inference request
     rounds = Vector{TracedInferenceRound}()
 
@@ -844,7 +900,7 @@ function trace_inference_request(f::F, tracer::InferenceEngineTracer, request::I
     # We execute the function and pass the tracer and the rounds to the function
     # The function `f` should not assume that the tracer and the rounds are passed to it
     # Instead it uses opaque `trace` object to pass it further down the call stack
-    f((tracer, rounds))
+    f((engine, tracer, rounds))
 
     # Inference request ends at time `end_time_in_ns`
     end_time_in_ns = time_ns()
@@ -853,7 +909,7 @@ function trace_inference_request(f::F, tracer::InferenceEngineTracer, request::I
     total_time_in_ns = end_time_in_ns - begin_time_in_ns
 
     # We add the inference request to the tracer
-    push!(tracer.inference_requests, TracedInferenceRequest(total_time_in_ns, request, rounds))
+    push!(tracer.inference_requests, TracedInferenceRequest(engine, total_time_in_ns, request, rounds))
 end
 
 function trace_inference(tracer::InferenceEngineTracer, processor::AbstractInferenceRequestProcessor)
@@ -865,8 +921,10 @@ function trace_inference_round(f::F, trace::Nothing) where {F}
     return f(nothing)
 end
 
-function trace_inference_round(f::F, trace::Tuple{InferenceEngineTracer, Vector{TracedInferenceRound}}) where {F}
-    tracer, rounds = trace
+function trace_inference_round(
+    f::F, trace::Tuple{InferenceEngine, InferenceEngineTracer, Vector{TracedInferenceRound}}
+) where {F}
+    engine, tracer, rounds = trace
 
     executions = Vector{TracedInferenceExecution}()
 
@@ -876,7 +934,7 @@ function trace_inference_round(f::F, trace::Tuple{InferenceEngineTracer, Vector{
     # We execute the function and pass the tracer and the rounds to the function
     # The function `f` should not assume that the tracer and the rounds are passed to it
     # Instead it uses opaque `trace` object to pass it further down the call stack
-    f((tracer, executions))
+    f((engine, tracer, executions))
 
     # We end the round at time `end_time_in_ns`
     end_time_in_ns = time_ns()
@@ -886,7 +944,7 @@ function trace_inference_round(f::F, trace::Tuple{InferenceEngineTracer, Vector{
 
     # We add the round to the tracer only if there are executions
     if length(executions) > 0
-        push!(rounds, TracedInferenceRound(total_time_in_ns, executions))
+        push!(rounds, TracedInferenceRound(engine, total_time_in_ns, executions))
     end
 
     return f(trace)
@@ -897,9 +955,12 @@ function trace_inference_execution(f::F, ::Nothing, variable_id, dependency::Sig
 end
 
 function trace_inference_execution(
-    f::F, trace::Tuple{InferenceEngineTracer, Vector{TracedInferenceExecution}}, variable_id, dependency::Signal
+    f::F,
+    trace::Tuple{InferenceEngine, InferenceEngineTracer, Vector{TracedInferenceExecution}},
+    variable_id,
+    dependency::Signal
 ) where {F}
-    tracer, executions = trace
+    engine, tracer, executions = trace
 
     value_before_execution = get_value(dependency)
 
@@ -921,7 +982,7 @@ function trace_inference_execution(
     push!(
         executions,
         TracedInferenceExecution(
-            variable_id, dependency, total_time_in_ns, value_before_execution, value_after_execution
+            engine, variable_id, dependency, total_time_in_ns, value_before_execution, value_after_execution
         )
     )
 end

@@ -306,7 +306,9 @@ end
 
             factor = Cortex.get_factor_data(engine, factor_id)
 
-            if factor.fform === :likelihood
+            if factor.fform === :likelihood1
+                return 2 * Cortex.get_value(dependencies[1])
+            elseif factor.fform === :likelihood2
                 return 2 * Cortex.get_value(dependencies[1])
             elseif factor.fform === :prior
                 error("Should not be invoked")
@@ -331,8 +333,8 @@ end
     fp = add_factor!(graph, Factor(:prior))
 
     # Likelihoods
-    f1 = add_factor!(graph, Factor(:likelihood))
-    f2 = add_factor!(graph, Factor(:likelihood))
+    f1 = add_factor!(graph, Factor(:likelihood1))
+    f2 = add_factor!(graph, Factor(:likelihood2))
 
     # Connections between the parameter `p` and the factors
     add_edge!(graph, p, fp, Connection(:out))
@@ -371,9 +373,9 @@ end
 
     @test traced_update_request.request.variable_ids == (p,)
     @test traced_update_request.total_time_in_ns > 0
-    @test length(traced_update_request.rounds) == 1
+    @test length(traced_update_request.rounds) == 2
     @test traced_update_request.rounds[1].total_time_in_ns > 0
-    @test length(traced_update_request.rounds[1].executions) == 2
+    @test length(traced_update_request.rounds[1].executions) == 1
 
     @test traced_update_request.rounds[1].executions[1].variable_id == p
     @test traced_update_request.rounds[1].executions[1].signal.type == Cortex.InferenceSignalTypes.MessageToVariable
@@ -388,6 +390,24 @@ end
     @test traced_update_request.rounds[1].executions[2].total_time_in_ns > 0
     @test traced_update_request.rounds[1].executions[2].value_before_execution == Cortex.UndefValue()
     @test traced_update_request.rounds[1].executions[2].value_after_execution == 2 * o2_value
+
+    # @test length(traced_update_request.rounds[2].executions) == 1
+    # @test traced_update_request.rounds[2].executions[1].variable_id == p
+    # @test traced_update_request.rounds[2].executions[1].signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
+    # @test traced_update_request.rounds[2].executions[1].signal.metadata == (p, )
+    # @test traced_update_request.rounds[2].executions[1].total_time_in_ns > 0
+    # @test traced_update_request.rounds[2].executions[1].value_before_execution == Cortex.UndefValue()
+    # @test traced_update_request.rounds[2].executions[1].value_after_execution == 9
+
+    io = IOBuffer()
+    show(io, trace)
+
+    trace_string_representation = String(take!(io))
+
+    @test !isempty(trace_string_representation)
+
+    @test occursin("MessageToVariable(from = likelihood1, to = p)", trace_string_representation)
+    @test occursin("MessageToVariable(from = likelihood2, to = p)", trace_string_representation)
 end
 
 @testitem "Inference in Beta-Bernoulli model" setup = [TestUtils] begin

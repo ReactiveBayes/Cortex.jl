@@ -416,7 +416,7 @@ end
 end
 
 @testitem "Edge Case: Circular Dependencies" begin
-    import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, set_value!, is_pending, get_age
+    import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, set_value!, is_pending
 
     s1 = Signal()
     s2 = Signal()
@@ -458,7 +458,7 @@ end
 end
 
 @testitem "Edge Case: Self Dependency Does Nothing" begin
-    import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, set_value!, is_pending, get_age
+    import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, set_value!, is_pending
 
     s1 = Signal()
 
