@@ -373,9 +373,9 @@ end
 
     @test traced_update_request.request.variable_ids == (p,)
     @test traced_update_request.total_time_in_ns > 0
-    @test length(traced_update_request.rounds) == 2
+    @test length(traced_update_request.rounds) == 1
     @test traced_update_request.rounds[1].total_time_in_ns > 0
-    @test length(traced_update_request.rounds[1].executions) == 1
+    @test length(traced_update_request.rounds[1].executions) == 2
 
     @test traced_update_request.rounds[1].executions[1].variable_id == p
     @test traced_update_request.rounds[1].executions[1].signal.type == Cortex.InferenceSignalTypes.MessageToVariable
