@@ -1070,13 +1070,13 @@ end
 
     s = Signal(1)
 
-    compute!(s) do signal, dependencies
+    compute!(s; skip_if_no_listeners = true) do signal, dependencies
         return 2
     end
 
     @test get_value(s) == 1
 
-    compute!(s; force = true, skip_if_empty_dependencies = false) do signal, dependencies
+    compute!(s; force = true, skip_if_no_listeners = false) do signal, dependencies
         @test length(dependencies) == 0
         return 2
     end
