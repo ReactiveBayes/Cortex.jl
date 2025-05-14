@@ -1064,3 +1064,22 @@ end
         return false
     end
 end
+
+@testitem "The `compute!` function should not update the value of a signal if it does not have listeners" begin
+    import Cortex: Signal, compute!, get_value
+
+    s = Signal(1)
+
+    compute!(s) do signal, dependencies
+        return 2
+    end
+
+    @test get_value(s) == 1
+
+    compute!(s; force = true, skip_if_empty_dependencies = false) do signal, dependencies
+        @test length(dependencies) == 0
+        return 2
+    end
+
+    @test get_value(s) == 2
+end
