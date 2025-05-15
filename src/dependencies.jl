@@ -1,5 +1,12 @@
 abstract type AbstractDependencyResolver end
 
+function get_joint_dependencies(::AbstractDependencyResolver, ::InferenceEngine, variable_id)
+    # By default, dependency resolvers do not return joint dependencies
+    # however, we still have to return an iterator of dependencies
+    # so we just return an empty tuple
+    return ()
+end
+
 struct DefaultDependencyResolver <: AbstractDependencyResolver end
 
 function resolve_dependencies!(resolver::AbstractDependencyResolver, engine::InferenceEngine)

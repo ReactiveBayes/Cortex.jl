@@ -36,27 +36,37 @@ The engine interacts with the `model_backend` through a defined interface (e.g.,
 - [`request_inference_for`](@ref)
 - [`Signal`](@ref Cortex.Signal)
 """
-mutable struct InferenceEngine{M, P, T}
+mutable struct InferenceEngine{M, D, P, T}
     model_backend::M
+    dependency_resolver::D
     inference_request_processor::P
     tracer::T
 
     function InferenceEngine(;
         model_backend::M,
+        dependency_resolver::D = DefaultDependencyResolver(),
         inference_request_processor::P = InferenceRequestScanner(),
         prepare_signals_metadata::Bool = true,
+        resolve_dependencies::Bool = true,
         trace::Bool = false
-    ) where {M, P}
+    ) where {M, D, P}
         checked_backend = throw_if_backend_unsupported(model_backend)::M
+        checked_dependency_resolver = convert(AbstractDependencyResolver, dependency_resolver)
         checked_processor = convert(AbstractInferenceRequestProcessor, inference_request_processor)
         tracer = trace ? InferenceEngineTracer() : nothing
 
-        engine = new{typeof(checked_backend), typeof(checked_processor), typeof(tracer)}(
-            checked_backend, checked_processor, tracer
+        engine = new{
+            typeof(checked_backend), typeof(checked_dependency_resolver), typeof(checked_processor), typeof(tracer)
+        }(
+            checked_backend, checked_dependency_resolver, checked_processor, tracer
         )
 
         if prepare_signals_metadata
             prepare_signals_metadata!(engine)
+        end
+
+        if resolve_dependencies
+            resolve_dependencies!(checked_dependency_resolver, engine)
         end
 
         return engine
@@ -799,6 +809,12 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
             for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
                 trace_inference_execution(inference_round_trace, variable_id, marginal) do
                     process!(processor, request.engine, variable_id, marginal)
+                end
+
+                for joint_dependency in get_joint_dependencies(engine.dependency_resolver, engine, variable_id)
+                    trace_inference_execution(inference_round_trace, variable_id, joint_dependency) do
+                        process!(processor, request.engine, variable_id, joint_dependency)
+                    end
                 end
             end
         end

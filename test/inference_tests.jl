@@ -29,7 +29,7 @@ end
     variable_id_2 = add_variable!(graph, Variable(:b, 1))
     variable_id_3 = add_variable!(graph, Variable(:c, 2, 3))
 
-    inference_engine = Cortex.InferenceEngine(model_backend = graph)
+    inference_engine = Cortex.InferenceEngine(model_backend = graph, resolve_dependencies = false)
 
     # Here we check that the variable data structure returned from the inference engine's backend is correct
     # But technically this is not required to be implemented and is not used in the inference engine
@@ -191,7 +191,8 @@ end
         add_edge!(graph, vc, f1, Connection(:param))
         add_edge!(graph, vc, f2, Connection(:param))
 
-        inference_engine = Cortex.InferenceEngine(model_backend = graph)
+        # We disable dependency resolution because we will add dependencies manually
+        inference_engine = Cortex.InferenceEngine(model_backend = graph, resolve_dependencies = false)
 
         vm = Cortex.get_marginal(inference_engine, vc)
 
@@ -262,7 +263,8 @@ end
     add_edge!(model, v2, f2, Connection(:out))
     add_edge!(model, v3, f2, Connection(:in))
 
-    inference_engine = Cortex.InferenceEngine(model_backend = model)
+    # We disable dependency resolution because we will add dependencies manually
+    inference_engine = Cortex.InferenceEngine(model_backend = model, resolve_dependencies = false)
 
     # A message from f1 to v2 depends on a message from v1 to f1
     Cortex.add_dependency!(
@@ -352,9 +354,11 @@ end
             add_edge!(graph, oi, fi, Connection(:out))
         end
 
-        engine = Cortex.InferenceEngine(model_backend = graph, inference_request_processor = computer)
-
-        Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), engine)
+        engine = Cortex.InferenceEngine(
+            model_backend = graph,
+            dependency_resolver = Cortex.DefaultDependencyResolver(),
+            inference_request_processor = computer
+        )
 
         return engine, p, o, f
     end
@@ -442,9 +446,11 @@ end
             add_edge!(graph, x[i + 1], transition[i], Connection(:in))
         end
 
-        engine = Cortex.InferenceEngine(model_backend = graph, inference_request_processor = computer)
-
-        Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), engine)
+        engine = Cortex.InferenceEngine(
+            model_backend = graph,
+            dependency_resolver = Cortex.DefaultDependencyResolver(),
+            inference_request_processor = computer
+        )
 
         return engine, x, y, likelihood, transition
     end
@@ -606,9 +612,245 @@ end
             add_edge!(graph, ssnoise, transition[i], Connection(:out))
         end
 
-        engine = Cortex.InferenceEngine(model_backend = graph, inference_request_processor = computer)
+        engine = Cortex.InferenceEngine(
+            model_backend = graph, dependency_resolver = MeanFieldResolver(), inference_request_processor = computer
+        )
 
-        Cortex.resolve_dependencies!(MeanFieldResolver(), engine)
+        # Initial marginals
+        Cortex.set_value!(Cortex.get_marginal(engine, ssnoise), Gamma(1.0, 1.0))
+        Cortex.set_value!(Cortex.get_marginal(engine, obsnoise), Gamma(1.0, 1.0))
+
+        for i in 1:n
+            Cortex.set_value!(Cortex.get_marginal(engine, x[i]), Normal(0.0, 1.0))
+        end
+
+        return engine, x, y, obsnoise, ssnoise, likelihood, transition
+    end
+
+    function experiment(dataset, vmp_iterations)
+        n = length(dataset)
+        engine, x, y, obsnoise, ssnoise, likelihood, transition = make_ssm_model(n)
+
+        for i in 1:n
+            Cortex.set_value!(Cortex.get_marginal(engine, y[i]), dataset[i])
+        end
+
+        for iteration in 1:vmp_iterations
+            # Check that the marginals can be updated in any order
+            if div(iteration, 2) == 0
+                Cortex.update_marginals!(engine, x)
+                Cortex.update_marginals!(engine, ssnoise)
+                Cortex.update_marginals!(engine, obsnoise)
+            else
+                Cortex.update_marginals!(engine, obsnoise)
+                Cortex.update_marginals!(engine, ssnoise)
+                Cortex.update_marginals!(engine, x)
+            end
+
+            # Check that the marginals can be updated several times
+            Cortex.update_marginals!(engine, obsnoise)
+            Cortex.update_marginals!(engine, obsnoise)
+            Cortex.update_marginals!(engine, obsnoise)
+
+            # Check that the updates can be merged into a single update
+            Cortex.update_marginals!(engine, [ssnoise, obsnoise])
+        end
+
+        return (
+            x = Cortex.get_value.(Cortex.get_marginal.(engine, x)),
+            ssnoise = Cortex.get_value(Cortex.get_marginal(engine, ssnoise)),
+            obsnoise = Cortex.get_value(Cortex.get_marginal(engine, obsnoise))
+        )
+    end
+
+    rng = StableRNG(1234)
+
+    n = 100
+    ssnoise_real = 100.0
+    obsnoise_real = 100.0
+    random_walk = [0.0]
+    for i in 2:n
+        push!(random_walk, rand(rng, Normal(random_walk[i - 1], ssnoise_real)))
+    end
+
+    observations = []
+    for i in 1:n
+        push!(observations, rand(rng, Normal(random_walk[i], obsnoise_real)))
+    end
+
+    vmp_iterations = 100
+    answer = experiment(observations, vmp_iterations)
+
+    # The actual answer isn't precise because of the mean-field assumption
+    # as well as the fact that the convergence of the VMP updates 
+    # depends on the initial conditions and order of updates
+    @test mean(answer.obsnoise) > 50.0
+    @test mean(answer.ssnoise) > 50.0
+end
+
+@testitem "Inference in a simple SSM model - Structured" setup = [TestUtils] begin
+    using .TestUtils
+    using JET, BipartiteFactorGraphs, StableRNGs, Random
+
+    struct Normal
+        mean::Float64
+        precision::Float64
+    end
+
+    Random.rand(rng::AbstractRNG, n::Normal) = n.mean + randn(rng) / sqrt(n.precision)
+
+    struct Gamma
+        shape::Float64
+        scale::Float64
+    end
+
+    mean(g::Gamma) = g.shape * g.scale
+
+    mean(n::Normal) = n.mean
+    var(n::Normal) = 1 / n.precision
+
+    struct StructuredResolver <: Cortex.AbstractDependencyResolver
+        joint_dependencies::Dict{Any, Cortex.Signal}
+
+        function StructuredResolver()
+            return new(Dict{Any, Cortex.Signal}())
+        end
+    end
+
+    function Cortex.resolve_variable_dependencies!(::StructuredResolver, engine::Cortex.InferenceEngine, variable_id)
+        return Cortex.resolve_variable_dependencies!(Cortex.DefaultDependencyResolver(), engine, variable_id)
+    end
+
+    function Cortex.resolve_factor_dependencies!(
+        resolver::StructuredResolver, engine::Cortex.InferenceEngine, factor_id
+    )
+        factor_data = Cortex.get_factor_data(engine, factor_id)
+
+        # For likelihood we do mean-field like updates
+        if factor_data.fform === :likelihood
+            variable_ids_connected_to_factor = Cortex.get_connected_variable_ids(engine, factor_id)
+            for variable_id1 in variable_ids_connected_to_factor, variable_id2 in variable_ids_connected_to_factor
+                if variable_id1 !== variable_id2
+                    Cortex.add_dependency!(
+                        Cortex.get_message_to_variable(engine, variable_id1, factor_id),
+                        Cortex.get_marginal(engine, variable_id2);
+                        weak = true
+                    )
+                end
+            end
+        else
+            # For transition we do structured updates
+            variable_ids_connected_to_factor = Cortex.get_connected_variable_ids(engine, factor_id)
+
+            # We cluster the variables into their respective clusters
+            # For this example we simply use the name of the variable, thus x_1 and x_2 are in the same cluster
+            clusters = Dict{Symbol, Vector{Int}}()
+
+            for variable_id in variable_ids_connected_to_factor
+                name = Cortex.get_variable_data(engine, variable_id).name
+                if haskey(clusters, name)
+                    push!(clusters[name], variable_id)
+                else
+                    clusters[name] = [variable_id]
+                end
+            end
+
+            deps = map(values(clusters)) do cluster
+                if length(cluster) == 1
+                    return Cortex.get_marginal(engine, first(cluster))
+                else
+                    new_joint_marginal = Cortex.Signal(
+                        type = Cortex.InferenceSignalTypes.JointMarginal, metadata = (factor_id, cluster)
+                    )
+                    for v_id in cluster
+                        resolver.joint_dependencies[v_id] = new_joint_marginal
+                    end
+                    return new_joint_marginal
+                end
+            end
+
+            for (index, cluster) in enumerate(values(clusters))
+                for m1 in cluster, m2 in cluster
+                    if m1 !== m2
+                        Cortex.add_dependency!(
+                            Cortex.get_message_to_variable(engine, m1, factor_id),
+                            Cortex.get_message_to_factor(engine, m2, factor_id);
+                        )
+                    end
+                end
+
+                for m1 in cluster
+                    for (another_index, another_cluster_joint_marginal) in enumerate(deps)
+                        if index !== another_index
+                            Cortex.add_dependency!(
+                                Cortex.get_message_to_variable(engine, m1, factor_id),
+                                another_cluster_joint_marginal;
+                                weak = true
+                            )
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    function product(left::Normal, right::Normal)
+        xi = left.mean * left.precision + right.mean * right.precision
+        w = left.precision + right.precision
+        precision = w
+        mean = (1 / precision) * xi
+        return Normal(mean, precision)
+    end
+
+    function product(left::Gamma, right::Gamma)
+        return Gamma(left.shape + right.shape - 1, (left.scale * right.scale) / (left.scale + right.scale))
+    end
+
+    function get_name_of_variable(engine::Cortex.InferenceEngine, variable_id)
+        return Cortex.get_variable_data(engine, variable_id).name
+    end
+
+    function computer(engine::Cortex.InferenceEngine, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
+        if signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
+            return reduce(product, Cortex.get_value.(dependencies))
+        elseif signal.type == Cortex.InferenceSignalTypes.MessageToFactor
+            return reduce(product, Cortex.get_value.(dependencies))
+        elseif signal.type == Cortex.InferenceSignalTypes.MessageToVariable
+            error("not implemented")
+
+            error("Unreachable reached")
+        end
+
+        error("Unreachable reached")
+    end
+
+    function make_ssm_model(n)
+        graph = BipartiteFactorGraph()
+
+        ssnoise = add_variable!(graph, Variable(:ssnoise))
+        obsnoise = add_variable!(graph, Variable(:obsnoise))
+
+        x = [add_variable!(graph, Variable(:x, i)) for i in 1:n]
+        y = [add_variable!(graph, Variable(:y, i)) for i in 1:n]
+
+        likelihood = [add_factor!(graph, Factor(:likelihood)) for i in 1:n]
+        transition = [add_factor!(graph, Factor(:transition)) for i in 1:(n - 1)]
+
+        for i in 1:n
+            add_edge!(graph, y[i], likelihood[i], Connection(:out))
+            add_edge!(graph, x[i], likelihood[i], Connection(:out))
+            add_edge!(graph, obsnoise, likelihood[i], Connection(:out))
+        end
+
+        for i in 1:(n - 1)
+            add_edge!(graph, x[i], transition[i], Connection(:out))
+            add_edge!(graph, x[i + 1], transition[i], Connection(:in))
+            add_edge!(graph, ssnoise, transition[i], Connection(:out))
+        end
+
+        engine = Cortex.InferenceEngine(
+            model_backend = graph, dependency_resolver = StructuredResolver(), inference_request_processor = computer
+        )
 
         # Initial marginals
         Cortex.set_value!(Cortex.get_marginal(engine, ssnoise), Gamma(1.0, 1.0))
@@ -732,10 +974,11 @@ end
     add_edge!(graph, o2, f2, Connection(:out))
 
     inference_engine = Cortex.InferenceEngine(
-        model_backend = graph, inference_request_processor = computer, trace = true
+        model_backend = graph,
+        dependency_resolver = Cortex.DefaultDependencyResolver(),
+        inference_request_processor = computer,
+        trace = true
     )
-
-    Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), inference_engine)
 
     # Set data
     o1_value = 1
