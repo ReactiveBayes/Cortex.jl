@@ -54,9 +54,9 @@ end
     add_edge!(graph, v2, f2, Connection(:out))
     add_edge!(graph, v3, f2, Connection(:out))
 
-    engine = Cortex.InferenceEngine(model_backend = graph)
-
-    Cortex.resolve_dependencies!(Cortex.DefaultDependencyResolver(), engine)
+    engine = Cortex.InferenceEngine(
+        model_backend = graph, dependency_resolver = Cortex.DefaultDependencyResolver(), resolve_dependencies = true
+    )
 
     v1_marginal = Cortex.get_marginal(engine, v1)
     v1_marginal_deps = Cortex.get_dependencies(v1_marginal)

@@ -416,7 +416,7 @@ end
 end
 
 @testitem "Edge Case: Circular Dependencies" begin
-    import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, set_value!, is_pending, get_age
+    import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, set_value!, is_pending
 
     s1 = Signal()
     s2 = Signal()
@@ -458,7 +458,7 @@ end
 end
 
 @testitem "Edge Case: Self Dependency Does Nothing" begin
-    import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, set_value!, is_pending, get_age
+    import Cortex: Signal, add_dependency!, get_dependencies, get_listeners, set_value!, is_pending
 
     s1 = Signal()
 
@@ -1063,4 +1063,23 @@ end
     JET.@test_opt process_dependencies!(derived; retry = false) do dependency
         return false
     end
+end
+
+@testitem "The `compute!` function should not update the value of a signal if it does not have listeners" begin
+    import Cortex: Signal, compute!, get_value
+
+    s = Signal(1)
+
+    compute!(s; skip_if_no_listeners = true) do signal, dependencies
+        return 2
+    end
+
+    @test get_value(s) == 1
+
+    compute!(s; force = true, skip_if_no_listeners = false) do signal, dependencies
+        @test length(dependencies) == 0
+        return 2
+    end
+
+    @test get_value(s) == 2
 end

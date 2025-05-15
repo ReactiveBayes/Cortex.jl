@@ -1,26 +1,123 @@
-struct InferenceEngine{M}
-    model_backend::M
 
-    function InferenceEngine(; model_backend::M, prepare_signals_metadata::Bool = true) where {M}
+struct InferenceEngineWarning
+    description::String
+    context::Any
+end
+
+"""
+    InferenceEngine{M}
+
+Core structure for managing and executing inference tasks on a given model backend.
+
+## Fields
+
+- `model_backend::M`: The underlying model backend (e.g., a `BipartiteFactorGraph`) on which inference is performed. It must conform to the Cortex.jl backend interface.
+
+## Constructor
+
+```julia
+InferenceEngine(; model_backend::M, prepare_signals_metadata::Bool = true) where {M}
+```
+
+- `model_backend`: An instance of a supported model backend.
+- `prepare_signals_metadata::Bool` (default: `true`): If `true`, calls [`prepare_signals_metadata!`](@ref) upon construction to initialize signal types and metadata. This is typically required for inference algorithms.
+
+## Overview
+
+The `InferenceEngine` orchestrates message passing and marginal computation within a probabilistic model using the [`Signal`](@ref Cortex.Signal) reactivity system.
+It provides a standardized API for:
+- Accessing model components (variables, factors, connections).
+- Retrieving reactive signals for marginals and messages.
+- Managing inference execution via [`update_marginals!`](@ref) and [`request_inference_for`](@ref).
+
+The engine interacts with the `model_backend` through a defined interface (e.g., `Cortex.get_variable_data(backend, id)`), implemented by backend-specific extensions.
+
+## See Also
+
+- [`get_model_backend`](@ref)
+- [`prepare_signals_metadata!`](@ref)
+- [`is_backend_supported`](@ref)
+- [`update_marginals!`](@ref)
+- [`request_inference_for`](@ref)
+- [`Signal`](@ref Cortex.Signal)
+"""
+mutable struct InferenceEngine{M, D, P, T}
+    model_backend::M
+    dependency_resolver::D
+    inference_request_processor::P
+    tracer::T
+    warnings::Vector{InferenceEngineWarning}
+
+    function InferenceEngine(;
+        model_backend::M,
+        dependency_resolver::D = DefaultDependencyResolver(),
+        inference_request_processor::P = InferenceRequestScanner(),
+        prepare_signals_metadata::Bool = true,
+        resolve_dependencies::Bool = true,
+        trace::Bool = false
+    ) where {M, D, P}
         checked_backend = throw_if_backend_unsupported(model_backend)::M
-        engine = new{M}(checked_backend)
+        checked_dependency_resolver = convert(AbstractDependencyResolver, dependency_resolver)
+        checked_processor = convert(AbstractInferenceRequestProcessor, inference_request_processor)
+        tracer = trace ? InferenceEngineTracer() : nothing
+        warnings = InferenceEngineWarning[]
+
+        engine = new{
+            typeof(checked_backend), typeof(checked_dependency_resolver), typeof(checked_processor), typeof(tracer)
+        }(
+            checked_backend, checked_dependency_resolver, checked_processor, tracer, warnings
+        )
 
         if prepare_signals_metadata
             prepare_signals_metadata!(engine)
+        end
+
+        if resolve_dependencies
+            resolve_dependencies!(checked_dependency_resolver, engine)
         end
 
         return engine
     end
 end
 
+function Base.show(io::IO, engine::InferenceEngine)
+    print(io, "InferenceEngine(")
+    if !isnothing(get_trace(engine))
+        print(io, "trace = true")
+    else
+        print(io, "trace = false")
+    end
+    print(io, ")")
+end
+
 """
     get_model_backend(engine::InferenceEngine)
 
-Get the model backend of the inference engine.
+Retrieves the underlying model backend from the `InferenceEngine`.
 
-See also: [`InferenceEngine`](@ref)
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+
+## Returns
+
+The model backend object stored within the engine.
+
+## See Also
+
+- [`InferenceEngine`](@ref)
 """
 get_model_backend(engine::InferenceEngine) = engine.model_backend
+
+get_inference_request_processor(engine::InferenceEngine) = engine.inference_request_processor
+
+get_trace(engine::InferenceEngine) = engine.tracer
+
+get_warnings(engine::InferenceEngine) = engine.warnings
+
+function add_warning!(engine::InferenceEngine, description::String, context::Any)
+    push!(engine.warnings, InferenceEngineWarning(description, context))
+end
 
 # This is needed to make the engine broadcastable
 Base.broadcastable(engine::InferenceEngine) = Ref(engine)
@@ -33,19 +130,33 @@ function Base.showerror(io::IO, e::UnsupportedModelBackendError)
     print(io, "The model backend of type `$(typeof(e.backend))` is not supported.")
 end
 
-"A trait object that represents a supported model backend."
+"A trait object indicating a supported model backend."
 struct SupportedModelBackend end
 
-"A trait object that represents an unsupported model backend."
+"A trait object indicating an unsupported model backend."
 struct UnsupportedModelBackend end
 
 """
-    is_backend_supported(backend::Any) -> SupportedModelBackend | UnsupportedModelBackend
+    is_backend_supported(backend::Any) -> Union{SupportedModelBackend, UnsupportedModelBackend}
 
-Check if the model backend is supported. 
-Returns a `SupportedModelBackend()` if the backend is supported, otherwise a `UnsupportedModelBackend()`.
+Checks if a given `backend` is supported by the `InferenceEngine`.
 
-See also: [`throw_if_backend_unsupported`](@ref), [`SupportedModelBackend`](@ref), [`UnsupportedModelBackend`](@ref)
+This function should be extended by specific backend implementations.
+
+## Arguments
+
+- `backend::Any`: The model backend instance to check.
+
+## Returns
+
+- `SupportedModelBackend()` if the backend is supported.
+- `UnsupportedModelBackend()` otherwise.
+
+## See Also
+
+- [`SupportedModelBackend`](@ref)
+- [`UnsupportedModelBackend`](@ref)
+- [`throw_if_backend_unsupported`](@ref)
 """
 is_backend_supported(::Any) = UnsupportedModelBackend()
 
@@ -56,160 +167,367 @@ throw_if_backend_unsupported(::SupportedModelBackend, backend::Any) = backend
 """
     get_variable_data(engine::InferenceEngine, variable_id)
 
-Get a variable from the model backend. 
-This function must be implemented for each model backend as it simply calls the `get_variable_data` function of the engine's backend.
-Must return an object which implements the following functions:
-- `get_marginal() -> Signal` - Returns the marginal of the variable in the form of a `Signal` object.
+Retrieves the data structure representing a specific variable from the engine's model backend.
 
-See also: [`get_marginal`](@ref), [`Signal`](@ref), [`get_variables`](@ref)
+This function dispatches to the `get_variable_data(backend, variable_id)` method of the specific model backend.
+The returned object must implement `get_marginal(variable_data_object) -> Cortex.Signal`.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `variable_id`: The identifier of the variable to retrieve.
+
+## Returns
+
+A backend-specific data structure for the variable.
+
+## See Also
+
+- [`get_marginal`](@ref)
+- [`get_variable_ids`](@ref)
+- [`InferenceEngine`](@ref)
 """
 get_variable_data(engine::InferenceEngine, variable_id) = get_variable_data(get_model_backend(engine), variable_id)
 
 """
     get_variable_ids(engine::InferenceEngine)
 
-Get all variable ids from the model backend.
-This function must be implemented for each model backend as it simply calls the `get_variable_ids` function of the engine's backend.
+Retrieves an iterator over all variable identifiers in the engine's model backend.
 
-See also: [`get_variable_data`](@ref)
+This function dispatches to the `get_variable_ids(backend)` method of the specific model backend.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+
+## Returns
+
+An iterator of variable identifiers.
+
+## See Also
+
+- [`get_variable_data`](@ref)
+- [`InferenceEngine`](@ref)
 """
 get_variable_ids(engine::InferenceEngine) = get_variable_ids(get_model_backend(engine))
 
 """
-    get_marginal(variable) -> Cortex.Signal
+    get_marginal(variable_data_object) -> Cortex.Signal
 
-Get the marginal of a variable. A backend may return any structure that represents a `variable`. 
-The `get_marginal` function is used to retrieve the marginal of the variable from such a structure.
+Retrieves the marginal [`Signal`](@ref Cortex.Signal) associated with a `variable_data_object`.
 
-See also: [`get_variable_data`](@ref), [`Signal`](@ref)
+This function must be implemented by specific model backends for their variable data structures.
+
+## Arguments
+
+- `variable_data_object`: The backend-specific data structure representing a variable (obtained via [`get_variable_data`](@ref)).
+
+## Returns
+
+- `Cortex.Signal`: The reactive signal representing the variable's marginal.
+
+## See Also
+
+- [`get_variable_data`](@ref)
+- [`get_marginal(::InferenceEngine, ::Any)`](@ref)
 """
 get_marginal(any) = throw(MethodError(get_marginal, (any,)))
 
 """
     get_marginal(engine::InferenceEngine, variable_id) -> Cortex.Signal
 
-An alias function that simply calls `get_marginal(get_variable_data(engine, variable_id))`.
+Retrieves the marginal [`Signal`](@ref Cortex.Signal) for a given `variable_id` from the `InferenceEngine`.
 
-See also: [`get_variable_data`](@ref), [`Signal`](@ref)
+This is a convenience function calling `get_marginal(get_variable_data(engine, variable_id))`.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `variable_id`: The identifier of the variable.
+
+## Returns
+
+- `Cortex.Signal`: The reactive signal representing the variable's marginal.
+
+## See Also
+
+- [`get_variable_data`](@ref)
+- [`get_marginal(::Any)`](@ref)
+- [`InferenceEngine`](@ref)
 """
 get_marginal(engine::InferenceEngine, variable_id) = get_marginal(get_variable_data(engine, variable_id))
 
 """
     get_factor_data(engine::InferenceEngine, factor_id)
 
-Get a factor from the model backend.
-This function must be implemented for each model backend as it simply calls the `get_factor_data` function of the engine's backend.
+Retrieves the data structure representing a specific factor from the engine's model backend.
 
-See also: [`get_marginal`](@ref), [`Signal`](@ref)
+This function dispatches to the `get_factor_data(backend, factor_id)` method of the specific model backend.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `factor_id`: The identifier of the factor to retrieve.
+
+## Returns
+
+A backend-specific data structure for the factor.
+
+## See Also
+
+- [`get_factor_ids`](@ref)
+- [`InferenceEngine`](@ref)
 """
 get_factor_data(engine::InferenceEngine, factor_id) = get_factor_data(get_model_backend(engine), factor_id)
 
 """
     get_factor_ids(engine::InferenceEngine)
 
-Get all factor ids from the model backend.
-This function must be implemented for each model backend as it simply calls the `get_factor_ids` function of the engine's backend.
+Retrieves an iterator over all factor identifiers in the engine's model backend.
 
-See also: [`get_factor_data`](@ref)
+This function dispatches to the `get_factor_ids(backend)` method of the specific model backend.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+
+## Returns
+
+An iterator of factor identifiers.
+
+## See Also
+
+- [`get_factor_data`](@ref)
+- [`InferenceEngine`](@ref)
 """
 get_factor_ids(engine::InferenceEngine) = get_factor_ids(get_model_backend(engine))
 
 """
     get_connection(engine::InferenceEngine, variable_id, factor_id)
 
-Get the connection between a variable and a factor.
-This function must be implemented for each model backend as it simply calls the `get_connection` function of the engine's backend.
-Must return an object which implements the following functions:
-- `get_connection_label() -> Symbol` - Returns the label of the connection.
-- `get_connection_index() -> Int` - Returns the index of the connection.
-- `get_message_to_variable() -> Signal` - Returns the message to the variable in the form of a `Signal` object.
-- `get_message_to_factor() -> Signal` - Returns the message to the factor in the form of a `Signal` object.
+Retrieves the data structure representing the connection between a specified `variable_id` and `factor_id`.
 
-See also: [`get_message_to_variable`](@ref), [`get_message_to_factor`](@ref), [`Signal`](@ref)
+This function dispatches to the `get_connection(backend, variable_id, factor_id)` method of the specific model backend.
+The returned object must implement:
+- `get_connection_label(connection_object) -> Symbol`
+- `get_connection_index(connection_object) -> Int`
+- `get_message_to_variable(connection_object) -> Cortex.Signal`
+- `get_message_to_factor(connection_object) -> Cortex.Signal`
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `variable_id`: The identifier of the variable in the connection.
+- `factor_id`: The identifier of the factor in the connection.
+
+## Returns
+
+A backend-specific data structure for the connection.
+
+## See Also
+
+- [`get_connection_label`](@ref)
+- [`get_connection_index`](@ref)
+- [`get_message_to_variable`](@ref)
+- [`get_message_to_factor`](@ref)
+- [`InferenceEngine`](@ref)
 """
 get_connection(engine::InferenceEngine, variable_id, factor_id) = get_connection(
     get_model_backend(engine), variable_id, factor_id
 )
 
 """
-    get_connection_label(connection)
+    get_connection_label(connection_object)
 
-Get the label of a connection. A backend may return any structure that represents a `connection`.
-The `get_connection_label` function is used to retrieve the label of the connection from such a structure.
+Retrieves the label (e.g., `:out`, `:in`, interface name) of a `connection_object`.
 
-See also: [`get_connection`](@ref)
+This function must be implemented by specific model backends for their connection data structures.
+
+## Arguments
+
+- `connection_object`: The backend-specific data structure representing a connection.
+
+## Returns
+
+- `Symbol`: The label of the connection.
+
+## See Also
+
+- [`get_connection`](@ref)
+- [`get_connection_label(::InferenceEngine, ::Any, ::Any)`](@ref)
 """
 get_connection_label(any) = throw(MethodError(get_connection_label, (any,)))
 
 """
-    get_connection_label(engine::InferenceEngine, variable_id, factor_id)
+    get_connection_label(engine::InferenceEngine, variable_id, factor_id) -> Symbol
 
-An alias function that simply calls `get_connection_label(get_connection(engine, variable_id, factor_id))`.
+Retrieves the label of the connection between `variable_id` and `factor_id`.
 
-See also: [`get_connection`](@ref)
+This is a convenience function calling `get_connection_label(get_connection(engine, variable_id, factor_id))`.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `variable_id`: The identifier of the variable.
+- `factor_id`: The identifier of the factor.
+
+## Returns
+
+- `Symbol`: The label of the connection.
+
+## See Also
+
+- [`get_connection`](@ref)
+- [`get_connection_label(::Any)`](@ref)
+- [`InferenceEngine`](@ref)
 """
 get_connection_label(engine::InferenceEngine, variable_id, factor_id) = get_connection_label(
     get_connection(engine, variable_id, factor_id)
 )
 
 """
-    get_connection_index(connection) -> Int
+    get_connection_index(connection_object) -> Int
 
-Get the index of a connection. A backend may return any structure that represents a `connection`.
-The `get_connection_index` function is used to retrieve the index of the connection from such a structure.
+Retrieves the index of a `connection_object`, if applicable (e.g., for multi-edges).
 
-See also: [`get_connection`](@ref)
+This function must be implemented by specific model backends for their connection data structures.
+Defaults to 0 if not explicitly indexed.
+
+## Arguments
+
+- `connection_object`: The backend-specific data structure representing a connection.
+
+## Returns
+
+- `Int`: The index of the connection.
+
+## See Also
+
+- [`get_connection`](@ref)
+- [`get_connection_index(::InferenceEngine, ::Any, ::Any)`](@ref)
 """
 get_connection_index(any) = throw(MethodError(get_connection_index, (any,)))
 
 """
     get_connection_index(engine::InferenceEngine, variable_id, factor_id) -> Int
 
-An alias function that simply calls `get_connection_index(get_connection(engine, variable_id, factor_id))`.
+Retrieves the index of the connection between `variable_id` and `factor_id`.
 
-See also: [`get_connection`](@ref)
+This is a convenience function calling `get_connection_index(get_connection(engine, variable_id, factor_id))`.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `variable_id`: The identifier of the variable.
+- `factor_id`: The identifier of the factor.
+
+## Returns
+
+- `Int`: The index of the connection.
+
+## See Also
+
+- [`get_connection`](@ref)
+- [`get_connection_index(::Any)`](@ref)
+- [`InferenceEngine`](@ref)
 """
 get_connection_index(engine::InferenceEngine, variable_id, factor_id) = get_connection_index(
     get_connection(engine, variable_id, factor_id)
 )
 
 """
-    get_message_to_variable(connection) -> Cortex.Signal
+    get_message_to_variable(connection_object) -> Cortex.Signal
 
-Get the message to the variable from the factor. A backend may return any structure that represents a `connection`.
-The `get_message_to_variable` function is used to retrieve the message to the variable from such a structure.
+Retrieves the message [`Signal`](@ref Cortex.Signal) flowing from a factor to a variable along the given `connection_object`.
 
-See also: [`get_connection`](@ref), [`Cortex.Signal`](@ref)
+This function must be implemented by specific model backends for their connection data structures.
+
+## Arguments
+
+- `connection_object`: The backend-specific data structure representing a connection.
+
+## Returns
+
+- `Cortex.Signal`: The reactive signal for the message to the variable.
+
+## See Also
+
+- [`get_connection`](@ref)
+- [`get_message_to_variable(::InferenceEngine, ::Any, ::Any)`](@ref)
 """
 get_message_to_variable(any) = throw(MethodError(get_message_to_variable, (any,)))
 
 """
     get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) -> Cortex.Signal
 
-An alias function that simply calls `get_message_to_variable(get_connection(engine, variable_id, factor_id))`.
+Retrieves the message [`Signal`](@ref Cortex.Signal) from `factor_id` to `variable_id`.
 
-See also: [`get_connection`](@ref), [`Cortex.Signal`](@ref)
+This is a convenience function calling `get_message_to_variable(get_connection(engine, variable_id, factor_id))`.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `variable_id`: The identifier of the target variable.
+- `factor_id`: The identifier of the source factor.
+
+## Returns
+
+- `Cortex.Signal`: The reactive signal for the message.
+
+## See Also
+
+- [`get_connection`](@ref)
+- [`get_message_to_variable(::Any)`](@ref)
+- [`InferenceEngine`](@ref)
 """
 get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) = get_message_to_variable(
     get_connection(engine, variable_id, factor_id)
 )
 
 """
-    get_message_to_factor(connection) -> Cortex.Signal
+    get_message_to_factor(connection_object) -> Cortex.Signal
 
-Get the message to the factor from the variable. A backend may return any structure that represents a `connection`.
-The `get_message_to_factor` function is used to retrieve the message to the factor from such a structure.
+Retrieves the message [`Signal`](@ref Cortex.Signal) flowing from a variable to a factor along the given `connection_object`.
 
-See also: [`get_connection`](@ref), [`Cortex.Signal`](@ref)
+This function must be implemented by specific model backends for their connection data structures.
+
+## Arguments
+
+- `connection_object`: The backend-specific data structure representing a connection.
+
+## Returns
+
+- `Cortex.Signal`: The reactive signal for the message to the factor.
+
+## See Also
+
+- [`get_connection`](@ref)
+- [`get_message_to_factor(::InferenceEngine, ::Any, ::Any)`](@ref)
 """
 get_message_to_factor(any) = throw(MethodError(get_message_to_factor, (any,)))
 
 """
     get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) -> Cortex.Signal
 
-An alias function that simply calls `get_message_to_factor(get_connection(engine, variable_id, factor_id))`.
+Retrieves the message [`Signal`](@ref Cortex.Signal) from `variable_id` to `factor_id`.
 
-See also: [`get_connection`](@ref), [`Cortex.Signal`](@ref)
+This is a convenience function calling `get_message_to_factor(get_connection(engine, variable_id, factor_id))`.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `variable_id`: The identifier of the source variable.
+- `factor_id`: The identifier of the target factor.
+
+## Returns
+
+- `Cortex.Signal`: The reactive signal for the message.
+
+## See Also
+
+- [`get_connection`](@ref)
+- [`get_message_to_factor(::Any)`](@ref)
+- [`InferenceEngine`](@ref)
 """
 get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) = get_message_to_factor(
     get_connection(engine, variable_id, factor_id)
@@ -218,10 +536,24 @@ get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) = get_mes
 """
     get_connected_variable_ids(engine::InferenceEngine, factor_id)
 
-Get an iterator over ids of variables connected to a factor.
-This function must be implemented for each model backend as it simply calls the `get_connections_by_factor_id` function of the engine's backend.
+Retrieves an iterator over the identifiers of variables connected to a given `factor_id`.
 
-See also: [`get_connection`](@ref)
+This function dispatches to the `get_connected_variable_ids(backend, factor_id)` method of the specific model backend.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `factor_id`: The identifier of the factor.
+
+## Returns
+
+An iterator of connected variable identifiers.
+
+## See Also
+
+- [`get_connected_factor_ids`](@ref)
+- [`get_connection`](@ref)
+- [`InferenceEngine`](@ref)
 """
 get_connected_variable_ids(engine::InferenceEngine, factor_id) = get_connected_variable_ids(
     get_model_backend(engine), factor_id
@@ -230,10 +562,24 @@ get_connected_variable_ids(engine::InferenceEngine, factor_id) = get_connected_v
 """
     get_connected_factor_ids(engine::InferenceEngine, variable_id)
 
-Get an iterator over ids of factors connected to a variable.
-This function must be implemented for each model backend as it simply calls the `get_connections_by_variable_id` function of the engine's backend.
+Retrieves an iterator over the identifiers of factors connected to a given `variable_id`.
 
-See also: [`get_connection`](@ref)
+This function dispatches to the `get_connected_factor_ids(backend, variable_id)` method of the specific model backend.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `variable_id`: The identifier of the variable.
+
+## Returns
+
+An iterator of connected factor identifiers.
+
+## See Also
+
+- [`get_connected_variable_ids`](@ref)
+- [`get_connection`](@ref)
+- [`InferenceEngine`](@ref)
 """
 get_connected_factor_ids(engine::InferenceEngine, variable_id) = get_connected_factor_ids(
     get_model_backend(engine), variable_id
@@ -242,41 +588,60 @@ get_connected_factor_ids(engine::InferenceEngine, variable_id) = get_connected_f
 """
     InferenceSignalTypes
 
-A module that contains constants for the types of signals used in the inference engine.
-Available types are:
-- `MessageToVariable` - A signal that represents a message to a variable from a factor.
-- `MessageToFactor` - A signal that represents a message to a factor from a variable.
-- `ProductOfMessages` - A signal that represents the product of messages. Usually used as an intermediate dependency to `IndividualMarginal`.
-- `IndividualMarginal` - A signal that represents the marginal of a variable.
-- `JointMarginal` - A signal that represents the joint marginal of a set of variables.
+Module defining constants for different types of signals used within the inference engine.
+These types help in dispatching computation rules and managing signal metadata.
 
-See also: [`prepare_signals_metadata!`](@ref)
+## Constants
+
+- [`MessageToVariable`](@ref Cortex.InferenceSignalTypes.MessageToVariable): Signal representing a message from a factor to a variable.
+- [`MessageToFactor`](@ref Cortex.InferenceSignalTypes.MessageToFactor): Signal representing a message from a variable to a factor.
+- [`ProductOfMessages`](@ref Cortex.InferenceSignalTypes.ProductOfMessages): Signal representing an intermediate product of messages, often a dependency for an `IndividualMarginal`.
+- [`IndividualMarginal`](@ref Cortex.InferenceSignalTypes.IndividualMarginal): Signal representing the marginal distribution of a single variable.
+- [`JointMarginal`](@ref Cortex.InferenceSignalTypes.JointMarginal): Signal representing the joint marginal distribution of a set of variables.
+
+## See Also
+
+- [`prepare_signals_metadata!`](@ref)
+- [`Signal`](@ref Cortex.Signal)
 """
 module InferenceSignalTypes
 
-"A signal that represents a message to a variable from a factor."
+"Type constant for a [`Signal`](@ref Cortex.Signal) representing a message from a factor to a variable."
 const MessageToVariable = UInt8(0x01)
 
-"A signal that represents a message to a factor from a variable."
+"Type constant for a [`Signal`](@ref Cortex.Signal) representing a message from a variable to a factor."
 const MessageToFactor = UInt8(0x02)
 
-"A signal that represents the product of messages. Usually used as an intermediate dependency to `IndividualMarginal`."
+"Type constant for a [`Signal`](@ref Cortex.Signal) representing an intermediate product of messages."
 const ProductOfMessages = UInt8(0x03)
 
-"A signal that represents the marginal of a variable."
+"Type constant for a [`Signal`](@ref Cortex.Signal) representing the marginal distribution of a single variable."
 const IndividualMarginal = UInt8(0x04)
 
-"A signal that represents the joint marginal of a set of variables."
+"Type constant for a [`Signal`](@ref Cortex.Signal) representing the joint marginal distribution of a set of variables."
 const JointMarginal = UInt8(0x05)
 end
 
 """
     prepare_signals_metadata!(engine::InferenceEngine)
 
-Prepare the signals metadata for the inference engine.
-This function will set appropriate types and metadata for each signal in the engine.
+Initializes the `type` and `metadata` fields for relevant signals within the `InferenceEngine`.
 
-See also: [`InferenceSignalTypes`](@ref)
+This function iterates through variables and factors in the model backend, setting:
+- Marginals: `type` to [`IndividualMarginal`](@ref Cortex.InferenceSignalTypes.IndividualMarginal) and `metadata` to `(variable_id,)`.
+- Messages to Factors: `type` to [`MessageToFactor`](@ref Cortex.InferenceSignalTypes.MessageToFactor) and `metadata` to `(variable_id, factor_id)`.
+- Messages to Variables: `type` to [`MessageToVariable`](@ref Cortex.InferenceSignalTypes.MessageToVariable) and `metadata` to `(variable_id, factor_id)`.
+
+This setup is typically done once upon engine creation and is crucial for dispatching appropriate computation rules during inference.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance whose signals are to be prepared.
+
+## See Also
+
+- [`InferenceEngine`](@ref)
+- [`InferenceSignalTypes`](@ref)
 """
 function prepare_signals_metadata!(engine::InferenceEngine)
     for variable_id in get_variable_ids(engine)
@@ -301,6 +666,7 @@ end
 
 ## -- Inference requests -- ##
 
+"Internal struct representing a request to perform inference for a set of variables."
 struct InferenceRequest{E, V, M}
     engine::E
     variable_ids::V
@@ -308,6 +674,28 @@ struct InferenceRequest{E, V, M}
     readines_status::BitVector
 end
 
+"""
+    request_inference_for(engine::InferenceEngine, variable_id_or_ids)
+
+Creates an `InferenceRequest` to compute the marginals for the specified `variable_id_or_ids`.
+
+This function prepares the necessary signals by marking their dependencies as potentially pending.
+It supports requesting inference for a single variable ID or a collection (Tuple or AbstractVector) of variable IDs.
+
+## Arguments
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `variable_id_or_ids`: A single variable identifier or a collection of variable identifiers.
+
+## Returns
+
+- `InferenceRequest`: An internal structure representing the inference request.
+
+## See Also
+
+- [`update_marginals!`](@ref)
+- [`InferenceEngine`](@ref)
+"""
 function request_inference_for(engine::InferenceEngine, variable_id)
     return request_inference_for(engine, (variable_id,))
 end
@@ -321,15 +709,34 @@ function request_inference_for(engine::InferenceEngine, variable_ids::Union{Abst
         end
     end
 
+    for variable_id in variable_ids
+        for dependency in get_joint_dependencies(engine.dependency_resolver, engine, variable_id)
+            dependency.props = SignalProps(is_potentially_pending = true, is_pending = false)
+        end
+    end
+
     readines_status = falses(length(variable_ids))
 
     return InferenceRequest(engine, variable_ids, marginals, readines_status)
 end
 
-function process_inference_request(callback::F, request::InferenceRequest, variable_id, marginal) where {F}
+abstract type AbstractInferenceRequestProcessor end
+
+function process!(
+    processor::AbstractInferenceRequestProcessor, engine::InferenceEngine, variable_id, dependency::Signal
+)
+    throw(MethodError(process!, (processor, engine, variable_id, dependency)))
+end
+
+"Internal function to process dependencies for an inference request."
+function process_inference_request(
+    processor::AbstractInferenceRequestProcessor, request::InferenceRequest, variable_id, marginal; trace = nothing
+)
     processed_at_least_once = process_dependencies!(marginal; retry = true) do dependency
         if is_pending(dependency)
-            callback(request.engine, variable_id, marginal, dependency)
+            trace_inference_execution(trace, variable_id, dependency) do
+                process!(processor, request.engine, variable_id, dependency)
+            end
             return true
         end
         return false
@@ -337,88 +744,296 @@ function process_inference_request(callback::F, request::InferenceRequest, varia
     return processed_at_least_once
 end
 
-struct InferenceTaskScanner
+"Internal struct used to scan and collect pending signals from an inference request."
+struct InferenceRequestScanner <: AbstractInferenceRequestProcessor
     signals::Vector{Signal}
 
-    InferenceTaskScanner() = new(Signal[])
+    InferenceRequestScanner() = new(Signal[])
 end
 
-function (scanner::InferenceTaskScanner)(engine::InferenceEngine, variable_id, marginal::Signal, dependency::Signal)
+"Internal functor for `InferenceTaskScanner` to collect dependencies."
+function process!(scanner::InferenceRequestScanner, engine::InferenceEngine, variable_id, dependency::Signal)
     push!(scanner.signals, dependency)
 end
 
+"Internal function to scan an `InferenceRequest` and return all pending (dependent) signals."
 function scan_inference_request(request::InferenceRequest)
-    scanner = InferenceTaskScanner()
+    scanner = InferenceRequestScanner()
     for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
         process_inference_request(scanner, request, variable_id, marginal)
     end
     return scanner.signals
 end
 
-struct InferenceRequestProcessor{F}
+"Internal struct that wraps a user-provided computation function for processing by `update_marginals!`."
+struct CallbackInferenceRequestProcessor{F} <: AbstractInferenceRequestProcessor
     f::F
 end
 
-Base.convert(::Type{InferenceRequestProcessor}, f::F) where {F <: Function} = InferenceRequestProcessor{F}(f)
-Base.convert(::Type{InferenceRequestProcessor}, f::InferenceRequestProcessor) = f
-
-function (processor::InferenceRequestProcessor)(
-    engine::InferenceEngine, variable_id, marginal::Signal, dependency::Signal; force = false
+Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} = CallbackInferenceRequestProcessor{
+    F
+}(
+    f
 )
-    compute!(dependency; force = force) do signal, dependencies
+
+"Internal functor for `InferenceRequestProcessor` to apply the computation logic."
+function process!(
+    processor::CallbackInferenceRequestProcessor, engine::InferenceEngine, variable_id, dependency::Signal
+)
+    compute!(dependency) do signal, dependencies
         processor.f(engine, signal, dependencies)
     end
 end
 
-function update_marginals!(f::F, engine::InferenceEngine, variable_ids) where {F <: Function}
-    return update_marginals!(f, engine, (variable_ids,))
+function update_marginals!(engine::InferenceEngine, variable_ids)
+    return update_marginals!(engine, (variable_ids,))
 end
 
-function update_marginals!(
-    f::F, engine::InferenceEngine, variable_ids::Union{AbstractVector, Tuple}
-) where {F <: Function}
+function update_marginals!(engine::InferenceEngine, variable_ids::Union{AbstractVector, Tuple})
     should_continue = true
 
-    callback = convert(InferenceRequestProcessor, f)
-
     request = request_inference_for(engine, variable_ids)
+    processor = get_inference_request_processor(engine)
 
-    indices         = 1:1:length(variable_ids)
-    indices_reverse = reverse(indices)::typeof(indices)
+    trace_inference_request(engine.tracer, engine, request) do inference_request_trace
+        indices         = 1:1:length(variable_ids)
+        indices_reverse = reverse(indices)::typeof(indices)
 
-    # We begin with a forward pass
-    # After each pass, we alternate the order
-    is_reverse = false
+        # We begin with a forward pass
+        # After each pass, we alternate the order
+        is_reverse = false
 
-    while should_continue
-        _should_continue = false
+        while should_continue
+            _should_continue = false
 
-        current_order = is_reverse ? indices_reverse : indices
+            current_order = is_reverse ? indices_reverse : indices
 
-        @inbounds for i in current_order
-            if !request.readines_status[i]
-                variable_id = variable_ids[i]
-                marginal = request.marginals[i]
+            # These rounds compute mostly the messages needed to compute the marginals
+            trace_inference_round(inference_request_trace) do inference_round_trace
+                @inbounds for i in current_order
+                    if !request.readines_status[i]
+                        variable_id = variable_ids[i]
+                        marginal = request.marginals[i]
 
-                has_been_processed_at_least_once = process_inference_request(callback, request, variable_id, marginal)
+                        has_been_processed_at_least_once = process_inference_request(
+                            processor, request, variable_id, marginal; trace = inference_round_trace
+                        )
 
-                if is_pending(marginal)
-                    request.readines_status[i] = true
+                        if is_pending(marginal)
+                            request.readines_status[i] = true
+                        end
+
+                        _should_continue = _should_continue || has_been_processed_at_least_once
+                    end
                 end
-
-                _should_continue = _should_continue || has_been_processed_at_least_once
             end
+
+            # Alternate between forward and backward order
+            is_reverse = !is_reverse
+
+            should_continue = _should_continue
         end
 
-        # Alternate between forward and backward order
-        is_reverse = !is_reverse
+        trace_inference_round(inference_request_trace) do inference_round_trace
+            for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
+                if is_pending(marginal)
+                    trace_inference_execution(inference_round_trace, variable_id, marginal) do
+                        process!(processor, request.engine, variable_id, marginal)
+                    end
+                end
 
-        should_continue = _should_continue
+                for joint_dependency in get_joint_dependencies(engine.dependency_resolver, engine, variable_id)
+                    # Here it is fine to skip the joint dependency if it is not pending
+                    # because several variables might attempt to update the same joint dependency
+                    if !is_pending(joint_dependency)
+                        continue
+                    end
+                    trace_inference_execution(inference_round_trace, variable_id, joint_dependency) do
+                        process!(processor, request.engine, variable_id, joint_dependency)
+                    end
+                end
+            end
+        end
     end
 
-    for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
-        callback(request.engine, variable_id, marginal, marginal; force = true)
+    return nothing
+end
+
+## -- Inference tracing -- ##
+
+struct TracedInferenceExecution
+    engine::InferenceEngine
+    variable_id::Any
+    signal::Cortex.Signal
+    total_time_in_ns::UInt64
+    value_before_execution::Any
+    value_after_execution::Any
+end
+
+function Base.show(io::IO, execution::TracedInferenceExecution)
+    variable_data = get_variable_data(execution.engine, execution.variable_id)
+
+    signal = execution.signal
+    signal_type = signal.type
+
+    print(io, "TracedInferenceExecution(for = $(variable_data), type = ")
+
+    if signal_type === Cortex.InferenceSignalTypes.MessageToVariable
+        (v_id, f_id) = signal.metadata
+        v_data = get_variable_data(execution.engine, v_id)
+        f_data = get_factor_data(execution.engine, f_id)
+        print(io, "MessageToVariable(from = $(f_data), to = $(v_data))")
+    elseif signal_type === Cortex.InferenceSignalTypes.MessageToFactor
+        (v_id, f_id) = signal.metadata
+        v_data = get_variable_data(execution.engine, v_id)
+        f_data = get_factor_data(execution.engine, f_id)
+        print(io, "MessageToFactor(from = $(v_data), to = $(f_data))")
+    elseif signal_type === Cortex.InferenceSignalTypes.ProductOfMessages
+        print(io, "ProductOfMessages(?)")
+    elseif signal_type === Cortex.InferenceSignalTypes.IndividualMarginal
+        (v_id,) = signal.metadata
+        v_data = get_variable_data(execution.engine, v_id)
+        print(io, "IndividualMarginal($(v_data))")
+    elseif signal_type === Cortex.InferenceSignalTypes.JointMarginal
+        print(io, "JointMarginal(?)")
     end
+
+    print(
+        io,
+        ", total_time = ",
+        format_time_ns(execution.total_time_in_ns),
+        ", value_before_execution = ",
+        execution.value_before_execution,
+        ", value_after_execution = ",
+        execution.value_after_execution
+    )
+
+    print(io, ")")
+end
+
+struct TracedInferenceRound
+    engine::InferenceEngine
+    total_time_in_ns::UInt64
+    executions::Vector{TracedInferenceExecution}
+end
+
+struct TracedInferenceRequest
+    engine::InferenceEngine
+    total_time_in_ns::UInt64
+    request::InferenceRequest
+    rounds::Vector{TracedInferenceRound}
+end
+
+struct InferenceEngineTracer
+    inference_requests::Vector{TracedInferenceRequest}
+
+    InferenceEngineTracer() = new(TracedInferenceRequest[])
+end
+
+# If the tracer is not provided, we just execute the function
+function trace_inference_request(f::F, ::Nothing, engine::InferenceEngine, request::InferenceRequest) where {F}
+    return f(nothing)
+end
+
+function trace_inference_request(
+    f::F, tracer::InferenceEngineTracer, engine::InferenceEngine, request::InferenceRequest
+) where {F}
+    # We collect the rounds of the inference request
+    rounds = Vector{TracedInferenceRound}()
+
+    # Inference request begins at time `begin_time_in_ns`
+    begin_time_in_ns = time_ns()
+
+    # We execute the function and pass the tracer and the rounds to the function
+    # The function `f` should not assume that the tracer and the rounds are passed to it
+    # Instead it uses opaque `trace` object to pass it further down the call stack
+    f((engine, tracer, rounds))
+
+    # Inference request ends at time `end_time_in_ns`
+    end_time_in_ns = time_ns()
+
+    # We compute the total time of the inference request
+    total_time_in_ns = end_time_in_ns - begin_time_in_ns
+
+    # We add the inference request to the tracer
+    push!(tracer.inference_requests, TracedInferenceRequest(engine, total_time_in_ns, request, rounds))
+
+    return nothing
+end
+
+function trace_inference(tracer::InferenceEngineTracer, processor::AbstractInferenceRequestProcessor)
+    return tracer
+end
+
+# If the tracer is not provided, we just execute the function
+function trace_inference_round(f::F, trace::Nothing) where {F}
+    return f(nothing)
+end
+
+function trace_inference_round(
+    f::F, trace::Tuple{InferenceEngine, InferenceEngineTracer, Vector{TracedInferenceRound}}
+) where {F}
+    engine, tracer, rounds = trace
+
+    executions = Vector{TracedInferenceExecution}()
+
+    # We begin the round at time `begin_time_in_ns`
+    begin_time_in_ns = time_ns()
+
+    # We execute the function and pass the tracer and the rounds to the function
+    # The function `f` should not assume that the tracer and the rounds are passed to it
+    # Instead it uses opaque `trace` object to pass it further down the call stack
+    f((engine, tracer, executions))
+
+    # We end the round at time `end_time_in_ns`
+    end_time_in_ns = time_ns()
+
+    # We compute the total time of the round
+    total_time_in_ns = end_time_in_ns - begin_time_in_ns
+
+    # We add the round to the tracer only if there are executions
+    if length(executions) > 0
+        push!(rounds, TracedInferenceRound(engine, total_time_in_ns, executions))
+    end
+
+    return nothing
+end
+
+function trace_inference_execution(f::F, ::Nothing, variable_id, dependency::Signal) where {F}
+    return f()
+end
+
+function trace_inference_execution(
+    f::F,
+    trace::Tuple{InferenceEngine, InferenceEngineTracer, Vector{TracedInferenceExecution}},
+    variable_id,
+    dependency::Signal
+) where {F}
+    engine, tracer, executions = trace
+
+    value_before_execution = get_value(dependency)
+
+    # We begin the execution at time `begin_time_in_ns`
+    begin_time_in_ns = time_ns()
+
+    # Here we do not pass the tracer and the executions to the function
+    # since it is not required for the tracer
+    f()
+
+    # We end the execution at time `end_time_in_ns`
+    end_time_in_ns = time_ns()
+
+    # We compute the total time of the execution
+    total_time_in_ns = end_time_in_ns - begin_time_in_ns
+
+    value_after_execution = get_value(dependency)
+
+    push!(
+        executions,
+        TracedInferenceExecution(
+            engine, variable_id, dependency, total_time_in_ns, value_before_execution, value_after_execution
+        )
+    )
 
     return nothing
 end

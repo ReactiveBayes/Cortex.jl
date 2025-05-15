@@ -349,7 +349,7 @@ end
 # --- Compute Interface ---
 
 """
-    compute!(s::Signal, strategy; force::Bool = false)
+    compute!(s::Signal, strategy; force::Bool = false, skip_if_no_listeners::Bool = true)
 
 Compute the value of the signal `s` using the given `strategy`. 
 The strategy must implement [`compute_value!`](@ref) method.
@@ -358,19 +358,30 @@ that takes the signal and a vector of signal's dependencies as arguments and ret
 Be sure to call `compute!` only on signals that are pending. 
 Calling `compute!` on a non-pending signal will result in an error.
 
+When `skip_if_no_listeners` is set to `true`, the function will not compute the signal if it has no listeners.
+If `skip_if_no_listeners` is set to `false`, the function will compute the signal even if it has no listeners.
+This is useful for signals that are computed on demand with no listeners.
+
 Keyword Arguments:
 - `force::Bool = false`: If `true`, the signal will be computed even if it is not pending.
+- `skip_if_no_listeners::Bool = true`: If `true`, the function will not compute the signal if it has no listeners.
 """
-function compute!(strategy, signal::Signal; force::Bool = false)
+function compute!(strategy, signal::Signal; force::Bool = false, skip_if_no_listeners::Bool = false)
+    listeners = get_listeners(signal)
+
+    if skip_if_no_listeners && isempty(listeners)
+        return nothing
+    end
+
     if !force && !is_pending(signal)
         throw(
             ArgumentError(
-                "Signal is not pending. Cannot compute a non-pending signal. Use `force=true` to force computation."
+                "Signal is not pending. Cannot compute a non-pending signal. Use `force=true` to force computation. Signal: $signal, dependencies: $(get_dependencies(signal))"
             )
         )
     end
-    dependencies = get_dependencies(signal)
-    new_value = compute_value!(strategy, signal, dependencies)
+
+    new_value = compute_value!(strategy, signal, get_dependencies(signal))
     set_value!(signal, new_value)
     return nothing
 end

@@ -17,7 +17,7 @@ makedocs(;
     pages = [
         "Home" => "index.md",
         "Signals: The Core of Reactivity" => "signals.md",
-        "Probabilistic Model Interface" => "model.md"
+        "Probabilistic Inference with Cortex" => "inference.md"
     ]
 )
 

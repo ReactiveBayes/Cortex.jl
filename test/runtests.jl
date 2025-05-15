@@ -24,10 +24,23 @@ using TestItemRunner
         end
     end
 
+    function Base.show(io::IO, variable::Variable)
+        print(io, variable.name)
+        if !isempty(variable.index)
+            print(io, "[")
+            join(io, variable.index, ",")
+            print(io, "]")
+        end
+    end
+
     # For testing purposes we define a simple `Factor` type that is used to test the inference engine
     # It contains a `fform` field that is a symbol that represents the factor's form.
     struct Factor
         fform::Any
+    end
+
+    function Base.show(io::IO, factor::Factor)
+        print(io, factor.fform)
     end
 
     # For testing purposes we define a simple `Connection` type that is used to test the inference engine
