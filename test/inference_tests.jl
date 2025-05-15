@@ -6,16 +6,26 @@
 
     @test_throws "The model backend of type `Int64` is not supported." Cortex.InferenceEngine(model_backend = 1)
     @test_throws "The model backend of type `String` is not supported." Cortex.InferenceEngine(model_backend = "string")
+
+    # Test with a custom, unsupported struct type
+    struct MyDummyUnsupportedBackend end
+
+    dummy_backend = MyDummyUnsupportedBackend()
+    @test_throws UnsupportedModelBackendError(dummy_backend) Cortex.InferenceEngine(model_backend = dummy_backend)
 end
 
 @testitem "`BipartiteFactorGraphs` backend should be supported through extensions" begin
     using BipartiteFactorGraphs
 
-    graph = BipartiteFactorGraphs.BipartiteFactorGraph()
+    graph = BipartiteFactorGraph()
 
     engine = Cortex.InferenceEngine(model_backend = graph)
+    @test engine isa Cortex.InferenceEngine
 
-    # This test checks that the inference engine is created without errors
+    engine = Cortex.InferenceEngine(model_backend = graph, resolve_dependencies = false)
+    @test engine isa Cortex.InferenceEngine
+
+    engine = Cortex.InferenceEngine(model_backend = graph, prepare_signals_metadata = false)
     @test engine isa Cortex.InferenceEngine
 end
 
@@ -29,7 +39,13 @@ end
     variable_id_2 = add_variable!(graph, Variable(:b, 1))
     variable_id_3 = add_variable!(graph, Variable(:c, 2, 3))
 
-    inference_engine = Cortex.InferenceEngine(model_backend = graph, resolve_dependencies = false)
+    factor_id_1 = add_factor!(graph, Factor(:f1))
+    factor_id_2 = add_factor!(graph, Factor(:f2))
+
+    add_edge!(graph, variable_id_1, factor_id_1, Connection(:out))
+    add_edge!(graph, variable_id_2, factor_id_2, Connection(:theta))
+
+    inference_engine = Cortex.InferenceEngine(model_backend = graph)
 
     # Here we check that the variable data structure returned from the inference engine's backend is correct
     # But technically this is not required to be implemented and is not used in the inference engine
@@ -53,16 +69,9 @@ end
     @test Cortex.get_marginal(inference_engine, variable_id_3) ===
         Cortex.get_marginal(Cortex.get_variable_data(inference_engine, variable_id_3))
 
-    # Here we check that the factor data structure returned from the inference engine's backend is correct
-    factor_id_1 = add_factor!(graph, Factor(:f1))
-    factor_id_2 = add_factor!(graph, Factor(:f2))
-
     # We check that the factor data structure returned from the inference engine's backend is correct
     @test Cortex.get_factor_data(inference_engine, factor_id_1).fform === :f1
     @test Cortex.get_factor_data(inference_engine, factor_id_2).fform === :f2
-
-    add_edge!(graph, variable_id_1, factor_id_1, Connection(:out))
-    add_edge!(graph, variable_id_2, factor_id_2, Connection(:theta))
 
     # Here we check that the connection data structure returned from the inference engine's backend is correct
     @test Cortex.get_connection(inference_engine, variable_id_1, factor_id_1) isa Connection
@@ -118,6 +127,21 @@ end
     @test Set(Cortex.get_connected_factor_ids(inference_engine, variable_id_1)) == Set([factor_id_1])
     @test Set(Cortex.get_connected_factor_ids(inference_engine, variable_id_2)) == Set([factor_id_2])
     @test Set(Cortex.get_connected_factor_ids(inference_engine, variable_id_3)) == Set([])
+end
+
+@testitem "InferenceEngine should save a warning for a variable that has no connected factors" setup = [TestUtils] begin
+    using .TestUtils
+    using JET
+
+    graph = BipartiteFactorGraph()
+
+    v = add_variable!(graph, Variable(:v))
+
+    engine = Cortex.InferenceEngine(model_backend = graph)
+
+    @test length(Cortex.get_warnings(engine)) == 1
+    @test Cortex.get_warnings(engine)[1].description == "Variable has no connected factors"
+    @test Cortex.get_warnings(engine)[1].context == v
 end
 
 @testitem "InferenceEngine should prepare signals metadata by default" setup = [TestUtils] begin

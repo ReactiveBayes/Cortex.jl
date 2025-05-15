@@ -43,6 +43,11 @@ function resolve_variable_dependencies!(::DefaultDependencyResolver, engine::Inf
     marginal_of_variable = get_marginal(engine, variable_id)
     nfactors = length(ids_of_factors_connected_to_variable)
 
+    if nfactors == 0
+        add_warning!(engine, "Variable has no connected factors", variable_id)
+        return nothing
+    end
+
     # This is normally not the case in real probabilistic models, but it can happen in some edge cases
     # like when the model has dangling edges, in this case we "assume" that the other message is just one
     # So the marginal is equal to the single message coming from the single factor
@@ -120,6 +125,8 @@ function resolve_variable_dependencies!(::DefaultDependencyResolver, engine::Inf
 
     add_dependency!(marginal_of_variable, left_dependency; intermediate = true)
     add_dependency!(marginal_of_variable, right_dependency; intermediate = true)
+
+    return nothing
 end
 
 function form_segment_tree_dependency!(engine::InferenceEngine, range, factors_connected_to_variable, variable_id)

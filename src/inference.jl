@@ -1,4 +1,9 @@
 
+struct InferenceEngineWarning
+    description::String
+    context::Any
+end
+
 """
     InferenceEngine{M}
 
@@ -41,6 +46,7 @@ mutable struct InferenceEngine{M, D, P, T}
     dependency_resolver::D
     inference_request_processor::P
     tracer::T
+    warnings::Vector{InferenceEngineWarning}
 
     function InferenceEngine(;
         model_backend::M,
@@ -54,11 +60,12 @@ mutable struct InferenceEngine{M, D, P, T}
         checked_dependency_resolver = convert(AbstractDependencyResolver, dependency_resolver)
         checked_processor = convert(AbstractInferenceRequestProcessor, inference_request_processor)
         tracer = trace ? InferenceEngineTracer() : nothing
+        warnings = InferenceEngineWarning[]
 
         engine = new{
             typeof(checked_backend), typeof(checked_dependency_resolver), typeof(checked_processor), typeof(tracer)
         }(
-            checked_backend, checked_dependency_resolver, checked_processor, tracer
+            checked_backend, checked_dependency_resolver, checked_processor, tracer, warnings
         )
 
         if prepare_signals_metadata
@@ -105,6 +112,12 @@ get_model_backend(engine::InferenceEngine) = engine.model_backend
 get_inference_request_processor(engine::InferenceEngine) = engine.inference_request_processor
 
 get_trace(engine::InferenceEngine) = engine.tracer
+
+get_warnings(engine::InferenceEngine) = engine.warnings
+
+function add_warning!(engine::InferenceEngine, description::String, context::Any)
+    push!(engine.warnings, InferenceEngineWarning(description, context))
+end
 
 # This is needed to make the engine broadcastable
 Base.broadcastable(engine::InferenceEngine) = Ref(engine)
@@ -319,8 +332,9 @@ A backend-specific data structure for the connection.
 - [`get_message_to_factor`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_connection(engine::InferenceEngine, variable_id, factor_id) =
-    get_connection(get_model_backend(engine), variable_id, factor_id)
+get_connection(engine::InferenceEngine, variable_id, factor_id) = get_connection(
+    get_model_backend(engine), variable_id, factor_id
+)
 
 """
     get_connection_label(connection_object)
@@ -367,8 +381,9 @@ This is a convenience function calling `get_connection_label(get_connection(engi
 - [`get_connection_label(::Any)`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_connection_label(engine::InferenceEngine, variable_id, factor_id) =
-    get_connection_label(get_connection(engine, variable_id, factor_id))
+get_connection_label(engine::InferenceEngine, variable_id, factor_id) = get_connection_label(
+    get_connection(engine, variable_id, factor_id)
+)
 
 """
     get_connection_index(connection_object) -> Int
@@ -416,8 +431,9 @@ This is a convenience function calling `get_connection_index(get_connection(engi
 - [`get_connection_index(::Any)`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_connection_index(engine::InferenceEngine, variable_id, factor_id) =
-    get_connection_index(get_connection(engine, variable_id, factor_id))
+get_connection_index(engine::InferenceEngine, variable_id, factor_id) = get_connection_index(
+    get_connection(engine, variable_id, factor_id)
+)
 
 """
     get_message_to_variable(connection_object) -> Cortex.Signal
@@ -464,8 +480,9 @@ This is a convenience function calling `get_message_to_variable(get_connection(e
 - [`get_message_to_variable(::Any)`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) =
-    get_message_to_variable(get_connection(engine, variable_id, factor_id))
+get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) = get_message_to_variable(
+    get_connection(engine, variable_id, factor_id)
+)
 
 """
     get_message_to_factor(connection_object) -> Cortex.Signal
@@ -512,8 +529,9 @@ This is a convenience function calling `get_message_to_factor(get_connection(eng
 - [`get_message_to_factor(::Any)`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) =
-    get_message_to_factor(get_connection(engine, variable_id, factor_id))
+get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) = get_message_to_factor(
+    get_connection(engine, variable_id, factor_id)
+)
 
 """
     get_connected_variable_ids(engine::InferenceEngine, factor_id)
@@ -537,8 +555,9 @@ An iterator of connected variable identifiers.
 - [`get_connection`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_connected_variable_ids(engine::InferenceEngine, factor_id) =
-    get_connected_variable_ids(get_model_backend(engine), factor_id)
+get_connected_variable_ids(engine::InferenceEngine, factor_id) = get_connected_variable_ids(
+    get_model_backend(engine), factor_id
+)
 
 """
     get_connected_factor_ids(engine::InferenceEngine, variable_id)
@@ -562,8 +581,9 @@ An iterator of connected factor identifiers.
 - [`get_connection`](@ref)
 - [`InferenceEngine`](@ref)
 """
-get_connected_factor_ids(engine::InferenceEngine, variable_id) =
-    get_connected_factor_ids(get_model_backend(engine), variable_id)
+get_connected_factor_ids(engine::InferenceEngine, variable_id) = get_connected_factor_ids(
+    get_model_backend(engine), variable_id
+)
 
 """
     InferenceSignalTypes
@@ -750,8 +770,11 @@ struct CallbackInferenceRequestProcessor{F} <: AbstractInferenceRequestProcessor
     f::F
 end
 
-Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} =
-    CallbackInferenceRequestProcessor{F}(f)
+Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} = CallbackInferenceRequestProcessor{
+    F
+}(
+    f
+)
 
 "Internal functor for `InferenceRequestProcessor` to apply the computation logic."
 function process!(
