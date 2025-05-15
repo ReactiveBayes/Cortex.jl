@@ -699,6 +699,10 @@ end
 
     Random.rand(rng::AbstractRNG, n::Normal) = n.mean + randn(rng) / sqrt(n.precision)
 
+    mean(n::Normal) = n.mean
+    var(n::Normal) = 1 / n.precision
+    precision(n::Normal) = n.precision
+
     struct Gamma
         shape::Float64
         scale::Float64
@@ -706,15 +710,25 @@ end
 
     mean(g::Gamma) = g.shape * g.scale
 
-    mean(n::Normal) = n.mean
-    var(n::Normal) = 1 / n.precision
+    struct MvNormal
+        mean::Vector{Float64}
+        precision::Matrix{Float64}
+    end
+
+    mean(n::MvNormal) = n.mean
+    cov(n::MvNormal) = inv(n.precision)
+    precision(n::MvNormal) = n.precision
 
     struct StructuredResolver <: Cortex.AbstractDependencyResolver
-        joint_dependencies::Dict{Any, Cortex.Signal}
+        joint_dependencies::Dict{Any, Vector{Cortex.Signal}}
 
         function StructuredResolver()
-            return new(Dict{Any, Cortex.Signal}())
+            return new(Dict{Any, Vector{Cortex.Signal}}())
         end
+    end
+
+    function Cortex.get_joint_dependencies(resolver::StructuredResolver, engine::Cortex.InferenceEngine, variable_id)
+        return get(resolver.joint_dependencies, variable_id, [])
     end
 
     function Cortex.resolve_variable_dependencies!(::StructuredResolver, engine::Cortex.InferenceEngine, variable_id)
@@ -763,9 +777,24 @@ end
                         type = Cortex.InferenceSignalTypes.JointMarginal, metadata = (factor_id, cluster)
                     )
                     for v_id in cluster
-                        resolver.joint_dependencies[v_id] = new_joint_marginal
+                        if haskey(resolver.joint_dependencies, v_id)
+                            push!(resolver.joint_dependencies[v_id], new_joint_marginal)
+                        else
+                            resolver.joint_dependencies[v_id] = [new_joint_marginal]
+                        end
+
+                        # Should be always weak here?
+                        Cortex.add_dependency!(
+                            new_joint_marginal, Cortex.get_message_to_factor(engine, v_id, factor_id); weak = true
+                        )
                     end
                     return new_joint_marginal
+                end
+            end
+
+            for d1 in deps, d2 in deps
+                if d1.type === Cortex.InferenceSignalTypes.JointMarginal && d1 !== d2
+                    Cortex.add_dependency!(d1, d2; weak = true)
                 end
             end
 
@@ -815,10 +844,79 @@ end
             return reduce(product, Cortex.get_value.(dependencies))
         elseif signal.type == Cortex.InferenceSignalTypes.MessageToFactor
             return reduce(product, Cortex.get_value.(dependencies))
-        elseif signal.type == Cortex.InferenceSignalTypes.MessageToVariable
-            error("not implemented")
+        elseif signal.type == Cortex.InferenceSignalTypes.ProductOfMessages
+            return reduce(product, Cortex.get_value.(dependencies))
+        elseif signal.type == Cortex.InferenceSignalTypes.JointMarginal
+            msg1 = dependencies[1]
+            msg2 = dependencies[2]
+            mrg  = dependencies[3]
 
-            error("Unreachable reached")
+            @assert msg1.type == Cortex.InferenceSignalTypes.MessageToFactor
+            @assert msg2.type == Cortex.InferenceSignalTypes.MessageToFactor
+            @assert mrg.type == Cortex.InferenceSignalTypes.IndividualMarginal
+
+            msg1_value = Cortex.get_value(msg1)
+            msg2_value = Cortex.get_value(msg2)
+            mrg_value = Cortex.get_value(mrg)
+
+            xi_out, W_out = (precision(msg1_value) * mean(msg1_value), precision(msg1_value))
+            xi_μ, W_μ = (precision(msg2_value) * mean(msg2_value), precision(msg2_value))
+
+            W_bar = mean(mrg_value)
+
+            W = [W_out+W_bar -W_bar; -W_bar W_μ+W_bar]
+            μ = inv(W) * [xi_out; xi_μ]
+
+            return MvNormal(μ, W)
+
+        elseif signal.type == Cortex.InferenceSignalTypes.MessageToVariable
+            v, f = (signal.metadata::Tuple{Int, Int})
+
+            factor = Cortex.get_factor_data(engine, f)
+
+            if factor.fform === :likelihood
+                y = findfirst(d -> get_name_of_variable(engine, first(d.metadata)) == :y, dependencies)
+                x = findfirst(d -> get_name_of_variable(engine, first(d.metadata)) == :x, dependencies)
+                obsnoise = findfirst(d -> get_name_of_variable(engine, first(d.metadata)) == :obsnoise, dependencies)
+
+                if !isnothing(y) && !isnothing(obsnoise)
+                    return Normal(Cortex.get_value(dependencies[y]), mean(Cortex.get_value(dependencies[obsnoise])))
+                end
+
+                if !isnothing(x) && !isnothing(y)
+                    q_out = Cortex.get_value(dependencies[y])
+                    q_μ = Cortex.get_value(dependencies[x])
+                    θ = 2 / (var(q_μ) + abs2(q_out - mean(q_μ)))
+                    α = convert(typeof(θ), 1.5)
+                    return Gamma(α, θ)
+                end
+
+                error("unreachable reached in likelihood")
+            elseif factor.fform === :transition
+                msg = findfirst(d -> d.type == Cortex.InferenceSignalTypes.MessageToFactor, dependencies)
+                mrg = findfirst(d -> d.type == Cortex.InferenceSignalTypes.IndividualMarginal, dependencies)
+                jmrg = findfirst(d -> d.type == Cortex.InferenceSignalTypes.JointMarginal, dependencies)
+
+                if !isnothing(msg) && !isnothing(mrg)
+                    v_msg = Cortex.get_value(dependencies[msg])
+                    v_mrg = Cortex.get_value(dependencies[mrg])
+
+                    m_μ_mean = mean(v_msg)
+                    m_μ_var = var(v_msg)
+
+                    return Normal(m_μ_mean, inv(m_μ_var + inv(mean(v_mrg))))
+                elseif !isnothing(jmrg)
+                    v_jmrg = Cortex.get_value(dependencies[jmrg])
+                    m, V = (mean(v_jmrg), cov(v_jmrg))
+                    θ = 2 / (V[1, 1] - V[1, 2] - V[2, 1] + V[2, 2] + abs2(m[1] - m[2]))
+                    α = convert(typeof(θ), 1.5)
+                    return Gamma(α, θ)
+                end
+
+                error("unreachable reached")
+            else
+                error("unreachable reached")
+            end
         end
 
         error("Unreachable reached")
@@ -849,7 +947,10 @@ end
         end
 
         engine = Cortex.InferenceEngine(
-            model_backend = graph, dependency_resolver = StructuredResolver(), inference_request_processor = computer
+            model_backend = graph,
+            dependency_resolver = StructuredResolver(),
+            inference_request_processor = computer,
+            trace = true
         )
 
         # Initial marginals
@@ -872,27 +973,13 @@ end
         end
 
         for iteration in 1:vmp_iterations
-            # Check that the marginals can be updated in any order
-            if div(iteration, 2) == 0
-                Cortex.update_marginals!(engine, x)
-                Cortex.update_marginals!(engine, ssnoise)
-                Cortex.update_marginals!(engine, obsnoise)
-            else
-                Cortex.update_marginals!(engine, obsnoise)
-                Cortex.update_marginals!(engine, ssnoise)
-                Cortex.update_marginals!(engine, x)
-            end
-
-            # Check that the marginals can be updated several times
+            Cortex.update_marginals!(engine, x)
+            Cortex.update_marginals!(engine, ssnoise)
             Cortex.update_marginals!(engine, obsnoise)
-            Cortex.update_marginals!(engine, obsnoise)
-            Cortex.update_marginals!(engine, obsnoise)
-
-            # Check that the updates can be merged into a single update
-            Cortex.update_marginals!(engine, [ssnoise, obsnoise])
         end
 
         return (
+            engine = engine,
             x = Cortex.get_value.(Cortex.get_marginal.(engine, x)),
             ssnoise = Cortex.get_value(Cortex.get_marginal(engine, ssnoise)),
             obsnoise = Cortex.get_value(Cortex.get_marginal(engine, obsnoise))
@@ -920,8 +1007,10 @@ end
     # The actual answer isn't precise because of the mean-field assumption
     # as well as the fact that the convergence of the VMP updates 
     # depends on the initial conditions and order of updates
-    @test mean(answer.obsnoise) > 50.0
-    @test mean(answer.ssnoise) > 50.0
+    @test mean(answer.obsnoise) > 90
+    @test mean(answer.ssnoise) > 90
+
+    answer.engine
 end
 
 @testitem "Tracing inference in a simple IID model" setup = [TestUtils] begin

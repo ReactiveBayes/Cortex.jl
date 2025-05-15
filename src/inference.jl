@@ -689,6 +689,12 @@ function request_inference_for(engine::InferenceEngine, variable_ids::Union{Abst
         end
     end
 
+    for variable_id in variable_ids
+        for dependency in get_joint_dependencies(engine.dependency_resolver, engine, variable_id)
+            dependency.props = SignalProps(is_potentially_pending = true, is_pending = false)
+        end
+    end
+
     readines_status = falses(length(variable_ids))
 
     return InferenceRequest(engine, variable_ids, marginals, readines_status)
@@ -812,6 +818,9 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
                 end
 
                 for joint_dependency in get_joint_dependencies(engine.dependency_resolver, engine, variable_id)
+                    if !is_pending(joint_dependency)
+                        continue
+                    end
                     trace_inference_execution(inference_round_trace, variable_id, joint_dependency) do
                         process!(processor, request.engine, variable_id, joint_dependency)
                     end

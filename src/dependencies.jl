@@ -158,7 +158,7 @@ function form_segment_tree_dependency!(engine::InferenceEngine, range, factors_c
 
     intermediate = Signal(
         type = Cortex.InferenceSignalTypes.ProductOfMessages,
-        metadata = (variable_id, factors_connected_to_variable, range)
+        metadata = (variable_id, range, factors_connected_to_variable)
     )
 
     add_dependency!(intermediate, left_dependency; intermediate = true)
