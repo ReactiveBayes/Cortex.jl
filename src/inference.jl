@@ -813,11 +813,15 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
 
         trace_inference_round(inference_request_trace) do inference_round_trace
             for (variable_id, marginal) in zip(request.variable_ids, request.marginals)
-                trace_inference_execution(inference_round_trace, variable_id, marginal) do
-                    process!(processor, request.engine, variable_id, marginal)
+                if is_pending(marginal)
+                    trace_inference_execution(inference_round_trace, variable_id, marginal) do
+                        process!(processor, request.engine, variable_id, marginal)
+                    end
                 end
 
                 for joint_dependency in get_joint_dependencies(engine.dependency_resolver, engine, variable_id)
+                    # Here it is fine to skip the joint dependency if it is not pending
+                    # because several variables might attempt to update the same joint dependency
                     if !is_pending(joint_dependency)
                         continue
                     end

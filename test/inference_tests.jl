@@ -652,6 +652,11 @@ end
             Cortex.update_marginals!(engine, obsnoise)
             Cortex.update_marginals!(engine, obsnoise)
 
+            # Check that the marginals can be updated several times
+            Cortex.update_marginals!(engine, ssnoise)
+            Cortex.update_marginals!(engine, ssnoise)
+            Cortex.update_marginals!(engine, ssnoise)
+
             # Check that the updates can be merged into a single update
             Cortex.update_marginals!(engine, [ssnoise, obsnoise])
         end
@@ -973,9 +978,30 @@ end
         end
 
         for iteration in 1:vmp_iterations
-            Cortex.update_marginals!(engine, x)
+            if div(iteration, 2) == 1
+                Cortex.update_marginals!(engine, x)
+                Cortex.update_marginals!(engine, ssnoise)
+                Cortex.update_marginals!(engine, obsnoise)
+            else
+                Cortex.update_marginals!(engine, obsnoise)
+                Cortex.update_marginals!(engine, ssnoise)
+                Cortex.update_marginals!(engine, x)
+            end
+
             Cortex.update_marginals!(engine, ssnoise)
+            Cortex.update_marginals!(engine, ssnoise)
+            Cortex.update_marginals!(engine, ssnoise)
+
+            Cortex.update_marginals!(engine, x)
+            Cortex.update_marginals!(engine, x)
+
             Cortex.update_marginals!(engine, obsnoise)
+            Cortex.update_marginals!(engine, obsnoise)
+            Cortex.update_marginals!(engine, obsnoise)
+
+            Cortex.update_marginals!(engine, [ssnoise, obsnoise])
+
+            Cortex.update_marginals!(engine, collect(Iterators.flatten(([ssnoise, obsnoise], x))))
         end
 
         return (
@@ -1009,8 +1035,6 @@ end
     # depends on the initial conditions and order of updates
     @test mean(answer.obsnoise) > 90
     @test mean(answer.ssnoise) > 90
-
-    answer.engine
 end
 
 @testitem "Tracing inference in a simple IID model" setup = [TestUtils] begin

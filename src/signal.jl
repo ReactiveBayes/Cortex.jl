@@ -376,7 +376,7 @@ function compute!(strategy, signal::Signal; force::Bool = false, skip_if_no_list
     if !force && !is_pending(signal)
         throw(
             ArgumentError(
-                "Signal is not pending. Cannot compute a non-pending signal. Use `force=true` to force computation. Signal: $signal"
+                "Signal is not pending. Cannot compute a non-pending signal. Use `force=true` to force computation. Signal: $signal, dependencies: $(get_dependencies(signal))"
             )
         )
     end
