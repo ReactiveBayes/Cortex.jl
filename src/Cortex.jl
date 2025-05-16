@@ -2,7 +2,9 @@ module Cortex
 
 include("utils.jl")
 include("signal.jl")
-include("inference.jl")
+
+include("model_backend.jl")
+include("inference_engine.jl")
 include("dependencies.jl")
 
 end

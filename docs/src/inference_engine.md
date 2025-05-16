@@ -17,46 +17,35 @@ Upon creation, the `InferenceEngine` can automatically prepare the metadata of t
 
 ```@docs
 Cortex.InferenceEngine
-```
-
-### Engine and Backend Management
-
-These functions allow you to interact with the engine itself and its underlying model backend.
-
-```@docs
 Cortex.get_model_backend
-Cortex.is_backend_supported
-Cortex.UnsupportedModelBackendError
-Cortex.SupportedModelBackend
-Cortex.UnsupportedModelBackend
 ```
 
 ### Accessing Model Components
 
-The engine provides a suite of functions to retrieve data and reactive signals associated with variables, factors, and their connections.
+The engine provides a suite of functions to retrieve data and reactive signals associated with variables, factors, and their connections from the model backend. Read more about the model backend in the [model backend](@ref model_backend) section.
 
 #### Variables
 ```@docs
-Cortex.get_variable_data
-Cortex.get_variable_ids
+Cortex.get_variable_data(::Cortex.InferenceEngine, ::Any)
+Cortex.get_variable_ids(::Cortex.InferenceEngine)
 Cortex.get_marginal(::Cortex.InferenceEngine, ::Any)
 ```
 
 #### Factors
 ```@docs
-Cortex.get_factor_data
-Cortex.get_factor_ids
+Cortex.get_factor_data(::Cortex.InferenceEngine, ::Any)
+Cortex.get_factor_ids(::Cortex.InferenceEngine)
 ```
 
 #### Connections and Messages
 ```@docs
-Cortex.get_connection
+Cortex.get_connection(::Cortex.InferenceEngine, ::Any, ::Any)
 Cortex.get_connection_label(::Cortex.InferenceEngine, ::Any, ::Any)
 Cortex.get_connection_index(::Cortex.InferenceEngine, ::Any, ::Any)
 Cortex.get_message_to_variable(::Cortex.InferenceEngine, ::Any, ::Any)
 Cortex.get_message_to_factor(::Cortex.InferenceEngine, ::Any, ::Any)
-Cortex.get_connected_variable_ids
-Cortex.get_connected_factor_ids
+Cortex.get_connected_variable_ids(::Cortex.InferenceEngine, ::Any)
+Cortex.get_connected_factor_ids(::Cortex.InferenceEngine, ::Any)
 ```
 
 ### Signal Metadata and Types

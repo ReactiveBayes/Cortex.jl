@@ -1,4 +1,3 @@
-
 struct InferenceEngineWarning
     description::String
     context::Any
@@ -122,468 +121,96 @@ end
 # This is needed to make the engine broadcastable
 Base.broadcastable(engine::InferenceEngine) = Ref(engine)
 
-struct UnsupportedModelBackendError{B} <: Exception
-    backend::B
-end
-
-function Base.showerror(io::IO, e::UnsupportedModelBackendError)
-    print(io, "The model backend of type `$(typeof(e.backend))` is not supported.")
-end
-
-"A trait object indicating a supported model backend."
-struct SupportedModelBackend end
-
-"A trait object indicating an unsupported model backend."
-struct UnsupportedModelBackend end
-
-"""
-    is_backend_supported(backend::Any) -> Union{SupportedModelBackend, UnsupportedModelBackend}
-
-Checks if a given `backend` is supported by the `InferenceEngine`.
-
-This function should be extended by specific backend implementations.
-
-## Arguments
-
-- `backend::Any`: The model backend instance to check.
-
-## Returns
-
-- `SupportedModelBackend()` if the backend is supported.
-- `UnsupportedModelBackend()` otherwise.
-
-## See Also
-
-- [`SupportedModelBackend`](@ref)
-- [`UnsupportedModelBackend`](@ref)
-- [`throw_if_backend_unsupported`](@ref)
-"""
-is_backend_supported(::Any) = UnsupportedModelBackend()
-
-throw_if_backend_unsupported(backend::Any) = throw_if_backend_unsupported(is_backend_supported(backend), backend)
-throw_if_backend_unsupported(::UnsupportedModelBackend, backend::Any) = throw(UnsupportedModelBackendError(backend))
-throw_if_backend_unsupported(::SupportedModelBackend, backend::Any) = backend
-
 """
     get_variable_data(engine::InferenceEngine, variable_id)
 
-Retrieves the data structure representing a specific variable from the engine's model backend.
-
-This function dispatches to the `get_variable_data(backend, variable_id)` method of the specific model backend.
-The returned object must implement `get_marginal(variable_data_object) -> Cortex.Signal`.
-
-## Arguments
-
-- `engine::InferenceEngine`: The inference engine instance.
-- `variable_id`: The identifier of the variable to retrieve.
-
-## Returns
-
-A backend-specific data structure for the variable.
-
-## See Also
-
-- [`get_marginal`](@ref)
-- [`get_variable_ids`](@ref)
-- [`InferenceEngine`](@ref)
+Alias for `get_variable_data(get_model_backend(engine), variable_id)`.
 """
 get_variable_data(engine::InferenceEngine, variable_id) = get_variable_data(get_model_backend(engine), variable_id)
 
 """
     get_variable_ids(engine::InferenceEngine)
 
-Retrieves an iterator over all variable identifiers in the engine's model backend.
-
-This function dispatches to the `get_variable_ids(backend)` method of the specific model backend.
-
-## Arguments
-
-- `engine::InferenceEngine`: The inference engine instance.
-
-## Returns
-
-An iterator of variable identifiers.
-
-## See Also
-
-- [`get_variable_data`](@ref)
-- [`InferenceEngine`](@ref)
+Alias for `get_variable_ids(get_model_backend(engine))`.
 """
 get_variable_ids(engine::InferenceEngine) = get_variable_ids(get_model_backend(engine))
 
 """
-    get_marginal(variable_data_object) -> Cortex.Signal
-
-Retrieves the marginal [`Signal`](@ref Cortex.Signal) associated with a `variable_data_object`.
-
-This function must be implemented by specific model backends for their variable data structures.
-
-## Arguments
-
-- `variable_data_object`: The backend-specific data structure representing a variable (obtained via [`get_variable_data`](@ref)).
-
-## Returns
-
-- `Cortex.Signal`: The reactive signal representing the variable's marginal.
-
-## See Also
-
-- [`get_variable_data`](@ref)
-- [`get_marginal(::InferenceEngine, ::Any)`](@ref)
-"""
-get_marginal(any) = throw(MethodError(get_marginal, (any,)))
-
-"""
     get_marginal(engine::InferenceEngine, variable_id) -> Cortex.Signal
 
-Retrieves the marginal [`Signal`](@ref Cortex.Signal) for a given `variable_id` from the `InferenceEngine`.
-
-This is a convenience function calling `get_marginal(get_variable_data(engine, variable_id))`.
-
-## Arguments
-
-- `engine::InferenceEngine`: The inference engine instance.
-- `variable_id`: The identifier of the variable.
-
-## Returns
-
-- `Cortex.Signal`: The reactive signal representing the variable's marginal.
-
-## See Also
-
-- [`get_variable_data`](@ref)
-- [`get_marginal(::Any)`](@ref)
-- [`InferenceEngine`](@ref)
+Alias for `get_marginal(get_variable_data(engine, variable_id))`.
 """
 get_marginal(engine::InferenceEngine, variable_id) = get_marginal(get_variable_data(engine, variable_id))
 
 """
     get_factor_data(engine::InferenceEngine, factor_id)
 
-Retrieves the data structure representing a specific factor from the engine's model backend.
-
-This function dispatches to the `get_factor_data(backend, factor_id)` method of the specific model backend.
-
-## Arguments
-
-- `engine::InferenceEngine`: The inference engine instance.
-- `factor_id`: The identifier of the factor to retrieve.
-
-## Returns
-
-A backend-specific data structure for the factor.
-
-## See Also
-
-- [`get_factor_ids`](@ref)
-- [`InferenceEngine`](@ref)
+Alias for `get_factor_data(get_model_backend(engine), factor_id)`.
 """
 get_factor_data(engine::InferenceEngine, factor_id) = get_factor_data(get_model_backend(engine), factor_id)
 
 """
     get_factor_ids(engine::InferenceEngine)
 
-Retrieves an iterator over all factor identifiers in the engine's model backend.
-
-This function dispatches to the `get_factor_ids(backend)` method of the specific model backend.
-
-## Arguments
-
-- `engine::InferenceEngine`: The inference engine instance.
-
-## Returns
-
-An iterator of factor identifiers.
-
-## See Also
-
-- [`get_factor_data`](@ref)
-- [`InferenceEngine`](@ref)
+Alias for `get_factor_ids(get_model_backend(engine))`.
 """
 get_factor_ids(engine::InferenceEngine) = get_factor_ids(get_model_backend(engine))
 
 """
     get_connection(engine::InferenceEngine, variable_id, factor_id)
 
-Retrieves the data structure representing the connection between a specified `variable_id` and `factor_id`.
-
-This function dispatches to the `get_connection(backend, variable_id, factor_id)` method of the specific model backend.
-The returned object must implement:
-- `get_connection_label(connection_object) -> Symbol`
-- `get_connection_index(connection_object) -> Int`
-- `get_message_to_variable(connection_object) -> Cortex.Signal`
-- `get_message_to_factor(connection_object) -> Cortex.Signal`
-
-## Arguments
-
-- `engine::InferenceEngine`: The inference engine instance.
-- `variable_id`: The identifier of the variable in the connection.
-- `factor_id`: The identifier of the factor in the connection.
-
-## Returns
-
-A backend-specific data structure for the connection.
-
-## See Also
-
-- [`get_connection_label`](@ref)
-- [`get_connection_index`](@ref)
-- [`get_message_to_variable`](@ref)
-- [`get_message_to_factor`](@ref)
-- [`InferenceEngine`](@ref)
+Alias for `get_connection(get_model_backend(engine), variable_id, factor_id)`.
 """
-get_connection(engine::InferenceEngine, variable_id, factor_id) = get_connection(
-    get_model_backend(engine), variable_id, factor_id
-)
-
-"""
-    get_connection_label(connection_object)
-
-Retrieves the label (e.g., `:out`, `:in`, interface name) of a `connection_object`.
-
-This function must be implemented by specific model backends for their connection data structures.
-
-## Arguments
-
-- `connection_object`: The backend-specific data structure representing a connection.
-
-## Returns
-
-- `Symbol`: The label of the connection.
-
-## See Also
-
-- [`get_connection`](@ref)
-- [`get_connection_label(::InferenceEngine, ::Any, ::Any)`](@ref)
-"""
-get_connection_label(any) = throw(MethodError(get_connection_label, (any,)))
+get_connection(engine::InferenceEngine, variable_id, factor_id) =
+    get_connection(get_model_backend(engine), variable_id, factor_id)
 
 """
     get_connection_label(engine::InferenceEngine, variable_id, factor_id) -> Symbol
 
-Retrieves the label of the connection between `variable_id` and `factor_id`.
-
-This is a convenience function calling `get_connection_label(get_connection(engine, variable_id, factor_id))`.
-
-## Arguments
-
-- `engine::InferenceEngine`: The inference engine instance.
-- `variable_id`: The identifier of the variable.
-- `factor_id`: The identifier of the factor.
-
-## Returns
-
-- `Symbol`: The label of the connection.
-
-## See Also
-
-- [`get_connection`](@ref)
-- [`get_connection_label(::Any)`](@ref)
-- [`InferenceEngine`](@ref)
+Alias for `get_connection_label(get_connection(engine, variable_id, factor_id))`.
 """
-get_connection_label(engine::InferenceEngine, variable_id, factor_id) = get_connection_label(
-    get_connection(engine, variable_id, factor_id)
-)
-
-"""
-    get_connection_index(connection_object) -> Int
-
-Retrieves the index of a `connection_object`, if applicable (e.g., for multi-edges).
-
-This function must be implemented by specific model backends for their connection data structures.
-Defaults to 0 if not explicitly indexed.
-
-## Arguments
-
-- `connection_object`: The backend-specific data structure representing a connection.
-
-## Returns
-
-- `Int`: The index of the connection.
-
-## See Also
-
-- [`get_connection`](@ref)
-- [`get_connection_index(::InferenceEngine, ::Any, ::Any)`](@ref)
-"""
-get_connection_index(any) = throw(MethodError(get_connection_index, (any,)))
+get_connection_label(engine::InferenceEngine, variable_id, factor_id) =
+    get_connection_label(get_connection(engine, variable_id, factor_id))
 
 """
     get_connection_index(engine::InferenceEngine, variable_id, factor_id) -> Int
 
-Retrieves the index of the connection between `variable_id` and `factor_id`.
-
-This is a convenience function calling `get_connection_index(get_connection(engine, variable_id, factor_id))`.
-
-## Arguments
-
-- `engine::InferenceEngine`: The inference engine instance.
-- `variable_id`: The identifier of the variable.
-- `factor_id`: The identifier of the factor.
-
-## Returns
-
-- `Int`: The index of the connection.
-
-## See Also
-
-- [`get_connection`](@ref)
-- [`get_connection_index(::Any)`](@ref)
-- [`InferenceEngine`](@ref)
+Alias for `get_connection_index(get_connection(engine, variable_id, factor_id))`.
 """
-get_connection_index(engine::InferenceEngine, variable_id, factor_id) = get_connection_index(
-    get_connection(engine, variable_id, factor_id)
-)
-
-"""
-    get_message_to_variable(connection_object) -> Cortex.Signal
-
-Retrieves the message [`Signal`](@ref Cortex.Signal) flowing from a factor to a variable along the given `connection_object`.
-
-This function must be implemented by specific model backends for their connection data structures.
-
-## Arguments
-
-- `connection_object`: The backend-specific data structure representing a connection.
-
-## Returns
-
-- `Cortex.Signal`: The reactive signal for the message to the variable.
-
-## See Also
-
-- [`get_connection`](@ref)
-- [`get_message_to_variable(::InferenceEngine, ::Any, ::Any)`](@ref)
-"""
-get_message_to_variable(any) = throw(MethodError(get_message_to_variable, (any,)))
+get_connection_index(engine::InferenceEngine, variable_id, factor_id) =
+    get_connection_index(get_connection(engine, variable_id, factor_id))
 
 """
     get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) -> Cortex.Signal
 
-Retrieves the message [`Signal`](@ref Cortex.Signal) from `factor_id` to `variable_id`.
-
-This is a convenience function calling `get_message_to_variable(get_connection(engine, variable_id, factor_id))`.
-
-## Arguments
-
-- `engine::InferenceEngine`: The inference engine instance.
-- `variable_id`: The identifier of the target variable.
-- `factor_id`: The identifier of the source factor.
-
-## Returns
-
-- `Cortex.Signal`: The reactive signal for the message.
-
-## See Also
-
-- [`get_connection`](@ref)
-- [`get_message_to_variable(::Any)`](@ref)
-- [`InferenceEngine`](@ref)
+Alias for `get_message_to_variable(get_connection(engine, variable_id, factor_id))`.
 """
-get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) = get_message_to_variable(
-    get_connection(engine, variable_id, factor_id)
-)
-
-"""
-    get_message_to_factor(connection_object) -> Cortex.Signal
-
-Retrieves the message [`Signal`](@ref Cortex.Signal) flowing from a variable to a factor along the given `connection_object`.
-
-This function must be implemented by specific model backends for their connection data structures.
-
-## Arguments
-
-- `connection_object`: The backend-specific data structure representing a connection.
-
-## Returns
-
-- `Cortex.Signal`: The reactive signal for the message to the factor.
-
-## See Also
-
-- [`get_connection`](@ref)
-- [`get_message_to_factor(::InferenceEngine, ::Any, ::Any)`](@ref)
-"""
-get_message_to_factor(any) = throw(MethodError(get_message_to_factor, (any,)))
+get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) =
+    get_message_to_variable(get_connection(engine, variable_id, factor_id))
 
 """
     get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) -> Cortex.Signal
 
-Retrieves the message [`Signal`](@ref Cortex.Signal) from `variable_id` to `factor_id`.
-
-This is a convenience function calling `get_message_to_factor(get_connection(engine, variable_id, factor_id))`.
-
-## Arguments
-
-- `engine::InferenceEngine`: The inference engine instance.
-- `variable_id`: The identifier of the source variable.
-- `factor_id`: The identifier of the target factor.
-
-## Returns
-
-- `Cortex.Signal`: The reactive signal for the message.
-
-## See Also
-
-- [`get_connection`](@ref)
-- [`get_message_to_factor(::Any)`](@ref)
-- [`InferenceEngine`](@ref)
+Alias for `get_message_to_factor(get_connection(engine, variable_id, factor_id))`.
 """
-get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) = get_message_to_factor(
-    get_connection(engine, variable_id, factor_id)
-)
+get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) =
+    get_message_to_factor(get_connection(engine, variable_id, factor_id))
 
 """
     get_connected_variable_ids(engine::InferenceEngine, factor_id)
 
-Retrieves an iterator over the identifiers of variables connected to a given `factor_id`.
-
-This function dispatches to the `get_connected_variable_ids(backend, factor_id)` method of the specific model backend.
-
-## Arguments
-
-- `engine::InferenceEngine`: The inference engine instance.
-- `factor_id`: The identifier of the factor.
-
-## Returns
-
-An iterator of connected variable identifiers.
-
-## See Also
-
-- [`get_connected_factor_ids`](@ref)
-- [`get_connection`](@ref)
-- [`InferenceEngine`](@ref)
+Alias for `get_connected_variable_ids(get_model_backend(engine), factor_id)`.
 """
-get_connected_variable_ids(engine::InferenceEngine, factor_id) = get_connected_variable_ids(
-    get_model_backend(engine), factor_id
-)
+get_connected_variable_ids(engine::InferenceEngine, factor_id) =
+    get_connected_variable_ids(get_model_backend(engine), factor_id)
 
 """
     get_connected_factor_ids(engine::InferenceEngine, variable_id)
 
-Retrieves an iterator over the identifiers of factors connected to a given `variable_id`.
-
-This function dispatches to the `get_connected_factor_ids(backend, variable_id)` method of the specific model backend.
-
-## Arguments
-
-- `engine::InferenceEngine`: The inference engine instance.
-- `variable_id`: The identifier of the variable.
-
-## Returns
-
-An iterator of connected factor identifiers.
-
-## See Also
-
-- [`get_connected_variable_ids`](@ref)
-- [`get_connection`](@ref)
-- [`InferenceEngine`](@ref)
+Alias for `get_connected_factor_ids(get_model_backend(engine), variable_id)`.
 """
-get_connected_factor_ids(engine::InferenceEngine, variable_id) = get_connected_factor_ids(
-    get_model_backend(engine), variable_id
-)
+get_connected_factor_ids(engine::InferenceEngine, variable_id) =
+    get_connected_factor_ids(get_model_backend(engine), variable_id)
 
 """
     InferenceSignalTypes
@@ -770,11 +397,8 @@ struct CallbackInferenceRequestProcessor{F} <: AbstractInferenceRequestProcessor
     f::F
 end
 
-Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} = CallbackInferenceRequestProcessor{
-    F
-}(
-    f
-)
+Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} =
+    CallbackInferenceRequestProcessor{F}(f)
 
 "Internal functor for `InferenceRequestProcessor` to apply the computation logic."
 function process!(
