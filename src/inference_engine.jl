@@ -1,3 +1,13 @@
+"""
+    InferenceEngineWarning
+
+A warning message generated during inference execution.
+
+## Fields
+
+- `description::String`: A human-readable description of the warning.
+- `context::Any`: Additional context or data related to the warning.
+"""
 struct InferenceEngineWarning
     description::String
     context::Any
@@ -6,39 +16,39 @@ end
 """
     InferenceEngine{M}
 
-Core structure for managing and executing inference tasks on a given model backend.
+Core structure for managing and executing probabilistic inference.
 
 ## Fields
 
-- `model_backend::M`: The underlying model backend (e.g., a `BipartiteFactorGraph`) on which inference is performed. It must conform to the Cortex.jl backend interface.
+- `model_backend::M`: The underlying model backend (e.g., a `BipartiteFactorGraph`).
+- `dependency_resolver`: Resolves dependencies between signals during inference.
+- `inference_request_processor`: Processes inference requests and manages computation order.
+- `tracer`: Optional tracer for monitoring inference execution.
+- `warnings`: Collection of [`InferenceEngineWarning`](@ref)s generated during inference.
 
 ## Constructor
 
 ```julia
-InferenceEngine(; model_backend::M, prepare_signals_metadata::Bool = true) where {M}
+InferenceEngine(;
+    model_backend::M,
+    dependency_resolver = DefaultDependencyResolver(),
+    inference_request_processor = InferenceRequestScanner(),
+    prepare_signals_metadata::Bool = true,
+    resolve_dependencies::Bool = true,
+    trace::Bool = false
+) where {M}
 ```
 
+### Arguments
+
 - `model_backend`: An instance of a supported model backend.
-- `prepare_signals_metadata::Bool` (default: `true`): If `true`, calls [`prepare_signals_metadata!`](@ref) upon construction to initialize signal types and metadata. This is typically required for inference algorithms.
+- `dependency_resolver`: Custom dependency resolver (optional).
+- `inference_request_processor`: Custom request processor (optional).
+- `prepare_signals_metadata`: Whether to initialize signal types and metadata.
+- `resolve_dependencies`: Whether to resolve signal dependencies on creation.
+- `trace`: Whether to enable inference execution tracing.
 
-## Overview
-
-The `InferenceEngine` orchestrates message passing and marginal computation within a probabilistic model using the [`Signal`](@ref Cortex.Signal) reactivity system.
-It provides a standardized API for:
-- Accessing model components (variables, factors, connections).
-- Retrieving reactive signals for marginals and messages.
-- Managing inference execution via [`update_marginals!`](@ref) and [`request_inference_for`](@ref).
-
-The engine interacts with the `model_backend` through a defined interface (e.g., `Cortex.get_variable_data(backend, id)`), implemented by backend-specific extensions.
-
-## See Also
-
-- [`get_model_backend`](@ref)
-- [`prepare_signals_metadata!`](@ref)
-- [`is_backend_supported`](@ref)
-- [`update_marginals!`](@ref)
-- [`request_inference_for`](@ref)
-- [`Signal`](@ref Cortex.Signal)
+See also: [`get_model_backend`](@ref), [`update_marginals!`](@ref), [`request_inference_for`](@ref)
 """
 mutable struct InferenceEngine{M, D, P, T}
     model_backend::M
@@ -293,7 +303,20 @@ end
 
 ## -- Inference requests -- ##
 
-"Internal struct representing a request to perform inference for a set of variables."
+"""
+    InferenceRequest{E,V,M}
+
+Internal structure representing a request to perform inference for a set of variables.
+
+## Fields
+
+- `engine::E`: The inference engine instance.
+- `variable_ids::V`: Collection of variable identifiers to compute marginals for.
+- `marginals::M`: Collection of marginal signals corresponding to the variables.
+- `readines_status::BitVector`: Tracks which variables have been processed.
+
+See also: [`request_inference_for`](@ref), [`update_marginals!`](@ref)
+"""
 struct InferenceRequest{E, V, M}
     engine::E
     variable_ids::V
@@ -485,6 +508,20 @@ end
 
 ## -- Inference tracing -- ##
 
+"""
+    TracedInferenceExecution
+
+A record of a single signal computation during inference.
+
+## Fields
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `variable_id`: The identifier of the variable being processed.
+- `signal::Signal`: The signal that was computed.
+- `total_time_in_ns::UInt64`: Total computation time in nanoseconds.
+- `value_before_execution`: Signal value before computation.
+- `value_after_execution`: Signal value after computation.
+"""
 struct TracedInferenceExecution
     engine::InferenceEngine
     variable_id::Any
@@ -535,12 +572,35 @@ function Base.show(io::IO, execution::TracedInferenceExecution)
     print(io, ")")
 end
 
+"""
+    TracedInferenceRound
+
+A record of a single round of inference computations.
+
+## Fields
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `total_time_in_ns::UInt64`: Total round time in nanoseconds.
+- `executions::Vector{TracedInferenceExecution}`: List of signal computations performed.
+"""
 struct TracedInferenceRound
     engine::InferenceEngine
     total_time_in_ns::UInt64
     executions::Vector{TracedInferenceExecution}
 end
 
+"""
+    TracedInferenceRequest
+
+A complete record of an inference request execution.
+
+## Fields
+
+- `engine::InferenceEngine`: The inference engine instance.
+- `total_time_in_ns::UInt64`: Total request processing time in nanoseconds.
+- `request::InferenceRequest`: The original inference request.
+- `rounds::Vector{TracedInferenceRound}`: List of inference rounds performed.
+"""
 struct TracedInferenceRequest
     engine::InferenceEngine
     total_time_in_ns::UInt64
@@ -548,6 +608,20 @@ struct TracedInferenceRequest
     rounds::Vector{TracedInferenceRound}
 end
 
+"""
+    InferenceEngineTracer
+
+Tracer for monitoring and debugging inference execution.
+
+## Fields
+
+- `inference_requests::Vector{TracedInferenceRequest}`: History of traced inference requests.
+
+The tracer records:
+- Signal computations and their timing
+- Value changes during inference
+- Execution order of computations
+"""
 struct InferenceEngineTracer
     inference_requests::Vector{TracedInferenceRequest}
 

@@ -1,72 +1,103 @@
 # [Inference Engine](@id inference)
 
-The `InferenceEngine` is the central component in Cortex.jl for performing probabilistic inference. It acts as an abstraction layer over different model backends, providing a consistent API for interacting with models and running inference algorithms.
+The `InferenceEngine` is your gateway to probabilistic inference in Cortex.jl. Think of it as a smart orchestrator that:
+- Manages your probabilistic model (through a model backend)
+- Coordinates message passing and marginal updates
+- Tracks dependencies between computations
+- Ensures efficient computation through reactive programming
 
-## Concept
+## Core Concepts
 
-The primary role of the `InferenceEngine` is to:
+### Model Backend Integration
 
-1.  **Manage a Model Backend:** It holds an instance of a specific model structure (e.g., a `BipartiteFactorGraph`).
-2.  **Provide a Standardized API:** It offers a set of functions to access and manipulate model components like variables, factors, and their connections, regardless of the underlying backend's specific implementation.
-3.  **Orchestrate Inference:** It uses the reactive `Signal` system to manage the flow of messages and marginals. When data or priors change, the engine helps identify which parts of the model need updates.
-4.  **Execute Computations:** It facilitates the application of user-defined computation functions (rules for how messages and marginals are calculated) to update the model's state using the [`update_marginals!`](@ref) function.
+The engine wraps your [model backend](@ref model_backend) and provides a unified interface for computing and updating messages and marginals required for inference.
 
-Upon creation, the `InferenceEngine` can automatically prepare the metadata of the signals within the model (marginals, messages to variables, messages to factors) by calling [`prepare_signals_metadata!`](@ref). This step is crucial as it assigns specific types and metadata (like variable or factor IDs) to signals, which are often used by the computation functions during inference.
+### Reactive Signal System
 
-## Core API
+Under the hood, the engine uses a [reactive signal system](@ref signals) to:
+- Track dependencies between computations
+- Update only what's necessary when data changes
+- Maintain consistency across the model
+
+### Smart Inference Execution
+
+The engine optimizes inference by:
+- Identifying which parts of the model need updates
+- Managing computation order for efficiency
+- Handling both local and joint inference tasks
+
+### Inference Tracing
+
+The engine provides built-in [tracing capabilities](@ref inference_tracing) for debugging and performance analysis:
+- Records timing of signal computations
+- Tracks value changes during inference
+- Monitors execution order of computations
+- Collects warnings and diagnostic information
+
+## API Reference
+
+### Engine Management
 
 ```@docs
 Cortex.InferenceEngine
 Cortex.get_model_backend
 ```
 
-### Accessing Model Components
+### Variable Operations
 
-The engine provides a suite of functions to retrieve data and reactive signals associated with variables, factors, and their connections from the model backend. Read more about the model backend in the [model backend](@ref model_backend) section.
-
-#### Variables
 ```@docs
 Cortex.get_variable_data(::Cortex.InferenceEngine, ::Any)
 Cortex.get_variable_ids(::Cortex.InferenceEngine)
 Cortex.get_marginal(::Cortex.InferenceEngine, ::Any)
 ```
 
-#### Factors
+### Factor Operations
+
 ```@docs
 Cortex.get_factor_data(::Cortex.InferenceEngine, ::Any)
 Cortex.get_factor_ids(::Cortex.InferenceEngine)
 ```
 
-#### Connections and Messages
+### Message Passing Interface
+
 ```@docs
-Cortex.get_connection(::Cortex.InferenceEngine, ::Any, ::Any)
-Cortex.get_connection_label(::Cortex.InferenceEngine, ::Any, ::Any)
-Cortex.get_connection_index(::Cortex.InferenceEngine, ::Any, ::Any)
 Cortex.get_message_to_variable(::Cortex.InferenceEngine, ::Any, ::Any)
 Cortex.get_message_to_factor(::Cortex.InferenceEngine, ::Any, ::Any)
 Cortex.get_connected_variable_ids(::Cortex.InferenceEngine, ::Any)
 Cortex.get_connected_factor_ids(::Cortex.InferenceEngine, ::Any)
 ```
 
-### Signal Metadata and Types
+### Signal Types
 
-Understanding and managing signal metadata is key for many inference algorithms.
+The engine uses different signal types to manage various aspects of inference:
 
 ```@docs
 Cortex.InferenceSignalTypes
+```
+
+#### Available Signal Types
+
+```@docs
 Cortex.InferenceSignalTypes.MessageToVariable
 Cortex.InferenceSignalTypes.MessageToFactor
 Cortex.InferenceSignalTypes.ProductOfMessages
 Cortex.InferenceSignalTypes.IndividualMarginal
 Cortex.InferenceSignalTypes.JointMarginal
-Cortex.prepare_signals_metadata!
 ```
 
 ### Running Inference
 
-These functions are used to initiate and execute the inference process.
-
 ```@docs
 Cortex.request_inference_for
 Cortex.update_marginals!
-``` 
+```
+
+### [Tracing and Debugging](@id inference_tracing)
+
+```@docs
+Cortex.InferenceEngineWarning
+Cortex.TracedInferenceExecution
+Cortex.TracedInferenceRound
+Cortex.TracedInferenceRequest
+Cortex.InferenceEngineTracer
+```

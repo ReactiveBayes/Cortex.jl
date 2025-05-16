@@ -17,8 +17,8 @@ makedocs(;
     pages = [
         "Home" => "index.md",
         "Signals: The Core of Reactivity" => "signals.md",
-        "Probabilistic Model Backend" => "model_backend.md",
-        "Probabilistic Inference with Cortex" => "inference_engine.md"
+        "Model Backend: The Foundation" => "model_backend.md",
+        "Inference Engine: The Brain" => "inference_engine.md"
     ]
 )
 
