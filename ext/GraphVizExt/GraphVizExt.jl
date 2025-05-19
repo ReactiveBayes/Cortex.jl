@@ -4,24 +4,15 @@ using GraphViz, Cortex
 
 # Default styling for all nodes
 const DEFAULT_NODE_STYLE = Dict(
-    "shape" => "plain",
-    "style" => "filled",
-    "fillcolor" => "gray95",
-    "fontname" => "Helvetica,Arial,sans-serif"
+    "shape" => "plain", "style" => "filled", "fillcolor" => "gray95", "fontname" => "Helvetica,Arial,sans-serif"
 )
 
 # Additional styling for pending nodes
-const PENDING_NODE_STYLE = Dict(
-    "style" => "filled,bold",
-    "fillcolor" => "lightblue"
-)
+const PENDING_NODE_STYLE = Dict("style" => "filled,bold", "fillcolor" => "lightblue")
 
 # Color scheme for different types of edges
 const EDGE_COLORS = Dict(
-    :fresh_and_intermediate => "cadetblue3",
-    :fresh => "dodgerblue3",
-    :intermediate => "gray60",
-    :default => "black"
+    :fresh_and_intermediate => "cadetblue3", :fresh => "dodgerblue3", :intermediate => "gray60", :default => "black"
 )
 
 # Returns (style, color) tuple for edge visualization based on dependency properties
@@ -69,7 +60,7 @@ end
 # Creates the node header with title and optional depth level indicator
 function format_node_header(title::String, level::Int)
     depth_info = level > 0 ? """<font point-size="8" color="gray">Depth: $level</font>""" : ""
-    return """<tr> <td align="left"><b>$title</b> $depth_info</td></tr>"""
+    return """<tr> <td port="header" align="left"><b>$title</b> $depth_info</td></tr>"""
 end
 
 # Creates a summary of dependencies when max_depth is reached
@@ -94,14 +85,59 @@ function format_node_attributes(attrs::Dict{String, String})
     return join(["$k=\"$v\"" for (k, v) in attrs], "\n            ")
 end
 
+# Calculates statistics for a collection of dependencies
+function calculate_dependency_stats(s::Cortex.Signal, dependencies::Vector{Cortex.Signal}, start_idx::Int)
+    stats = Dict(
+        :total => length(dependencies) - start_idx + 1, :weak => 0, :intermediate => 0, :fresh => 0, :pending => 0
+    )
+
+    for i in start_idx:length(dependencies)
+        stats[:weak] += Cortex.is_dependency_weak(s.dependencies_props, i) ? 1 : 0
+        stats[:intermediate] += Cortex.is_dependency_intermediate(s.dependencies_props, i) ? 1 : 0
+        stats[:fresh] += Cortex.is_dependency_fresh(s.dependencies_props, i) ? 1 : 0
+        stats[:pending] += Cortex.is_pending(dependencies[i]) ? 1 : 0
+    end
+
+    return stats
+end
+
+# Formats dependency statistics into a human-readable string
+function format_dependency_stats(stats::Dict{Symbol, Int})
+    details = String[]
+
+    push!(details, "$(stats[:total]) more dependencies")
+    stats[:weak] > 0 && push!(details, "$(stats[:weak]) weak")
+    stats[:intermediate] > 0 && push!(details, "$(stats[:intermediate]) intermediate")
+    stats[:fresh] > 0 && push!(details, "$(stats[:fresh]) fresh")
+    stats[:pending] > 0 && push!(details, "$(stats[:pending]) pending")
+
+    summary = join(details, ", ")
+    return """
+    <tr> <td align="left"> ... </td></tr>
+    <tr> <td align="left"> <font point-size="8" color="gray">$summary</font><br align="left" />
+    <font point-size="8" color="gray">Use `max_dependencies` to show more dependencies</font>
+    </td></tr>"""
+end
+
 # Main entry point for converting a Signal to a GraphViz visualization
-function GraphViz.load(s::Cortex.Signal; max_depth = 2, type_to_string_fn = Cortex.InferenceSignalTypes.to_string)
+function GraphViz.load(
+    s::Cortex.Signal;
+    max_depth = 2,
+    max_dependencies = 10,
+    type_to_string_fn = Cortex.InferenceSignalTypes.to_string,
+    show_value = true,
+    show_metadata = true,
+    show_type = true
+)
     io = IOBuffer()
     println(io, "digraph G {")
-    
+
     # Set default node and edge styles
     node_defaults = format_node_attributes(DEFAULT_NODE_STYLE)
-    print(io, """
+    print(
+        io,
+        """
+        rankdir="RL"
         node [
             $node_defaults
         ]
@@ -109,7 +145,8 @@ function GraphViz.load(s::Cortex.Signal; max_depth = 2, type_to_string_fn = Cort
             color="$(EDGE_COLORS[:default])"
             style="solid"
         ]
-    """)
+        """
+    )
 
     print_signal_node(
         io,
@@ -117,8 +154,12 @@ function GraphViz.load(s::Cortex.Signal; max_depth = 2, type_to_string_fn = Cort
         id = "main",
         title = "MainSignal",
         max_depth = max_depth,
+        max_dependencies = max_dependencies,
         level = 0,
-        type_to_string_fn = type_to_string_fn
+        type_to_string_fn = type_to_string_fn,
+        show_value = show_value,
+        show_metadata = show_metadata,
+        show_type = show_type
     )
 
     println(io, "}")
@@ -129,23 +170,40 @@ function GraphViz.load(s::Cortex.Signal; max_depth = 2, type_to_string_fn = Cort
 end
 
 # Renders a single signal node with all its properties and dependencies
-function print_signal_node(io::IO, s::Cortex.Signal; id, title, level, max_depth, type_to_string_fn)
+function print_signal_node(
+    io::IO,
+    s::Cortex.Signal;
+    id,
+    title,
+    level,
+    max_depth,
+    max_dependencies,
+    type_to_string_fn,
+    show_value = true,
+    show_metadata = true,
+    show_type = true
+)
     footer = String[]
     node_attrs = get_node_attributes(s)
 
     # Start node definition
-    print(io, """
-        $id [
-            $(format_node_attributes(node_attrs))
-            label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4">
-    """)
+    print(
+        io,
+        """
+    $id [
+        $(format_node_attributes(node_attrs))
+        label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4">
+"""
+    )
 
     # Node content
     print(io, format_node_header(title, level))
     print(io, """<tr> <td><table border="0" cellborder="0" cellspacing="0">""")
-    print(io, format_node_value(s))
-    print(io, format_node_metadata(s))
-    print(io, format_node_type(s, type_to_string_fn))
+
+    show_value && print(io, format_node_value(s))
+    show_metadata && print(io, format_node_metadata(s))
+    show_type && print(io, format_node_type(s, type_to_string_fn))
+
     print(io, "</table></td></tr>")
 
     # Handle dependencies
@@ -155,7 +213,23 @@ function print_signal_node(io::IO, s::Cortex.Signal; id, title, level, max_depth
     elseif max_depth <= 0
         print(io, format_dependencies_summary(length(dependencies)))
     else
-        print(io, process_dependencies(io, s, dependencies, id, level, max_depth, type_to_string_fn, footer))
+        print(
+            io,
+            format_signal_dependencies(
+                io,
+                s,
+                dependencies,
+                id,
+                level,
+                max_depth,
+                max_dependencies,
+                type_to_string_fn,
+                footer,
+                show_value,
+                show_metadata,
+                show_type
+            )
+        )
     end
 
     # Close node definition
@@ -167,12 +241,29 @@ function print_signal_node(io::IO, s::Cortex.Signal; id, title, level, max_depth
     end
 end
 
-# Processes and formats all dependencies of a signal node, creating child nodes and edges
-function process_dependencies(io, s, dependencies, id, level, max_depth, type_to_string_fn, footer)
+# Formats and renders dependencies of a signal node, creating child nodes and edges
+function format_signal_dependencies(
+    io,
+    s,
+    dependencies,
+    id,
+    level,
+    max_depth,
+    max_dependencies,
+    type_to_string_fn,
+    footer,
+    show_value,
+    show_metadata,
+    show_type
+)
     result = IOBuffer()
     print(result, """<tr> <td> <table border="0" cellborder="0" cellspacing="0">""")
-    
-    for (i, dep) in enumerate(dependencies)
+
+    n_deps = length(dependencies)
+    show_deps = min(n_deps, max_dependencies)
+
+    for i in 1:show_deps
+        dep = dependencies[i]
         # Add dependency entry
         print(result, """<tr> <td port="dep$i" align="left">- dependency $i</td></tr>""")
 
@@ -186,7 +277,11 @@ function process_dependencies(io, s, dependencies, id, level, max_depth, type_to
             title = "Dependency",
             level = level + 1,
             max_depth = max_depth - 1,
-            type_to_string_fn = type_to_string_fn
+            max_dependencies = max_dependencies,
+            type_to_string_fn = type_to_string_fn,
+            show_value = show_value,
+            show_metadata = show_metadata,
+            show_type = show_type
         )
         push!(footer, String(take!(dependency_node_io)))
 
@@ -196,7 +291,13 @@ function process_dependencies(io, s, dependencies, id, level, max_depth, type_to
         is_fresh = Cortex.is_dependency_fresh(s.dependencies_props, i)
 
         edge_style, edge_color = get_edge_style(is_weak, is_intermediate, is_fresh)
-        push!(footer, """$(id):dep$i -> $(dependency_node_id) [style="$edge_style" color="$edge_color"];""")
+        push!(footer, """$(dependency_node_id):header -> $(id):dep$i [style="$edge_style" color="$edge_color"];""")
+    end
+
+    # If we have more dependencies than the limit, show statistics
+    if n_deps > max_dependencies
+        stats = calculate_dependency_stats(s, dependencies, show_deps + 1)
+        print(result, format_dependency_stats(stats))
     end
 
     print(result, "</table></td></tr>")
