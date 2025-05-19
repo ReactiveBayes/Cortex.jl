@@ -3,8 +3,8 @@
 
     export to_svg
 
-    function to_svg(s::Cortex.Signal)
-        return repr(MIME"image/svg+xml"(), GraphViz.load(s))
+    function to_svg(s::Cortex.Signal; kwargs...)
+        return repr(MIME"image/svg+xml"(), GraphViz.load(s; kwargs...))
     end
 end
 
@@ -97,16 +97,40 @@ end
         @test occursin("No dependencies", to_svg(s))
     end
 
-    @testset "One dependency" begin
+    @testset "Two dependencies" begin
         s = Cortex.Signal()
 
-        dep1 = Cortex.Signal()
-        dep2 = Cortex.Signal()
+        dep1 = Cortex.Signal("dep1", metadata = (:a, 1))
+        dep2 = Cortex.Signal("hello world", metadata = (:b, 2))
 
         Cortex.add_dependency!(s, dep1)
         Cortex.add_dependency!(s, dep2)
 
-        @test occursin("dependency #1", to_svg(s))
-        @test occursin("dependency #2", to_svg(s))
+        s_svg = to_svg(s)
+
+        @test occursin("dependency 1", s_svg)
+        @test occursin("dependency 2", s_svg)
+
+        @test occursin("dep1", s_svg)
+        @test occursin("hello world", s_svg)
+
+        @test occursin("(:a, 1)", s_svg)
+        @test occursin("(:b, 2)", s_svg)
+    end
+
+    @testset "A dependency but depth is too small for visualization" begin
+        s = Cortex.Signal()
+
+        dep1 = Cortex.Signal("dep1", metadata = (:a, 1))
+
+        Cortex.add_dependency!(s, dep1)
+
+        s_svg = to_svg(s; max_depth = 0)
+
+        @test occursin("1 dependencies", s_svg)
+        @test occursin("Use `max_depth` to render more dependencies", s_svg)
+
+        @test !occursin("dep1", s_svg)
+        @test !occursin("(:a, 1)", s_svg)
     end
 end

@@ -2,30 +2,47 @@ module GraphVizExt
 
 using GraphViz, Cortex
 
-function GraphViz.load(s::Cortex.Signal; type_to_string_fn = Cortex.InferenceSignalTypes.to_string)
+function GraphViz.load(s::Cortex.Signal; max_depth = 2, type_to_string_fn = Cortex.InferenceSignalTypes.to_string)
     io = IOBuffer()
 
     # Beginning of the dot specification
     println(io, "digraph G {")
+    print(
+        io,
+        """
+        node [
+            fontname="Helvetica,Arial,sans-serif"
+            shape=record
+            style=filled
+            fillcolor=gray95
+        ]
+        """
+    )
 
-    print_signal_node(io, s; title = "MainSignal", type_to_string_fn = type_to_string_fn)
+    print_signal_node(
+        io, s; id = "main", title = "MainSignal", max_depth = max_depth, type_to_string_fn = type_to_string_fn
+    )
 
     # End of the dot specification
     println(io, "}")
 
-    return GraphViz.Graph(String(take!(io)))
+    graph = GraphViz.Graph(String(take!(io)))
+
+    GraphViz.layout!(graph, engine = "dot")
+
+    return graph
 end
 
-function print_signal_node(io::IO, s::Cortex.Signal; title, type_to_string_fn)
+function print_signal_node(io::IO, s::Cortex.Signal; id, title, max_depth, type_to_string_fn)
     footer = []
 
     print(
         io,
         """
-        $title [
+        $id [
             shape=plain
             label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4">
-                <tr> <td> <b>Main Signal</b> </td> </tr>
+                <tr> <td> <b>$title</b> </td> </tr>
                 <tr> <td>
                     <table border="0" cellborder="0" cellspacing="0" >
         """
@@ -61,14 +78,31 @@ function print_signal_node(io::IO, s::Cortex.Signal; title, type_to_string_fn)
 
     if isempty(dependencies)
         print(io, """<tr> <td align="left">No dependencies</td></tr>""")
+    elseif max_depth <= 0
+        print(
+            io,
+            """<tr> <td align="left">$(length(dependencies)) dependencies<br align="left" /><font point-size="8" color="gray">Use `max_depth` to render more dependencies</font></td></tr>"""
+        )
     else
         print(io, """<tr> <td> <table border="0" cellborder="0" cellspacing="0" >""")
         for (i, dep) in enumerate(dependencies)
             print(io, """<tr> <td port="dep$i" align="left">- dependency $i</td> </tr>""")
+
+            dependency_node_io = IOBuffer()
+            dependency_node_id = "$(id)dep$(i)"
+            print_signal_node(
+                dependency_node_io,
+                dep;
+                id = dependency_node_id,
+                title = "Dependency",
+                max_depth = max_depth - 1,
+                type_to_string_fn = type_to_string_fn
+            )
+
+            push!(footer, String(take!(dependency_node_io)))
+            push!(footer, "$(id):dep$i -> $(dependency_node_id);")
         end
         print(io, """</table> </td> </tr>""")
-
-        push!(footer, "")
     end
 
     print(
