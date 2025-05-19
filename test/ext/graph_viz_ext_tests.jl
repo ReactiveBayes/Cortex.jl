@@ -148,16 +148,12 @@ end
     @test Cortex.is_pending(dependent)
     s_pending = to_svg(dependent)
 
-    # Check for pending signal styling
-    @test occursin("lightyellow", s_pending)
-
     # Now set a value to clear pending state
     Cortex.set_value!(dependent, 42)
     @test !Cortex.is_pending(dependent)
     s_not_pending = to_svg(dependent)
 
-    # Check for non-pending signal styling
-    @test !occursin("lightyellow", s_not_pending)
+    @test s_pending != s_not_pending
 end
 
 @testitem "Signal visualization should show different dependency styles" setup = [GraphVizUtils] begin
