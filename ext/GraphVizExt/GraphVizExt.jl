@@ -16,6 +16,10 @@ function GraphViz.load(s::Cortex.Signal; max_depth = 2, type_to_string_fn = Cort
             style=filled
             fillcolor=gray95
         ]
+        edge [
+            color="black"
+            style="solid"
+        ]
         """
     )
 
@@ -36,11 +40,17 @@ end
 function print_signal_node(io::IO, s::Cortex.Signal; id, title, max_depth, type_to_string_fn)
     footer = []
 
+    # Set node style based on pending state
+    node_style = Cortex.is_pending(s) ? "filled,bold" : "filled"
+    node_color = Cortex.is_pending(s) ? "lightblue" : "gray95"
+
     print(
         io,
         """
         $id [
             shape=plain
+            style="$node_style"
+            fillcolor="$node_color"
             label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4">
                 <tr> <td> <b>$title</b> </td> </tr>
                 <tr> <td>
@@ -100,7 +110,25 @@ function print_signal_node(io::IO, s::Cortex.Signal; id, title, max_depth, type_
             )
 
             push!(footer, String(take!(dependency_node_io)))
-            push!(footer, "$(id):dep$i -> $(dependency_node_id);")
+
+            # Get dependency properties using the proper functions
+            is_weak = Cortex.is_dependency_weak(s.dependencies_props, i)
+            is_intermediate = Cortex.is_dependency_intermediate(s.dependencies_props, i)
+            is_fresh = Cortex.is_dependency_fresh(s.dependencies_props, i)
+
+            # Build edge style
+            edge_style = is_weak ? "dashed" : "solid"
+            edge_color = if is_fresh && is_intermediate
+                "cadetblue3"
+            elseif is_fresh
+                "dodgerblue3"
+            elseif is_intermediate
+                "gray60"
+            else
+                "black"
+            end
+
+            push!(footer, """$(id):dep$i -> $(dependency_node_id) [style="$edge_style" color="$edge_color"];""")
         end
         print(io, """</table> </td> </tr>""")
     end

@@ -134,3 +134,66 @@ end
         @test !occursin("(:a, 1)", s_svg)
     end
 end
+
+@testitem "Signal visualization should reflect pending state" setup = [GraphVizUtils] begin
+    using GraphViz
+    using .GraphVizUtils
+
+    # Create a signal that will be pending
+    source = Cortex.Signal(1)
+    dependent = Cortex.Signal()
+    Cortex.add_dependency!(dependent, source)
+
+    # The dependent signal should be pending since source is computed
+    @test Cortex.is_pending(dependent)
+    s_pending = to_svg(dependent)
+    
+    # Check for pending signal styling
+    @test occursin("lightyellow", s_pending)
+
+    # Now set a value to clear pending state
+    Cortex.set_value!(dependent, 42)
+    @test !Cortex.is_pending(dependent)
+    s_not_pending = to_svg(dependent)
+
+    # Check for non-pending signal styling
+    @test !occursin("lightyellow", s_not_pending)
+end
+
+@testitem "Signal visualization should show different dependency styles" setup = [GraphVizUtils] begin
+    using GraphViz
+    using .GraphVizUtils
+
+    # Create a signal with different types of dependencies
+    source = Cortex.Signal(1)
+    weak_dep = Cortex.Signal(2)
+    intermediate_dep = Cortex.Signal(3)
+    fresh_dep = Cortex.Signal(4)
+    fresh_and_intermediate_dep = Cortex.Signal(5)
+
+    derived = Cortex.Signal()
+
+    # Add dependencies with different properties
+    Cortex.add_dependency!(derived, weak_dep; weak = true)
+    Cortex.add_dependency!(derived, intermediate_dep; intermediate = true)
+    Cortex.add_dependency!(derived, fresh_dep)
+    Cortex.add_dependency!(derived, fresh_and_intermediate_dep; intermediate = true)
+
+    # Make some dependencies fresh by updating them
+    Cortex.set_value!(fresh_dep, 10)
+    Cortex.set_value!(fresh_and_intermediate_dep, 20)
+
+    s_svg = to_svg(derived)
+
+    # Check for weak dependency style
+    @test occursin("dashed", s_svg)
+
+    # Check for intermediate dependency color
+    @test occursin("color=\"gray60\"", s_svg)
+
+    # Check for fresh dependency color
+    @test occursin("color=\"yellow3\"", s_svg)
+
+    # Check for fresh and intermediate dependency color
+    @test occursin("color=\"yellow4:yellow4\"", s_svg)
+end
