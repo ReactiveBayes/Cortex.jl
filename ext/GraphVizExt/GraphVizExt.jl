@@ -32,10 +32,11 @@ end
 
 # Formats the signal's value for display, showing either the current value or a placeholder
 function format_node_value(s::Cortex.Signal)
+    pending_str = Cortex.is_pending(s) ? " (pending)" : ""
     if s.value !== Cortex.UndefValue()
-        return """<tr> <td align="left">Current value: </td> <td align="left">$(s.value)</td> </tr>"""
+        return """<tr> <td align="left">Current value: </td> <td align="left">$(s.value) $(pending_str)</td> </tr>"""
     else
-        return """<tr> <td align="left">Does not have a value</td></tr>"""
+        return """<tr> <td align="left">Does not have a value</td> <td align="left">$(pending_str)</td></tr>"""
     end
 end
 

@@ -21,6 +21,7 @@ More technically, [`Signal`](@ref Cortex.Signal)s form a directed graph (potenti
 *   **External Computation:** Relies on the [`compute!`](@ref Cortex.compute!) function and a provided strategy to update its value based on dependencies.
 *   **Weak Dependencies:** Supports 'weak' dependencies, which influence the pending state based only on whether they are computed ([`is_computed`](@ref Cortex.is_computed)), not their 'fresh' status in the same way as strong dependencies. See [`add_dependency!`](@ref Cortex.add_dependency!) for more details.
 *   **Controlled Listening:** Allows dependencies to be added without automatically listening to their updates (`listen=false` in [`add_dependency!`](@ref Cortex.add_dependency!)).
+*   **GraphViz Support:** Signals can be visualized using the `GraphViz.jl` package. Cortex automatically loads the visualization extension when `GraphViz.jl` package is loaded in the current Julia session.
 
 ```@docs
 Cortex.Signal
@@ -30,69 +31,99 @@ Cortex.UndefMetadata
 
 ## Core Operations
 
+```@setup signal_examples
+using Cortex # Load the main package
+using Test
+```
+
+!!! note
+    Before we proceed, we load the package itslef and we also load the `GraphViz.jl` package in order to enable the visualization extension.
+    ```@example signal_examples
+    using GraphViz # Enable the visualization extension
+    ```
+    To get the SVG representation of the signal graph, we can use the `GraphViz.load` function.
+
 Here are some basic examples demonstrating how to use signals.
 
 ### Creating Signals and Checking Properties
 
-Signals can be created with or without an initial value. You can optionally specify a `type` identifier and `metadata`.
+Signal can be created using the `Cortex.Signal` constructor
 
 ```@example signal_examples
-import Cortex
-using Test # hide
+a_signal_with_no_value = Cortex.Signal()
+```
 
-# Create signals
-s1 = Cortex.Signal(10)
+By default, the signal has no value. We can check this by calling the [`Cortex.get_value`](@ref Cortex.get_value) function.
+
+```@example signal_examples
+@test Cortex.get_value(a_signal_with_no_value) === Cortex.UndefValue() # hide
+Cortex.get_value(a_signal_with_no_value)
+```
+
+We can also create a signal with an initial value.
+
+```@example signal_examples
+a_signal_with_value = Cortex.Signal(10)
+```
+
+We can check the value of the signal by calling the [`Cortex.get_value`](@ref Cortex.get_value) function.
+
+```@example signal_examples
+@test Cortex.get_value(a_signal_with_value) == 10 # hide
+Cortex.get_value(a_signal_with_value)
+```
+
+Additionally, we can check if the signal is computed with the [`Cortex.is_computed`](@ref Cortex.is_computed) function.
+
+```@example signal_examples
+@test Cortex.is_computed(a_signal_with_no_value) == false # hide
+Cortex.is_computed(a_signal_with_no_value)
 ```
 
 ```@example signal_examples
- # Initial value, computed=true
-s2 = Cortex.Signal(5)
+@test Cortex.is_computed(a_signal_with_value) == true # hide
+Cortex.is_computed(a_signal_with_value)
 ```
 
+### Pending State
+
+Signals themselves do not know how to compute their value. This is done externally via the [`compute!`](@ref Cortex.compute!) function.
+However, in order to update the value of a signal, we need to know if the signal is pending. If signal is pending, it means that its dependencies have been updated and it needs to be recomputed. On the contrary, if the signal is not pending, it means that the value is up to date and we can use the value without recomputing it.
+
+We can check if a signal is pending with the [`Cortex.is_pending`](@ref Cortex.is_pending) function.
+
 ```@example signal_examples
-# No initial value, computed=false
-s3 = Cortex.Signal()        
+Cortex.is_pending(a_signal_with_value)
 ```
+
+We will talk more about the pending state in the [Adding Dependencies](@ref signal-adding-dependencies) section.
+
+#### Signal Type and Metadata
+
+You can optionally specify a `type` identifier and `metadata`. Specifying the type identifier and metadata is useful when you want to choose different computation strategies for different types of signals within the [`compute!`](@ref Cortex.compute!) function.
 
 ```@example signal_examples
 # Signal with type and metadata
-s4 = Cortex.Signal(true; type=0x01, metadata=Dict(:info => "flag"))
+signal_with_type_and_metadata = Cortex.Signal(type=0x01, metadata=Dict(:info => "flag", :some_value => 10))
 ```
 
-#### Checking Properties of Signals
+The type can be accessed with the [`Cortex.get_type`](@ref Cortex.get_type) function and the metadata can be accessed with the [`Cortex.get_metadata`](@ref Cortex.get_metadata) function.
 
 ```@example signal_examples
-@test Cortex.get_value(s1) == 10 # hide
-Cortex.get_value(s1)   # 10
+Cortex.get_type(signal_with_type_and_metadata)
 ```
+
 ```@example signal_examples
-@test Cortex.get_value(s3) === Cortex.UndefValue() # hide
-Cortex.get_value(s3)   # Cortex.UndefValue()
+Cortex.get_metadata(signal_with_type_and_metadata)
 ```
+
+The metadata can be any object, not just a dictionary.
+
 ```@example signal_examples
-@test Cortex.is_computed(s1) == true # hide
-Cortex.is_computed(s1) # true
+signal_with_metadata = Cortex.Signal(metadata="hello world!")
 ```
-```@example signal_examples
-@test Cortex.is_computed(s3) == false # hide
-Cortex.is_computed(s3) # false
-```
-```@example signal_examples
-@test Cortex.get_type(s1) === 0x00 # hide
-Cortex.get_type(s1) # 0x00 (default)
-```
-```@example signal_examples
-@test Cortex.get_type(s4) === 0x01 # hide
-Cortex.get_type(s4) # 0x01
-```
-```@example signal_examples
-@test Cortex.get_metadata(s1) === Cortex.UndefMetadata() # hide
-Cortex.get_metadata(s1) # UndefMetadata() (default)
-```
-```@example signal_examples
-@test Cortex.get_metadata(s4) == Dict(:info => "flag") # hide
-Cortex.get_metadata(s4) # Dict{Symbol, String}(:info => "flag")
-```
+
+#### API Reference
 
 ```@docs
 Cortex.get_value(::Cortex.Signal)
@@ -102,15 +133,15 @@ Cortex.is_computed(::Cortex.Signal)
 Cortex.is_pending(::Cortex.Signal)
 ```
 
-### Adding Dependencies
+## [Adding Dependencies](@id signal-adding-dependencies)
 
-Signals can depend on other signals. Use [`add_dependency!`](@ref Cortex.add_dependency!) to create these links. This populates the `dependencies` list of the dependent signal and the `listeners` list of the dependency.
+Signals can depend on other signals. This is particularly useful when you want to compute a signal's value based on the values of other signals. To add a new dependency, use [`add_dependency!`](@ref Cortex.add_dependency!). This populates the `dependencies` list of the dependent signal and the `listeners` list of the dependency.
 
 ```@example signal_examples
 source_1 = Cortex.Signal(1)
 source_2 = Cortex.Signal(2)
 
-derived = Cortex.Signal() # A signal that will depend on s1 and s2
+derived = Cortex.Signal() # A signal that will depend on source_1 and source_2
 
 Cortex.add_dependency!(derived, source_1)
 Cortex.add_dependency!(derived, source_2)
@@ -128,9 +159,17 @@ length(Cortex.get_listeners(source_1))           # 1
 length(Cortex.get_listeners(source_2))           # 1
 ```
 
+Here we can also use the `GraphViz.jl` package to visualize the dependency graph.
+
+```@example signal_examples
+GraphViz.load(derived)
+```
+
+By default, the visualization uses different colors and styles to distinguish between different types of dependencies as well as their pending states. Read more about it in the [Visualization](@ref signals-visualization) section.
+
 ### Types of Dependencies
 
-Cortex supports different types of dependencies through options in [`add_dependency!`](@ref Cortex.add_dependency!):
+Signals might have different types of dependencies through options in [`add_dependency!`](@ref Cortex.add_dependency!). Different types of dependencies have different purpose and behavior.
 
 #### Strong vs. Weak Dependencies
 
@@ -149,11 +188,21 @@ Cortex.add_dependency!(derived, strong_dependency)
 Cortex.is_pending(derived) # false
 ```
 
+Let's also visualize the dependency graph here:
+
+```@example signal_examples
+GraphViz.load(derived)
+```
+
 ```@example signal_examples
 Cortex.set_value!(strong_dependency, 10)
 
 @test Cortex.is_pending(derived) == true # hide
 Cortex.is_pending(derived) # true
+```
+
+```@example signal_examples
+GraphViz.load(derived)
 ```
 
 Here, even though `weak_dependency` has not been updated, `derived` is still in the pending state because it only needs `strong_dependency` to be updated and `weak_dependency` only needs to be computed once (or set via constructor).
@@ -461,6 +510,10 @@ Cortex.get_value(derived) # 6
 ```@docs
 Cortex.process_dependencies!(Any, ::Cortex.Signal)
 ```
+
+## [Signal Visualization](@id signals-visualization)
+
+TODO
 
 ## Internal Mechanics (For Developers)
 
