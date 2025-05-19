@@ -17,15 +17,8 @@ const EDGE_COLORS = Dict(
 
 # Styles for listener edges
 const LISTENER_EDGE_STYLES = Dict(
-    :active => Dict(
-        "style" => "solid",
-        "color" => "forestgreen",
-        "dir" => "back",
-        "arrowhead" => "normal",
-        "arrowtail" => "none"
-    ),
-    :inactive =>
-        Dict("style" => "dotted", "color" => "gray40", "dir" => "back", "arrowhead" => "normal", "arrowtail" => "none")
+    :active => Dict("style" => "solid", "color" => "forestgreen", "dir" => "back"),
+    :inactive => Dict("style" => "dotted", "color" => "gray40", "dir" => "back")
 )
 
 # Returns (style, color) tuple for edge visualization based on dependency properties
@@ -207,7 +200,7 @@ function format_signal_listeners(
         # Add listener entry with a port
         print(
             result,
-            """<tr> <td port="listener$i" align="left">- listener $i ($(is_listening ? "active" : "inactive"))</td></tr>"""
+            """<tr> <td port="listener$i" align="left">- listener $i $(is_listening ? "" : "(not listening)")</td></tr>"""
         )
 
         # Create listener node
@@ -232,7 +225,7 @@ function format_signal_listeners(
 
         # Add edge with appropriate style
         edge_attrs = format_listener_edge_attrs(is_listening)
-        push!(footer, """$listener_node_id:header -> $(id):listener$i [$edge_attrs]""")
+        push!(footer, """$(id):listener$i -> $listener_node_id:header [$edge_attrs]""")
     end
 
     # If we have more listeners than the limit, show statistics
