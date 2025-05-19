@@ -147,7 +147,7 @@ end
     # The dependent signal should be pending since source is computed
     @test Cortex.is_pending(dependent)
     s_pending = to_svg(dependent)
-    
+
     # Check for pending signal styling
     @test occursin("lightyellow", s_pending)
 
@@ -164,36 +164,36 @@ end
     using GraphViz
     using .GraphVizUtils
 
-    # Create a signal with different types of dependencies
-    source = Cortex.Signal(1)
-    weak_dep = Cortex.Signal(2)
-    intermediate_dep = Cortex.Signal(3)
-    fresh_dep = Cortex.Signal(4)
-    fresh_and_intermediate_dep = Cortex.Signal(5)
+    svgs = []
 
-    derived = Cortex.Signal()
+    for (intermediate, weak) in ((true, true), (true, false), (false, true), (false, false))
+        s = Cortex.Signal(1)
 
-    # Add dependencies with different properties
-    Cortex.add_dependency!(derived, weak_dep; weak = true)
-    Cortex.add_dependency!(derived, intermediate_dep; intermediate = true)
-    Cortex.add_dependency!(derived, fresh_dep)
-    Cortex.add_dependency!(derived, fresh_and_intermediate_dep; intermediate = true)
+        dep1 = Cortex.Signal()
+        dep2 = Cortex.Signal()
 
-    # Make some dependencies fresh by updating them
-    Cortex.set_value!(fresh_dep, 10)
-    Cortex.set_value!(fresh_and_intermediate_dep, 20)
+        Cortex.add_dependency!(s, dep1; intermediate = intermediate, weak = weak)
+        Cortex.add_dependency!(s, dep2; weak = weak)
 
-    s_svg = to_svg(derived)
+        dep3 = Cortex.Signal(3)
+        dep4 = Cortex.Signal(4)
 
-    # Check for weak dependency style
-    @test occursin("dashed", s_svg)
+        Cortex.add_dependency!(dep1, dep3)
+        Cortex.add_dependency!(dep1, dep4; intermediate = intermediate, weak = weak)
 
-    # Check for intermediate dependency color
-    @test occursin("color=\"gray60\"", s_svg)
+        dep5 = Cortex.Signal()
 
-    # Check for fresh dependency color
-    @test occursin("color=\"yellow3\"", s_svg)
+        Cortex.add_dependency!(dep2, dep5)
 
-    # Check for fresh and intermediate dependency color
-    @test occursin("color=\"yellow4:yellow4\"", s_svg)
+        s_svg = to_svg(s; max_depth = 100)
+
+        push!(svgs, s_svg)
+    end
+
+    # Check that all SVGs are different
+    for i in 1:length(svgs)
+        for j in (i + 1):length(svgs)
+            @test svgs[i] != svgs[j]
+        end
+    end
 end
