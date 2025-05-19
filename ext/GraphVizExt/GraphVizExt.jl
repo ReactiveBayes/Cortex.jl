@@ -2,13 +2,13 @@ module GraphVizExt
 
 using GraphViz, Cortex
 
-function GraphViz.load(s::Cortex.Signal)
+function GraphViz.load(s::Cortex.Signal; type_to_string_fn = Cortex.InferenceSignalTypes.to_string)
     io = IOBuffer()
 
     # Beginning of the dot specification
     println(io, "digraph G {")
 
-    print_main_signal_node(io, s)
+    print_signal_node(io, s; title = "MainSignal", type_to_string_fn = type_to_string_fn)
 
     # End of the dot specification
     println(io, "}")
@@ -16,11 +16,13 @@ function GraphViz.load(s::Cortex.Signal)
     return GraphViz.Graph(String(take!(io)))
 end
 
-function print_main_signal_node(io::IO, s::Cortex.Signal)
+function print_signal_node(io::IO, s::Cortex.Signal; title, type_to_string_fn)
+    footer = []
+
     print(
         io,
         """
-        MainSignal [
+        $title [
             shape=plain
             label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4">
                 <tr> <td> <b>Main Signal</b> </td> </tr>
@@ -30,15 +32,21 @@ function print_main_signal_node(io::IO, s::Cortex.Signal)
     )
 
     if s.value !== Cortex.UndefValue()
-        print(io, """<tr> <td align="left" >Current value: $(s.value)</td> </tr>""")
+        print(io, """<tr> <td align="left">Current value: </td> <td align="left" >$(s.value)</td> </tr>""")
     else
-        print(io, """<tr> <td align="left" >Does not have a value</td> </tr>""")
+        print(io, """<tr> <td align="left">Does not have a value</td></tr>""")
     end
 
     if s.metadata !== Cortex.UndefMetadata()
-        print(io, """<tr> <td align="left" >Metadata: $(s.metadata)</td> </tr>""")
+        print(io, """<tr> <td align="left">Metadata: </td> <td align="left" >$(s.metadata)</td> </tr>""")
     else
-        print(io, """<tr> <td align="left" >Does not have metadata</td> </tr>""")
+        print(io, """<tr> <td align="left">Does not have metadata</td></tr>""")
+    end
+
+    if s.type !== 0x00
+        print(io, """<tr> <td align="left">Type: </td> <td align="left" >$(type_to_string_fn(s.type))</td> </tr>""")
+    else
+        print(io, """<tr> <td align="left">Does not have a type</td></tr>""")
     end
 
     print(
@@ -46,11 +54,35 @@ function print_main_signal_node(io::IO, s::Cortex.Signal)
         """
                     </table>
                 </td> </tr>
-                <tr> <td align="left">+ method<br/>...<br align="left"/></td> </tr>
+        """
+    )
+
+    dependencies = Cortex.get_dependencies(s)
+
+    if isempty(dependencies)
+        print(io, """<tr> <td align="left">No dependencies</td></tr>""")
+    else
+        print(io, """<tr> <td> <table border="0" cellborder="0" cellspacing="0" >""")
+        for (i, dep) in enumerate(dependencies)
+            print(io, """<tr> <td port="dep$i" align="left">- dependency $i</td> </tr>""")
+        end
+        print(io, """</table> </td> </tr>""")
+
+        push!(footer, "")
+    end
+
+    print(
+        io,
+        """
             </table>>
         ]
         """
     )
+
+    # Add footer
+    for element in footer
+        print(io, element)
+    end
 end
 
 end

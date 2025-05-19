@@ -1,4 +1,13 @@
+@testitem "InferenceEngine specific signals should be pretty-printed with their type" setup = [TestUtils] begin
+    @test Cortex.InferenceSignalTypes.to_string(UInt8(0x00)) == ""
+    @test Cortex.InferenceSignalTypes.to_string(Cortex.InferenceSignalTypes.MessageToVariable) == "MessageToVariable"
+    @test Cortex.InferenceSignalTypes.to_string(Cortex.InferenceSignalTypes.MessageToFactor) == "MessageToFactor"
+    @test Cortex.InferenceSignalTypes.to_string(Cortex.InferenceSignalTypes.ProductOfMessages) == "ProductOfMessages"
+    @test Cortex.InferenceSignalTypes.to_string(Cortex.InferenceSignalTypes.IndividualMarginal) == "IndividualMarginal"
+    @test Cortex.InferenceSignalTypes.to_string(Cortex.InferenceSignalTypes.JointMarginal) == "JointMarginal"
 
+    @test Cortex.InferenceSignalTypes.to_string(UInt8(0x11)) == "UnknownType(0x11)"
+end
 
 @testitem "InferenceEngine should save a warning for a variable that has no connected factors" setup = [TestUtils] begin
     using .TestUtils

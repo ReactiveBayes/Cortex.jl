@@ -257,6 +257,24 @@ const IndividualMarginal = UInt8(0x04)
 
 "Type constant for a [`Signal`](@ref Cortex.Signal) representing the joint marginal distribution of a set of variables."
 const JointMarginal = UInt8(0x05)
+
+function to_string(type::UInt8)
+    if type === 0x00
+        return ""
+    elseif type === MessageToVariable
+        return "MessageToVariable"
+    elseif type === MessageToFactor
+        return "MessageToFactor"
+    elseif type === ProductOfMessages
+        return "ProductOfMessages"
+    elseif type === IndividualMarginal
+        return "IndividualMarginal"
+    elseif type === JointMarginal
+        return "JointMarginal"
+    else
+        return "UnknownType($(repr(type)))"
+    end
+end
 end
 
 """
