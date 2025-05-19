@@ -312,15 +312,17 @@ As we can see, the derived signal remains in the pending state, but now it can a
 
 #### Intermediate Dependencies
 
-Setting `intermediate=true` marks a dependency as intermediate, which affects how [`process_dependencies!`](@ref Cortex.process_dependencies!) traverses the dependency graph. This is useful for complex dependency trees where some nodes serve as connectors between different parts of the graph.
+Setting `intermediate=true` marks a dependency as intermediate, which affects how [`process_dependencies!`](@ref Cortex.process_dependencies!) traverses the dependency graph. This is useful for complex dependency trees within signals where some signals serve as connectors between other signals. This might be exploited to create a reduction operation on a collection of signals and use its result as a dependency for another signal.
 
 ```@example signal_examples
-some_dependency = Cortex.Signal()
+some_dependency_1 = Cortex.Signal()
+some_dependency_2 = Cortex.Signal()
 intermediate_dependency = Cortex.Signal()
 derived = Cortex.Signal()
 
 Cortex.add_dependency!(derived, intermediate_dependency; intermediate=true)
-Cortex.add_dependency!(intermediate_dependency, some_dependency)
+Cortex.add_dependency!(intermediate_dependency, some_dependency_1)
+Cortex.add_dependency!(intermediate_dependency, some_dependency_2)
 ```
 
 ```@example signal_examples
