@@ -24,7 +24,13 @@ function GraphViz.load(s::Cortex.Signal; max_depth = 2, type_to_string_fn = Cort
     )
 
     print_signal_node(
-        io, s; id = "main", title = "MainSignal", max_depth = max_depth, type_to_string_fn = type_to_string_fn
+        io,
+        s;
+        id = "main",
+        title = "MainSignal",
+        max_depth = max_depth,
+        level = 0,
+        type_to_string_fn = type_to_string_fn
     )
 
     # End of the dot specification
@@ -37,7 +43,7 @@ function GraphViz.load(s::Cortex.Signal; max_depth = 2, type_to_string_fn = Cort
     return graph
 end
 
-function print_signal_node(io::IO, s::Cortex.Signal; id, title, max_depth, type_to_string_fn)
+function print_signal_node(io::IO, s::Cortex.Signal; id, title, level, max_depth, type_to_string_fn)
     footer = []
 
     # Set node style based on pending state
@@ -52,7 +58,7 @@ function print_signal_node(io::IO, s::Cortex.Signal; id, title, max_depth, type_
             style="$node_style"
             fillcolor="$node_color"
             label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4">
-                <tr> <td> <b>$title</b> </td> </tr>
+                <tr> <td align="left"><b>$title</b> $(level > 0 ? "<font point-size=\"8\" color=\"gray\">Depth: $level</font>" : "")</td></tr>
                 <tr> <td>
                     <table border="0" cellborder="0" cellspacing="0" >
         """
@@ -105,6 +111,7 @@ function print_signal_node(io::IO, s::Cortex.Signal; id, title, max_depth, type_
                 dep;
                 id = dependency_node_id,
                 title = "Dependency",
+                level = level + 1,
                 max_depth = max_depth - 1,
                 type_to_string_fn = type_to_string_fn
             )
