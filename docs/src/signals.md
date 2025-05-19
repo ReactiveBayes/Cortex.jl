@@ -85,18 +85,37 @@ Cortex.is_computed(a_signal_with_no_value)
 Cortex.is_computed(a_signal_with_value)
 ```
 
-### Pending State
-
 Signals themselves do not know how to compute their value. This is done externally via the [`compute!`](@ref Cortex.compute!) function.
-However, in order to update the value of a signal, we need to know if the signal is pending. If signal is pending, it means that its dependencies have been updated and it needs to be recomputed. On the contrary, if the signal is not pending, it means that the value is up to date and we can use the value without recomputing it.
+However, in order to update the value of a signal, we need to know if the signal is pending. If signal is pending, it means that it needs to be recomputed. On the contrary, if the signal is not pending, it means that the value is up to date and we can use the value without recomputing it. Normally, the signal becomes pending automatically when [its dependencies](@ref signal-adding-dependencies) are updated.
 
 We can check if a signal is pending with the [`Cortex.is_pending`](@ref Cortex.is_pending) function.
 
 ```@example signal_examples
+@test Cortex.is_pending(a_signal_with_value) == false # hide
 Cortex.is_pending(a_signal_with_value)
 ```
 
-We will talk more about the pending state in the [Adding Dependencies](@ref signal-adding-dependencies) section.
+Since our signals does not have any dependencies, it is not pending. We will talk more about the dependencies and the [pending state](@ref signal-pending-state) in the [Adding Dependencies](@ref signal-adding-dependencies) section.
+
+We can manually update a signal's value with [`set_value!`](@ref Cortex.set_value!). The `set_value!` function doesn't check if the signal is pending or not. It only updates the value of the signal. Read the [Updating Signal Values](@ref signal-updating-values) section for a more structured way to update a signal's value.
+    
+
+```@example signal_examples
+some_signal  = Cortex.Signal()
+@test Cortex.get_value(some_signal) === Cortex.UndefValue() # hide
+Cortex.get_value(some_signal)
+```
+
+```@example signal_examples
+Cortex.set_value!(some_signal, 99.0)
+```
+```@example signal_examples
+@test Cortex.get_value(some_signal) == 99.0 # hide
+Cortex.get_value(some_signal)
+```
+
+!!! warning
+    **Important:** Normally, it is implied that [`set_value!`](@ref Cortex.set_value!) must be called only on signals that are pending. Also see the [`compute!`](@ref Cortex.compute!) function for a more general way to update signal values.
 
 #### Signal Type and Metadata
 
@@ -131,6 +150,7 @@ Cortex.get_type(::Cortex.Signal)
 Cortex.get_metadata(::Cortex.Signal)
 Cortex.is_computed(::Cortex.Signal)
 Cortex.is_pending(::Cortex.Signal)
+Cortex.set_value!(::Cortex.Signal, value)
 ```
 
 ## [Adding Dependencies](@id signal-adding-dependencies)
@@ -167,11 +187,79 @@ GraphViz.load(derived)
 
 By default, the visualization uses different colors and styles to distinguish between different types of dependencies as well as their pending states. Read more about it in the [Visualization](@ref signals-visualization) section.
 
+### [Pending State](@id signal-pending-state)
+
+A signal becomes pending ([`is_pending`](@ref Cortex.is_pending) returns `true`) when its dependencies are updated in a way that satisfies the pending criteria (all [weak dependencies](@ref signal-strong-vs-weak-dependencies) are computed, and all [strong dependencies](@ref signal-strong-vs-weak-dependencies) are **fresh** and computed). Adding a computed dependency can also immediately mark a signal as pending.
+
+Updating a dependency can mark listeners as pending:
+```@example signal_examples
+source_1 = Cortex.Signal(1)
+source_2 = Cortex.Signal(2)
+
+derived = Cortex.Signal() # A signal that will depend on s1 and s2
+
+Cortex.add_dependency!(derived, source_1)
+Cortex.add_dependency!(derived, source_2)
+
+@test Cortex.is_pending(derived) == true # hide
+Cortex.is_pending(derived) # true
+```
+
+```@example signal_examples
+GraphViz.load(derived)
+```
+
+`derived` is pending because both `source_1` and `source_2` have been computed and are considered fresh with respect to `derived` at the time of dependency addition. Let's try a different example:
+
+```@example signal_examples
+some_source = Cortex.Signal()
+derived = Cortex.Signal()
+
+Cortex.add_dependency!(derived, some_source)
+
+@test Cortex.is_pending(derived) == false # hide
+Cortex.is_pending(derived) # false
+```
+
+```@example signal_examples
+GraphViz.load(derived)
+```
+
+```@example signal_examples
+Cortex.set_value!(some_source, 1)
+
+@test Cortex.is_pending(derived) == true # hide
+Cortex.is_pending(derived) # true
+```
+
+```@example signal_examples
+GraphViz.load(derived)
+```
+
+After setting the value of `some_source`, `derived` becomes pending because `some_source` is now computed and fresh with respect to `derived`.
+
+Here, we can compute a new value for the derived signal based on the new value of `some_source`:
+
+```@example signal_examples
+Cortex.set_value!(derived, 2 * Cortex.get_value(some_source))
+```
+
+```@example signal_examples
+@test Cortex.get_value(derived) == 2 # hide
+Cortex.get_value(derived) # 2
+```
+
+```@example signal_examples
+GraphViz.load(derived)
+```
+
+As we can see, the derived signal is no longer in the pending state after calling the `set_value!` function. It is implied that the `set_value!` function is only called on signals that are pending. See the [Computing Signal Values](@ref signal-computing-values) section for a more structured way to compute a signal's value.
+
 ### Types of Dependencies
 
-Signals might have different types of dependencies through options in [`add_dependency!`](@ref Cortex.add_dependency!). Different types of dependencies have different purpose and behavior.
+Signals might have different types of dependencies through options in [`add_dependency!`](@ref Cortex.add_dependency!). Different types of dependencies have different purpose and behavior. Most importantly, they affect the way the signal becomes pending.
 
-#### Strong vs. Weak Dependencies
+#### [Strong vs. Weak Dependencies](@id signal-strong-vs-weak-dependencies)
 
 By default, dependencies are "strong," meaning they must be both computed and fresh (recently updated) for a signal to become pending. With `weak=true`, a dependency only needs to be computed (not necessarily fresh) to contribute to the pending state.
 
@@ -187,8 +275,6 @@ Cortex.add_dependency!(derived, strong_dependency)
 @test Cortex.is_pending(derived) == false # hide
 Cortex.is_pending(derived) # false
 ```
-
-Let's also visualize the dependency graph here:
 
 ```@example signal_examples
 GraphViz.load(derived)
@@ -206,6 +292,40 @@ GraphViz.load(derived)
 ```
 
 Here, even though `weak_dependency` has not been updated, `derived` is still in the pending state because it only needs `strong_dependency` to be updated and `weak_dependency` only needs to be computed once (or set via constructor).
+
+We can still update the weak dependency:
+
+```@example signal_examples
+Cortex.set_value!(weak_dependency, 10)
+```
+
+```@example signal_examples
+@test Cortex.is_pending(derived) == true # hide
+Cortex.is_pending(derived) # true
+```
+
+```@example signal_examples
+GraphViz.load(derived)
+```
+
+As we can see, the derived signal remains in the pending state, but now it can also use the fresh value of the weak dependency.
+
+#### Intermediate Dependencies
+
+Setting `intermediate=true` marks a dependency as intermediate, which affects how [`process_dependencies!`](@ref Cortex.process_dependencies!) traverses the dependency graph. This is useful for complex dependency trees where some nodes serve as connectors between different parts of the graph.
+
+```@example signal_examples
+some_dependency = Cortex.Signal()
+intermediate_dependency = Cortex.Signal()
+derived = Cortex.Signal()
+
+Cortex.add_dependency!(derived, intermediate_dependency; intermediate=true)
+Cortex.add_dependency!(intermediate_dependency, some_dependency)
+```
+
+```@example signal_examples
+GraphViz.load(derived)
+```
 
 #### Listening vs. Non-listening Dependencies
 
@@ -230,9 +350,7 @@ Cortex.set_value!(s_source, 6)
 Cortex.is_pending(s_non_listener) # false
 ```
 
-#### Intermediate Dependencies
-
-Setting `intermediate=true` marks a dependency as intermediate, which affects how [`process_dependencies!`](@ref Cortex.process_dependencies!) traverses the dependency graph. This is useful for complex dependency trees where some nodes serve as connectors between different parts of the graph.
+### API Reference
 
 ```@docs
 Cortex.add_dependency!(::Cortex.Signal, ::Cortex.Signal)
@@ -240,81 +358,7 @@ Cortex.get_dependencies(::Cortex.Signal)
 Cortex.get_listeners(::Cortex.Signal)
 ```
 
-### Pending State
-
-A signal becomes pending ([`is_pending`](@ref Cortex.is_pending) returns `true`) when its dependencies are updated in a way that satisfies the pending criteria (all weak dependencies are computed, and all strong dependencies are **fresh** and computed). Adding a computed dependency can also immediately mark a signal as pending.
-
-Updating a dependency can mark listeners as pending:
-```@example signal_examples
-source_1 = Cortex.Signal(1)
-source_2 = Cortex.Signal(2)
-
-derived = Cortex.Signal() # A signal that will depend on s1 and s2
-
-Cortex.add_dependency!(derived, source_1)
-Cortex.add_dependency!(derived, source_2)
-
-@test Cortex.is_pending(derived) == true # hide
-Cortex.is_pending(derived) # true
-```
-
-`derived` is pending because both `source_1` and `source_2` have been computed and are considered fresh with respect to `derived` at the time of dependency addition. Let's try a different example:
-
-```@example signal_examples
-uncomputed_source = Cortex.Signal()
-derived = Cortex.Signal()
-
-Cortex.add_dependency!(derived, uncomputed_source)
-
-@test Cortex.is_pending(derived) == false # hide
-Cortex.is_pending(derived) # false
-```
-
-```@example signal_examples
-Cortex.set_value!(uncomputed_source, 1)
-
-@test Cortex.is_pending(derived) == true # hide
-Cortex.is_pending(derived) # true
-```
-
-After setting the value of `uncomputed_source`, `derived` becomes pending because `uncomputed_source` is now computed and fresh with respect to `derived`.
-
-### Setting Values
-
-Use [`set_value!`](@ref Cortex.set_value!) to update a signal's value. It also consumes the 'freshness' of its own dependencies and updates the 'fresh' and 'computed' status for its listeners, potentially marking them as pending.
-
-!!! note
-    Normally, it is implied that [`set_value!`](@ref Cortex.set_value!) must be called only on signals that are pending.
-    Also see the [`compute!`](@ref Cortex.compute!) function for a more general way to update signal values.
-
-```@example signal_examples
-source  = Cortex.Signal(1)
-derived = Cortex.Signal()
-
-Cortex.add_dependency!(derived, source)
-
-@test Cortex.is_pending(derived) == true #hide
-Cortex.is_pending(derived), Cortex.is_computed(derived)
-```
-
-```@example signal_examples
-Cortex.set_value!(derived, 99.0)
-```
-```@example signal_examples
-@test Cortex.get_value(derived) == 99.0 # hide
-Cortex.get_value(derived)   # 99.0
-```
-```@example signal_examples
-@test Cortex.is_computed(derived) == true # hide
-@test Cortex.is_pending(derived) == false # hide
-Cortex.is_pending(derived), Cortex.is_computed(derived) # false, true
-```
-
-```@docs
-Cortex.set_value!(::Cortex.Signal, value)
-```
-
-### Computing Signal Values
+## [Computing Signal Values](@id signal-computing-values)
 
 To compute a signal, use the [`compute!`](@ref Cortex.compute!) function, providing a strategy (often a simple function) to calculate the new value based on dependencies. Computing a signal typically clears its pending state.
 
