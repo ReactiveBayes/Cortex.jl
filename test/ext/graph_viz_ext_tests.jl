@@ -291,3 +291,66 @@ end
     @test !occursin("more dependencies", s_all)
     @test !occursin("Use `max_dependencies`", s_all)
 end
+
+@testitem "Signal visualization should show listeners with appropriate styles" setup = [GraphVizUtils] begin
+    using GraphViz
+    using .GraphVizUtils
+
+    # Create a signal with both active and inactive listeners
+    main = Cortex.Signal(1)
+
+    # Create listeners with different listening states
+    active_listener = Cortex.Signal(2)
+    inactive_listener = Cortex.Signal(3)
+
+    # Add dependencies with different listening states
+    Cortex.add_dependency!(active_listener, main; listen = true)
+    Cortex.add_dependency!(inactive_listener, main; listen = false)
+
+    # Test the visualization with listeners shown
+    s_with_listeners = to_svg(main; show_listeners = true)
+
+    # Test the visualization with listeners hidden
+    s_without_listeners = to_svg(main; show_listeners = false)
+
+    @test s_with_listeners != s_without_listeners
+end
+
+@testitem "Signal visualization should respect max_listeners limit" setup = [GraphVizUtils] begin
+    using GraphViz
+    using .GraphVizUtils
+
+    # Create a signal with many listeners
+    main = Cortex.Signal(1)
+    
+    # Create listeners with different listening states
+    listeners = [Cortex.Signal(i) for i in 1:15]
+    
+    # Add dependencies with alternating listening states
+    for (i, listener) in enumerate(listeners)
+        Cortex.add_dependency!(listener, main; listen = i % 2 == 0)
+    end
+
+    # Test with default max_listeners (10)
+    s_default = to_svg(main; show_listeners = true)
+    @test occursin("5 more listeners", s_default)
+    @test occursin("Use `max_listeners` to show more listeners", s_default)
+    
+    # Verify statistics are shown correctly
+    @test occursin("2 active", s_default)
+    @test occursin("3 inactive", s_default)
+
+    # Test with custom max_listeners
+    s_custom = to_svg(main; show_listeners = true, max_listeners = 5)
+    @test occursin("10 more listeners", s_custom)
+    @test occursin("Use `max_listeners` to show more listeners", s_custom)
+
+    # Test with max_listeners larger than total listeners
+    s_all = to_svg(main; show_listeners = true, max_listeners = 20)
+    @test !occursin("more listeners", s_all)
+    @test !occursin("Use `max_listeners`", s_all)
+
+    # Test with listeners hidden
+    s_no_listeners = to_svg(main; show_listeners = false)
+    @test !occursin("listener", s_no_listeners)
+end

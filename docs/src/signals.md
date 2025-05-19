@@ -352,6 +352,10 @@ Cortex.set_value!(s_source, 6)
 Cortex.is_pending(s_non_listener) # false
 ```
 
+```@example signal_examples
+GraphViz.load(s_source; show_listeners=true)
+```
+
 ### API Reference
 
 ```@docs

@@ -15,6 +15,19 @@ const EDGE_COLORS = Dict(
     :fresh_and_intermediate => "cadetblue3", :fresh => "dodgerblue3", :intermediate => "gray60", :default => "black"
 )
 
+# Styles for listener edges
+const LISTENER_EDGE_STYLES = Dict(
+    :active => Dict(
+        "style" => "solid",
+        "color" => "forestgreen",
+        "dir" => "back",
+        "arrowhead" => "normal",
+        "arrowtail" => "none"
+    ),
+    :inactive =>
+        Dict("style" => "dotted", "color" => "gray40", "dir" => "back", "arrowhead" => "normal", "arrowtail" => "none")
+)
+
 # Returns (style, color) tuple for edge visualization based on dependency properties
 function get_edge_style(is_weak::Bool, is_intermediate::Bool, is_fresh::Bool)
     style = is_weak ? "dashed" : "solid"
@@ -120,15 +133,129 @@ function format_dependency_stats(stats::Dict{Symbol, Int})
     </td></tr>"""
 end
 
+# Formats the edge attributes for a listener based on its listening status
+function format_listener_edge_attrs(is_listening::Bool)
+    style = is_listening ? LISTENER_EDGE_STYLES[:active] : LISTENER_EDGE_STYLES[:inactive]
+    return join(["$k=\"$v\"" for (k, v) in style], " ")
+end
+
+# Calculates statistics for a collection of listeners
+function calculate_listener_stats(signal::Cortex.Signal, start_idx::Int)
+    listeners = Cortex.get_listeners(signal)
+    listenmask = signal.listenmask
+
+    stats = Dict(:total => length(listeners) - start_idx + 1, :active => 0, :inactive => 0)
+
+    for i in start_idx:length(listeners)
+        if listenmask[i]
+            stats[:active] += 1
+        else
+            stats[:inactive] += 1
+        end
+    end
+
+    return stats
+end
+
+# Formats listener statistics into a human-readable string
+function format_listener_stats(stats::Dict{Symbol, Int})
+    details = String[]
+
+    push!(details, "$(stats[:total]) more listeners")
+    stats[:active] > 0 && push!(details, "$(stats[:active]) active")
+    stats[:inactive] > 0 && push!(details, "$(stats[:inactive]) inactive")
+
+    summary = join(details, ", ")
+    return """
+    <tr> <td align="left">
+    <font point-size="8" color="gray">$summary</font><br align="left" />
+    <font point-size="8" color="gray">Use `max_listeners` to show more listeners</font>
+    </td></tr>"""
+end
+
+# Formats the listeners section of a signal node
+function format_signal_listeners(
+    signal::Cortex.Signal,
+    id::String,
+    footer::Vector{String};
+    max_listeners::Int = 10,
+    type_to_string_fn,
+    show_value::Bool = true,
+    show_metadata::Bool = true,
+    show_type::Bool = true
+)
+    result = IOBuffer()
+
+    listeners = Cortex.get_listeners(signal)
+    listenmask = signal.listenmask
+
+    if isempty(listeners)
+        print(result, """<tr> <td align="left">No listeners</td></tr>""")
+        return String(take!(result))
+    end
+
+    print(result, """<tr> <td> <table border="0" cellborder="0" cellspacing="0">""")
+
+    # Get the number of listeners to show
+    n_listeners = length(listeners)
+    show_listeners = min(n_listeners, max_listeners)
+
+    for i in 1:show_listeners
+        listener = listeners[i]
+        is_listening = listenmask[i]
+
+        # Add listener entry with a port
+        print(
+            result,
+            """<tr> <td port="listener$i" align="left">- listener $i ($(is_listening ? "active" : "inactive"))</td></tr>"""
+        )
+
+        # Create listener node
+        listener_node_id = "$(id)listener$(i)"
+        listener_node_io = IOBuffer()
+        print_signal_node(
+            listener_node_io,
+            listener;
+            id = listener_node_id,
+            title = "Listener",
+            level = 1,
+            max_depth = 0,  # Don't show listener's dependencies
+            max_dependencies = 0,
+            max_listeners = 0,
+            type_to_string_fn = type_to_string_fn,
+            show_value = show_value,
+            show_metadata = show_metadata,
+            show_type = show_type,
+            show_listeners = false  # Don't show listener's listeners to avoid recursion
+        )
+        push!(footer, String(take!(listener_node_io)))
+
+        # Add edge with appropriate style
+        edge_attrs = format_listener_edge_attrs(is_listening)
+        push!(footer, """$listener_node_id:header -> $(id):listener$i [$edge_attrs]""")
+    end
+
+    # If we have more listeners than the limit, show statistics
+    if n_listeners > max_listeners
+        stats = calculate_listener_stats(signal, show_listeners + 1)
+        print(result, format_listener_stats(stats))
+    end
+
+    print(result, "</table></td></tr>")
+    return String(take!(result))
+end
+
 # Main entry point for converting a Signal to a GraphViz visualization
 function GraphViz.load(
     s::Cortex.Signal;
     max_depth = 2,
     max_dependencies = 10,
+    max_listeners = 10,
     type_to_string_fn = Cortex.InferenceSignalTypes.to_string,
     show_value = true,
     show_metadata = true,
-    show_type = true
+    show_type = true,
+    show_listeners = true
 )
     io = IOBuffer()
     println(io, "digraph G {")
@@ -156,11 +283,13 @@ function GraphViz.load(
         title = "MainSignal",
         max_depth = max_depth,
         max_dependencies = max_dependencies,
+        max_listeners = max_listeners,
         level = 0,
         type_to_string_fn = type_to_string_fn,
         show_value = show_value,
         show_metadata = show_metadata,
-        show_type = show_type
+        show_type = show_type,
+        show_listeners = show_listeners
     )
 
     println(io, "}")
@@ -179,10 +308,12 @@ function print_signal_node(
     level,
     max_depth,
     max_dependencies,
+    max_listeners,
     type_to_string_fn,
     show_value = true,
     show_metadata = true,
-    show_type = true
+    show_type = true,
+    show_listeners = true
 )
     footer = String[]
     node_attrs = get_node_attributes(s)
@@ -191,10 +322,10 @@ function print_signal_node(
     print(
         io,
         """
-    $id [
-        $(format_node_attributes(node_attrs))
-        label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4">
-"""
+        $id [
+            $(format_node_attributes(node_attrs))
+            label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4">
+        """
     )
 
     # Node content
@@ -217,7 +348,6 @@ function print_signal_node(
         print(
             io,
             format_signal_dependencies(
-                io,
                 s,
                 dependencies,
                 id,
@@ -233,6 +363,23 @@ function print_signal_node(
         )
     end
 
+    # Add listeners section if requested (only for the main signal)
+    if show_listeners
+        print(
+            io,
+            format_signal_listeners(
+                s,
+                id,
+                footer;
+                max_listeners = max_listeners,
+                type_to_string_fn = type_to_string_fn,
+                show_value = show_value,
+                show_metadata = show_metadata,
+                show_type = show_type
+            )
+        )
+    end
+
     # Close node definition
     print(io, "</table>>]")
 
@@ -244,7 +391,6 @@ end
 
 # Formats and renders dependencies of a signal node, creating child nodes and edges
 function format_signal_dependencies(
-    io,
     s,
     dependencies,
     id,
@@ -279,10 +425,12 @@ function format_signal_dependencies(
             level = level + 1,
             max_depth = max_depth - 1,
             max_dependencies = max_dependencies,
+            max_listeners = 0,
             type_to_string_fn = type_to_string_fn,
             show_value = show_value,
             show_metadata = show_metadata,
-            show_type = show_type
+            show_type = show_type,
+            show_listeners = false
         )
         push!(footer, String(take!(dependency_node_io)))
 
