@@ -4,8 +4,11 @@ using GraphViz, Cortex
 
 # Default styling for all nodes
 const DEFAULT_NODE_STYLE = Dict(
-    "shape" => "plain", "style" => "filled", "fillcolor" => "gray95", "fontname" => "Helvetica,Arial,sans-serif"
+    "shape" => "plain", "style" => "filled", "fillcolor" => "white", "fontname" => "Helvetica,Arial,sans-serif"
 )
+
+# Additional styling for computed nodes
+const COMPUTED_NODE_STYLE = Dict("style" => "filled,bold", "fillcolor" => "lightyellow")
 
 # Additional styling for pending nodes
 const PENDING_NODE_STYLE = Dict("style" => "filled,bold", "fillcolor" => "lightblue")
@@ -17,8 +20,8 @@ const EDGE_COLORS = Dict(
 
 # Styles for listener edges
 const LISTENER_EDGE_STYLES = Dict(
-    :active => Dict("style" => "solid", "color" => "forestgreen", "dir" => "back"),
-    :inactive => Dict("style" => "dotted", "color" => "gray40", "dir" => "back")
+    :active => Dict("style" => "solid", "color" => "black"),
+    :inactive => Dict("style" => "dotted", "color" => "gray40")
 )
 
 # Returns (style, color) tuple for edge visualization based on dependency properties
@@ -65,22 +68,28 @@ function format_node_type(s::Cortex.Signal, type_to_string_fn::Function)
 end
 
 # Creates the node header with title and optional depth level indicator
-function format_node_header(title::String, level::Int)
-    depth_info = level > 0 ? """<font point-size="8" color="gray">Depth: $level</font>""" : ""
+function format_node_header(title::String, level::Int; show_depth::Bool = true)
+    depth_info = show_depth && level > 0 ? """<font point-size="8" color="gray">Depth: $level</font>""" : ""
     return """<tr> <td port="header" align="left"><b>$title</b> $depth_info</td></tr>"""
 end
 
 # Creates a summary of dependencies when max_depth is reached
-function format_dependencies_summary(n_dependencies::Int)
+function format_dependencies_summary(n_dependencies::Int; show_hints::Bool = true)
+    hints = show_hints ? """
+    <font point-size="8" color="gray">Use `max_depth` to render more dependencies</font>
+    """ : ""
     return """
     <tr> <td align="left">$n_dependencies dependencies<br align="left" />
-    <font point-size="8" color="gray">Use `max_depth` to render more dependencies</font>
+    $hints
     </td></tr>"""
 end
 
 # Combines default and pending node styles based on signal state
 function get_node_attributes(s::Cortex.Signal)
     attrs = copy(DEFAULT_NODE_STYLE)
+    if Cortex.is_computed(s)
+        merge!(attrs, COMPUTED_NODE_STYLE)
+    end
     if Cortex.is_pending(s)
         merge!(attrs, PENDING_NODE_STYLE)
     end
@@ -151,7 +160,7 @@ function calculate_listener_stats(signal::Cortex.Signal, start_idx::Int)
 end
 
 # Formats listener statistics into a human-readable string
-function format_listener_stats(stats::Dict{Symbol, Int})
+function format_listener_stats(stats::Dict{Symbol, Int}; show_hints::Bool = true)
     details = String[]
 
     push!(details, "$(stats[:total]) more listeners")
@@ -159,10 +168,13 @@ function format_listener_stats(stats::Dict{Symbol, Int})
     stats[:inactive] > 0 && push!(details, "$(stats[:inactive]) inactive")
 
     summary = join(details, ", ")
+    hints = show_hints ? """
+    <font point-size="8" color="gray">Use `max_listeners` to show more listeners</font>
+    """ : ""
     return """
     <tr> <td align="left">
     <font point-size="8" color="gray">$summary</font><br align="left" />
-    <font point-size="8" color="gray">Use `max_listeners` to show more listeners</font>
+    $hints
     </td></tr>"""
 end
 
@@ -175,7 +187,8 @@ function format_signal_listeners(
     type_to_string_fn,
     show_value::Bool = true,
     show_metadata::Bool = true,
-    show_type::Bool = true
+    show_type::Bool = true,
+    show_hints::Bool = true
 )
     result = IOBuffer()
 
@@ -219,7 +232,9 @@ function format_signal_listeners(
             show_value = show_value,
             show_metadata = show_metadata,
             show_type = show_type,
-            show_listeners = false  # Don't show listener's listeners to avoid recursion
+            show_listeners = false,  # Don't show listener's listeners to avoid recursion
+            show_depth = false, # Don't show depth as it is irrelevant for listeners
+            show_hints = false # Don't show hints as it is irrelevant for listeners
         )
         push!(footer, String(take!(listener_node_io)))
 
@@ -231,14 +246,63 @@ function format_signal_listeners(
     # If we have more listeners than the limit, show statistics
     if n_listeners > max_listeners
         stats = calculate_listener_stats(signal, show_listeners + 1)
-        print(result, format_listener_stats(stats))
+        print(result, format_listener_stats(stats; show_hints = show_hints))
     end
 
     print(result, "</table></td></tr>")
     return String(take!(result))
 end
 
-# Main entry point for converting a Signal to a GraphViz visualization
+"""
+    GraphViz.load(s::Signal; 
+        max_depth::Int = 2,
+        max_dependencies::Int = 10,
+        max_listeners::Int = 10,
+        type_to_string_fn = Cortex.InferenceSignalTypes.to_string,
+        show_value::Bool = true,
+        show_metadata::Bool = true,
+        show_type::Bool = true,
+        show_listeners::Bool = true
+    ) -> GraphViz.Graph
+
+Creates a GraphViz visualization of a Signal and its dependency graph.
+
+The visualization includes:
+- The signal's value, metadata, and type (if present)
+- Dependencies and their relationships
+- Listeners and their states
+- Visual indicators for pending, computed, and intermediate states
+
+# Arguments
+- `s::Signal`: The signal to visualize
+
+# Keyword Arguments
+- `max_depth::Int = 2`: Maximum depth of the dependency tree to display
+- `max_dependencies::Int = 10`: Maximum number of dependencies to show per signal
+- `max_listeners::Int = 10`: Maximum number of listeners to show per signal
+- `type_to_string_fn = Cortex.InferenceSignalTypes.to_string`: Function to convert signal type to string
+- `show_value::Bool = true`: Whether to display signal values
+- `show_metadata::Bool = true`: Whether to display signal metadata
+- `show_type::Bool = true`: Whether to display signal types
+- `show_listeners::Bool = true`: Whether to display signal listeners
+
+# Visual Styling
+- Nodes use different colors and styles to indicate their state:
+  - Computed nodes: Light yellow background with bold text
+  - Pending nodes: Light blue background with bold text
+  - Regular nodes: White background
+- Edges have different styles based on dependency properties:
+  - Weak dependencies: Dashed lines
+  - Intermediate dependencies: Gray color
+  - Fresh dependencies: Blue color
+  - Fresh and intermediate: Cadet blue color
+- Listener edges:
+  - Active listeners: Solid black lines
+  - Inactive listeners: Dotted gray lines
+
+# Returns
+A `GraphViz.Graph` object representing the signal's dependency graph.
+"""
 function GraphViz.load(
     s::Cortex.Signal;
     max_depth = 2,
@@ -306,7 +370,9 @@ function print_signal_node(
     show_value = true,
     show_metadata = true,
     show_type = true,
-    show_listeners = true
+    show_listeners = true,
+    show_depth = true,
+    show_hints = true
 )
     footer = String[]
     node_attrs = get_node_attributes(s)
@@ -322,7 +388,7 @@ function print_signal_node(
     )
 
     # Node content
-    print(io, format_node_header(title, level))
+    print(io, format_node_header(title, level; show_depth = show_depth))
     print(io, """<tr> <td><table border="0" cellborder="0" cellspacing="0">""")
 
     show_value && print(io, format_node_value(s))
@@ -336,7 +402,7 @@ function print_signal_node(
     if isempty(dependencies)
         print(io, """<tr> <td align="left">No dependencies</td></tr>""")
     elseif max_depth <= 0
-        print(io, format_dependencies_summary(length(dependencies)))
+        print(io, format_dependencies_summary(length(dependencies); show_hints = show_hints))
     else
         print(
             io,
@@ -368,7 +434,8 @@ function print_signal_node(
                 type_to_string_fn = type_to_string_fn,
                 show_value = show_value,
                 show_metadata = show_metadata,
-                show_type = show_type
+                show_type = show_type,
+                show_hints = show_hints
             )
         )
     end

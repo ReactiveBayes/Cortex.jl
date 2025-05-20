@@ -255,11 +255,19 @@ GraphViz.load(derived)
 
 As we can see, the derived signal is no longer in the pending state after calling the `set_value!` function. It is implied that the `set_value!` function is only called on signals that are pending. See the [Computing Signal Values](@ref signal-computing-values) section for a more structured way to compute a signal's value.
 
-### Types of Dependencies
+### API Reference
+
+```@docs
+Cortex.add_dependency!(::Cortex.Signal, ::Cortex.Signal)
+Cortex.get_dependencies(::Cortex.Signal)
+Cortex.get_listeners(::Cortex.Signal)
+```
+
+## [Types of Dependencies](@id signal-types-of-dependencies)
 
 Signals might have different types of dependencies through options in [`add_dependency!`](@ref Cortex.add_dependency!). Different types of dependencies have different purpose and behavior. Most importantly, they affect the way the signal becomes pending.
 
-#### [Strong vs. Weak Dependencies](@id signal-strong-vs-weak-dependencies)
+### [Strong vs. Weak Dependencies](@id signal-strong-vs-weak-dependencies)
 
 By default, dependencies are "strong," meaning they must be both computed and fresh (recently updated) for a signal to become pending. With `weak=true`, a dependency only needs to be computed (not necessarily fresh) to contribute to the pending state.
 
@@ -310,7 +318,7 @@ GraphViz.load(derived)
 
 As we can see, the derived signal remains in the pending state, but now it can also use the fresh value of the weak dependency.
 
-#### Intermediate Dependencies
+### Intermediate Dependencies
 
 Setting `intermediate=true` marks a dependency as intermediate, which affects how [`process_dependencies!`](@ref Cortex.process_dependencies!) traverses the dependency graph. This is useful for complex dependency trees within signals where some signals serve as connectors between other signals. This might be exploited to create a reduction operation on a collection of signals and use its result as a dependency for another signal.
 
@@ -329,20 +337,30 @@ Cortex.add_dependency!(intermediate_dependency, some_dependency_2)
 GraphViz.load(derived)
 ```
 
-#### Listening vs. Non-listening Dependencies
+### Listening vs. Non-listening Dependencies
 
 With `listen=true` (default), a signal is notified when its dependency changes. Setting `listen=false` creates a dependency relationship without automatic notifications, useful when you want to manually control when a signal responds to changes.
 
 ```@example signal_examples
 s_source = Cortex.Signal()
 s_non_listener = Cortex.Signal()
+s_listener = Cortex.Signal()
 
 Cortex.add_dependency!(s_non_listener, s_source; listen=false)
+Cortex.add_dependency!(s_listener, s_source)
 ```
 ```@example signal_examples
 @test Cortex.is_pending(s_non_listener) == false # hide
 Cortex.is_pending(s_non_listener) # false
 ```
+
+```@example signal_examples
+GraphViz.load(s_source)
+```
+
+Now, normally, if we update the value of `s_source`, all listeners should be notified and become pending.
+However, since we set `listen=false` for the `s_non_listener`, it is not notified and is not changing its pending state.
+
 ```@example signal_examples
 # Update s_source. s_non_listener is NOT notified.
 Cortex.set_value!(s_source, 6)
@@ -353,23 +371,12 @@ Cortex.is_pending(s_non_listener) # false
 ```
 
 ```@example signal_examples
-GraphViz.load(s_source; show_listeners=true)
-```
-
-### API Reference
-
-```@docs
-Cortex.add_dependency!(::Cortex.Signal, ::Cortex.Signal)
-Cortex.get_dependencies(::Cortex.Signal)
-Cortex.get_listeners(::Cortex.Signal)
+GraphViz.load(s_source)
 ```
 
 ## [Computing Signal Values](@id signal-computing-values)
 
-To compute a signal, use the [`compute!`](@ref Cortex.compute!) function, providing a strategy (often a simple function) to calculate the new value based on dependencies. Computing a signal typically clears its pending state.
-
-!!! note
-    By default, `compute!` throws an `ArgumentError` if called on a signal that is not pending ([`is_pending`](@ref Cortex.is_pending) returns `false`). You can override this check using the `force=true` keyword argument.
+We demonstrated how can we set a signal's value manually with [`set_value!`](@ref Cortex.set_value!). Cortex provides a more structured and safer way to compute a signal's value with the [`compute!`](@ref Cortex.compute!) function. The `compute!` function takes a strategy (often a simple function) to calculate the new value based on dependencies. Computing a signal typically clears its pending state.
 
 ```@example signal_examples
 
@@ -383,6 +390,10 @@ Cortex.add_dependency!(signal_to_be_computed, signal_2)
 
 @test Cortex.is_pending(signal_to_be_computed) == true # hide
 Cortex.is_pending(signal_to_be_computed) # true
+```
+
+```@example signal_examples
+GraphViz.load(signal_to_be_computed)
 ```
 
 ```@example signal_examples
@@ -400,16 +411,23 @@ Cortex.get_value(signal_to_be_computed) # 42
 @test Cortex.is_pending(signal_to_be_computed) == false # hide
 Cortex.is_pending(signal_to_be_computed) # false
 ```
+
 ```@example signal_examples
-# This would normally throw an error:
-# compute!(compute_sum, signal_to_be_computed)
-
-# But we can force it:
-Cortex.compute!(compute_sum, signal_to_be_computed; force=true)
-
-@test Cortex.get_value(signal_to_be_computed) == 42 # hide
-Cortex.get_value(signal_to_be_computed) # 42
+GraphViz.load(signal_to_be_computed)
 ```
+
+!!! note
+    By default, `compute!` throws an `ArgumentError` if called on a signal that is not pending ([`is_pending`](@ref Cortex.is_pending) returns `false`). You can override this check using the `force=true` keyword argument.
+    ```@example signal_examples
+    # This would normally throw an error:
+    # compute!(compute_sum, signal_to_be_computed)
+
+    # But we can force it:
+    Cortex.compute!(compute_sum, signal_to_be_computed; force=true)
+
+    @test Cortex.get_value(signal_to_be_computed) == 42 # hide
+    Cortex.get_value(signal_to_be_computed) # 42
+    ```
 
 ### Custom Compute Strategies
 
@@ -464,7 +482,7 @@ Cortex.compute!(Any, ::Cortex.Signal)
 Cortex.compute_value!(Any, ::Cortex.Signal, ::Vector{Cortex.Signal})
 ```
 
-### Processing Dependency Trees of Signals with `process_dependencies!`
+## Processing/Traversal of Dependencies
 
 The `process_dependencies!` function provides a powerful way to traverse and operate on the dependency graph of a signal. It's particularly useful for scenarios where you need more control over how dependencies are evaluated or when implementing custom update schedulers.
 
@@ -509,6 +527,12 @@ Cortex.process_dependencies!(my_processing_function, derived)
 nothing #hide
 ```
 
+Let's see if that actually the case by visualizing the dependency graph:
+
+```@example signal_examples
+GraphViz.load(derived)
+```
+
 This example illustrates how you can inject custom logic into the dependency traversal. The actual computation or state change would happen within `my_processing_function`. For example, here how can we `compute!` the signal if it is not computed:
 
 ```@example signal_examples
@@ -546,6 +570,10 @@ Now, since we processed and computed all the dependencies, the derived signal sh
 Cortex.is_pending(derived) # true
 ```
 
+```@example signal_examples
+GraphViz.load(derived)
+```
+
 Which we can also compute using the same function:
 
 ```@example signal_examples
@@ -555,7 +583,9 @@ compute_if_not_computed(derived)
 Cortex.get_value(derived) # 6
 ```
 
-
+```@example signal_examples
+GraphViz.load(derived)
+```
 
 ```@docs
 Cortex.process_dependencies!(Any, ::Cortex.Signal)
@@ -563,7 +593,47 @@ Cortex.process_dependencies!(Any, ::Cortex.Signal)
 
 ## [Signal Visualization](@id signals-visualization)
 
-TODO
+The `Cortex.jl` package provides a function to visualize the dependency graph of a signal.
+This function becomes available when the `GraphViz.jl` package is installed in your environment.
+Let's start with an example:
+
+```@example signal_examples
+using GraphViz # enables visualization
+
+s = Cortex.Signal()
+
+dep1 = Cortex.Signal()
+dep2 = Cortex.Signal()
+
+Cortex.add_dependency!(s, dep1; intermediate = true, weak = true)
+Cortex.add_dependency!(s, dep2; weak = true)
+
+dep3 = Cortex.Signal(3)
+dep4 = Cortex.Signal(4)
+
+Cortex.add_dependency!(dep1, dep3)
+Cortex.add_dependency!(dep1, dep4; intermediate = true, weak = true)
+
+dep5 = Cortex.Signal()
+
+Cortex.add_dependency!(dep2, dep5)
+
+listener1 = Cortex.Signal()
+listener2 = Cortex.Signal(2)
+
+Cortex.add_dependency!(listener1, s)
+Cortex.add_dependency!(listener2, s; listen = false)
+
+GraphViz.load(s)
+```
+
+### API Reference
+
+```@example signal-vis-docs
+using GraphViz, Cortex #hide
+GraphVizExt = Base.get_extension(Cortex, :GraphVizExt) #hide
+@doc(GraphVizExt.GraphViz.load) #hide
+```
 
 ## Internal Mechanics (For Developers)
 
