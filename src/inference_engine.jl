@@ -171,56 +171,63 @@ get_factor_ids(engine::InferenceEngine) = get_factor_ids(get_model_backend(engin
 
 Alias for `get_connection(get_model_backend(engine), variable_id, factor_id)`.
 """
-get_connection(engine::InferenceEngine, variable_id, factor_id) =
-    get_connection(get_model_backend(engine), variable_id, factor_id)
+get_connection(engine::InferenceEngine, variable_id, factor_id) = get_connection(
+    get_model_backend(engine), variable_id, factor_id
+)
 
 """
     get_connection_label(engine::InferenceEngine, variable_id, factor_id) -> Symbol
 
 Alias for `get_connection_label(get_connection(engine, variable_id, factor_id))`.
 """
-get_connection_label(engine::InferenceEngine, variable_id, factor_id) =
-    get_connection_label(get_connection(engine, variable_id, factor_id))
+get_connection_label(engine::InferenceEngine, variable_id, factor_id) = get_connection_label(
+    get_connection(engine, variable_id, factor_id)
+)
 
 """
     get_connection_index(engine::InferenceEngine, variable_id, factor_id) -> Int
 
 Alias for `get_connection_index(get_connection(engine, variable_id, factor_id))`.
 """
-get_connection_index(engine::InferenceEngine, variable_id, factor_id) =
-    get_connection_index(get_connection(engine, variable_id, factor_id))
+get_connection_index(engine::InferenceEngine, variable_id, factor_id) = get_connection_index(
+    get_connection(engine, variable_id, factor_id)
+)
 
 """
     get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) -> Cortex.Signal
 
 Alias for `get_message_to_variable(get_connection(engine, variable_id, factor_id))`.
 """
-get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) =
-    get_message_to_variable(get_connection(engine, variable_id, factor_id))
+get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) = get_message_to_variable(
+    get_connection(engine, variable_id, factor_id)
+)
 
 """
     get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) -> Cortex.Signal
 
 Alias for `get_message_to_factor(get_connection(engine, variable_id, factor_id))`.
 """
-get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) =
-    get_message_to_factor(get_connection(engine, variable_id, factor_id))
+get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) = get_message_to_factor(
+    get_connection(engine, variable_id, factor_id)
+)
 
 """
     get_connected_variable_ids(engine::InferenceEngine, factor_id)
 
 Alias for `get_connected_variable_ids(get_model_backend(engine), factor_id)`.
 """
-get_connected_variable_ids(engine::InferenceEngine, factor_id) =
-    get_connected_variable_ids(get_model_backend(engine), factor_id)
+get_connected_variable_ids(engine::InferenceEngine, factor_id) = get_connected_variable_ids(
+    get_model_backend(engine), factor_id
+)
 
 """
     get_connected_factor_ids(engine::InferenceEngine, variable_id)
 
 Alias for `get_connected_factor_ids(get_model_backend(engine), variable_id)`.
 """
-get_connected_factor_ids(engine::InferenceEngine, variable_id) =
-    get_connected_factor_ids(get_model_backend(engine), variable_id)
+get_connected_factor_ids(engine::InferenceEngine, variable_id) = get_connected_factor_ids(
+    get_model_backend(engine), variable_id
+)
 
 """
     InferenceSignalTypes
@@ -438,8 +445,11 @@ struct CallbackInferenceRequestProcessor{F} <: AbstractInferenceRequestProcessor
     f::F
 end
 
-Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} =
-    CallbackInferenceRequestProcessor{F}(f)
+Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} = CallbackInferenceRequestProcessor{
+    F
+}(
+    f
+)
 
 "Internal functor for `InferenceRequestProcessor` to apply the computation logic."
 function process!(

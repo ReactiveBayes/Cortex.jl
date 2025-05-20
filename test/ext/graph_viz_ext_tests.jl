@@ -322,10 +322,10 @@ end
 
     # Create a signal with many listeners
     main = Cortex.Signal(1)
-    
+
     # Create listeners with different listening states
     listeners = [Cortex.Signal(i) for i in 1:15]
-    
+
     # Add dependencies with alternating listening states
     for (i, listener) in enumerate(listeners)
         Cortex.add_dependency!(listener, main; listen = i % 2 == 0)
@@ -335,7 +335,7 @@ end
     s_default = to_svg(main; show_listeners = true)
     @test occursin("5 more listeners", s_default)
     @test occursin("Use `max_listeners` to show more listeners", s_default)
-    
+
     # Verify statistics are shown correctly
     @test occursin("2 active", s_default)
     @test occursin("3 inactive", s_default)

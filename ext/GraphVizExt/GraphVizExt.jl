@@ -20,8 +20,7 @@ const EDGE_COLORS = Dict(
 
 # Styles for listener edges
 const LISTENER_EDGE_STYLES = Dict(
-    :active => Dict("style" => "solid", "color" => "black"),
-    :inactive => Dict("style" => "dotted", "color" => "gray40")
+    :active => Dict("style" => "solid", "color" => "black"), :inactive => Dict("style" => "dotted", "color" => "gray40")
 )
 
 # Returns (style, color) tuple for edge visualization based on dependency properties
