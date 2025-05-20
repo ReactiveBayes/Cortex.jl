@@ -1,4 +1,5 @@
 [deps]
+BipartiteFactorGraphs = "b30351d1-6332-4c89-82f4-633fdf76981a"
 Cortex = "39612bbb-57ff-4bee-a8f8-6b0371679005"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 DocumenterMermaid = "a078cd44-4d9c-4618-b545-3ab9d77f9177"
