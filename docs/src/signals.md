@@ -595,46 +595,57 @@ Cortex.process_dependencies!(Any, ::Cortex.Signal)
 ## [Signal Visualization](@id signals-visualization)
 
 The `Cortex.jl` package provides a function to visualize the dependency graph of a signal.
-This function becomes available when the `GraphViz.jl` package is installed in your environment.
-Let's start with an example:
+This function becomes available when the `GraphViz.jl` package is installed in your environment. When visualized, the signal is represented as a node, as well as its dependencies and listeners. The colors of the nodes depend on their state. The connections between the nodes depend on the type of the dependency. To demonstrate this, let's consider the following example:
 
 ```@example signal_examples
 using GraphViz # enables visualization
 
+# The main signal to visualize
 s = Cortex.Signal()
 
+# Direct dependencies of `s`
 dep1 = Cortex.Signal()
 dep2 = Cortex.Signal()
 
 Cortex.add_dependency!(s, dep1; intermediate = true, weak = true)
 Cortex.add_dependency!(s, dep2; weak = true)
 
-dep3 = Cortex.Signal(3)
-dep4 = Cortex.Signal(4)
+# Dependencies of `dep1`
+dep1_for_dep1 = Cortex.Signal(3)
+dep1_for_dep2 = Cortex.Signal(4)
 
-Cortex.add_dependency!(dep1, dep3)
-Cortex.add_dependency!(dep1, dep4; intermediate = true, weak = true)
+Cortex.add_dependency!(dep1, dep1_for_dep1)
+Cortex.add_dependency!(dep1, dep1_for_dep2; intermediate = true, weak = true)
 
-dep5 = Cortex.Signal()
+# Dependencies of `dep2`
+dep1_for_dep2 = Cortex.Signal()
+Cortex.add_dependency!(dep2, dep1_for_dep2)
 
-Cortex.add_dependency!(dep2, dep5)
+# Deep dependency of `dep1_for_dep2`
+dep_for_dep1_for_dep2 = Cortex.Signal()
+Cortex.add_dependency!(dep1_for_dep2, dep_for_dep1_for_dep2)
 
-listener1 = Cortex.Signal()
-listener2 = Cortex.Signal(2)
+# Listeners of `s`
+listener1_of_s = Cortex.Signal()
+listener2_of_s = Cortex.Signal()
 
-Cortex.add_dependency!(listener1, s)
-Cortex.add_dependency!(listener2, s; listen = false)
+Cortex.add_dependency!(listener1_of_s, s)
+Cortex.add_dependency!(listener2_of_s, s; listen = false)
+
+# Listeners of `dep1`, but it won't be displayed for `s` 
+listener1_of_dep1 = Cortex.Signal()
+
+Cortex.add_dependency!(listener1_of_dep1, dep1)
 
 GraphViz.load(s)
 ```
 
-### API Reference
-
-```@example signal-vis-docs
-using GraphViz, Cortex #hide
-GraphVizExt = Base.get_extension(Cortex, :GraphVizExt) #hide
-@doc(GraphVizExt.GraphViz.load) #hide
-```
+!!! unknown "Documentation for GraphViz.jl extension"
+    ```@eval
+    using GraphViz, Cortex, Documenter #hide
+    GraphVizExt = Base.get_extension(Cortex, :GraphVizExt) #hide
+    @doc(GraphVizExt.GraphViz.load) |> string |> Documenter.Markdown.parse #hide
+    ```
 
 ## Internal Mechanics (For Developers)
 
