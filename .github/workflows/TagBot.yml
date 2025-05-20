@@ -7,6 +7,7 @@ on:
     inputs:
       lookback:
         default: "3"
+        description: "The number of days to look back for new tags"
 permissions:
   actions: read
   checks: read
