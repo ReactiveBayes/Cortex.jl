@@ -1,8 +1,8 @@
 # [Probabilistic Model Backend](@id model_backend)
 
-Cortex.jl is designed with flexibility in mind, allowing it to work with various probabilistic model representations. Instead of implementing a specific model backend, Cortex.jl defines an interface that any model backend can implement to be used with the inference engine.
+## Overview
 
-## Why an Interface-Based Approach?
+Cortex.jl is designed to allow it to work with various probabilistic model representations. Instead of implementing a specific model backend, Cortex.jl defines an interface that any model backend can implement to be used with the inference engine.
 
 This design choice offers several advantages:
 
