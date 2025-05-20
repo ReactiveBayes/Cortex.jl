@@ -4,7 +4,7 @@ using Documenter
 DocMeta.setdocmeta!(Cortex, :DocTestSetup, :(using Cortex); recursive = true)
 
 makedocs(;
-    warnonly = Documenter.except(),
+    # warnonly = Documenter.except(),
     modules = [Cortex],
     authors = "Bagaev Dmitry <bvdmitri@gmail.com> and contributors",
     sitename = "Cortex.jl",
@@ -12,12 +12,15 @@ makedocs(;
         prettyurls = get(ENV, "CI", "false") == "true",
         canonical = "https://ReactiveBayes.github.io/Cortex.jl",
         edit_link = "main",
-        assets = String[]
+        assets = String[],
+        size_threshold = 1024 * 1024 * 8, # 8 MB
+        size_threshold_warn = 1024 * 1024 # 1 MB
     ),
     pages = [
         "Home" => "index.md",
         "Signals: The Core of Reactivity" => "signals.md",
-        "Probabilistic Inference with Cortex" => "inference.md"
+        "Model Backend: The Foundation" => "model_backend.md",
+        "Inference Engine: The Brain" => "inference_engine.md"
     ]
 )
 
