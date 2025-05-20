@@ -83,12 +83,19 @@ Cortex.InferenceSignalTypes.MessageToFactor
 Cortex.InferenceSignalTypes.ProductOfMessages
 Cortex.InferenceSignalTypes.IndividualMarginal
 Cortex.InferenceSignalTypes.JointMarginal
+Cortex.prepare_signals_metadata!
 ```
 
 ### Running Inference
 
 ```@docs
 Cortex.request_inference_for
+Cortex.InferenceRequest
+Cortex.scan_inference_request
+Cortex.InferenceRequestScanner
+Cortex.process_inference_request
+Cortex.process!
+Cortex.CallbackInferenceRequestProcessor
 Cortex.update_marginals!
 ```
 

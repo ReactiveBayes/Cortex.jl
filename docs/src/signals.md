@@ -1,27 +1,28 @@
 # [Signals: The Core of Reactivity](@id signals)
 
-At the heart of Cortex.jl's reactivity system lies the [`Signal`](@ref Cortex.Signal).
+At the heart of Cortex.jl's reactivity system lies the [`Signal`](@ref Cortex.Signal). Signals are being used extensively in the [inference](@ref inference) to track the necessary or stale computations.
 
 ## Concept
 
-Think of a [`Signal`](@ref Cortex.Signal) as a container for a value that can change over time. The key idea is that other parts of your system can *depend* on a signal. When the signal's value changes, anything that depends on it (its *listeners*) is notified, allowing the system to react on changes and recompute values.
+Think of a [`Signal`](@ref Cortex.Signal) as a container for a value that can change over time. When this change will happen is not known beforehand. The key idea is that other parts of your system can *depend* on a signal. When the signal's value changes, anything that depends on it (its *listeners*) is notified, allowing the system to react on changes and recompute values.
 
-Imagine a spreadsheet cell. When you change the value in one cell (like `A1`), other cells that use `A1` in their formulas (like `B1 = A1 * 2`) automatically update. A [`Signal`](@ref Cortex.Signal) is like that cell – it holds a value, and changes can trigger updates elsewhere.
+An every day example would be a spreadsheet cell. When you change the value in one cell (like `A1`), other cells that use `A1` in their formulas (like `B1 = A1 * 2`) automatically update. A [`Signal`](@ref Cortex.Signal) is like that cell – it holds a value, and changes can trigger updates elsewhere.
 
-More technically, [`Signal`](@ref Cortex.Signal)s form a directed graph (potentially cyclic). Each [`Signal`](@ref Cortex.Signal) node stores a value, an optional `type` identifier (`UInt8`), optional `metadata`, and maintains lists of its dependencies and listeners. When a signal is updated via [`set_value!`](@ref Cortex.set_value!), it propagates a notification to its direct listeners, potentially marking them as 'pending'. This 'pending' state indicates that the signal's value might be stale and needs recomputation. The actual recomputation logic is defined externally via the [`compute!`](@ref Cortex.compute!) function. A signal may become 'pending' if all its dependencies meet the criteria: weak dependencies are computed, and strong dependencies are computed and **fresh** (i.e., have new, unused values). This also means that a signal never recomputes its own value, as it must be done externally.
+More technically, [`Signal`](@ref Cortex.Signal)s form a directed graph (potentially cyclic). Each [`Signal`](@ref Cortex.Signal) node stores a value, an optional `type` identifier (`UInt8`), optional `metadata`, and maintains lists of its dependencies and listeners. When a signal is updated via [`set_value!`](@ref Cortex.set_value!) or [`compute!`](@ref Cortex.compute!), it propagates a notification to its direct listeners, potentially marking them as 'pending'. This ['pending' state](@ref signal-pending-state) indicates that the signal's value might be stale and needs recomputation. The actual recomputation logic is defined externally via the [`compute!`](@ref Cortex.compute!) function. A signal may become 'pending' if all its dependencies meet the criteria: weak dependencies are computed, and strong dependencies are computed and **fresh** (i.e., have new, unused values). This also means that a signal never recomputes its own value, as it must be done externally.
 
 ## Key Features
 
-*   **Value Storage:** Holds the current value.
+*   **Value Storage:** Holds the current value (or `UndefValue()` if the value is not set).
 *   **Type Identifier:** Stores an optional `UInt8` type ([`get_type`](@ref Cortex.get_type)), defaulting to `0x00`. This might be particularly useful for choosing different computation strategies for different types of signals within the [`compute!`](@ref Cortex.compute!) function.
-*   **Optional Metadata:** Can store arbitrary metadata ([`get_metadata`](@ref Cortex.get_metadata)), defaulting to `UndefMetadata()`.
-*   **Dependency Tracking:** Knows which other signals it depends on (`dependencies`) and which signals depend on it (see  [`get_listeners`](@ref Cortex.get_listeners)).
+*   **Optional Metadata:** Can store arbitrary metadata ([`get_metadata`](@ref Cortex.get_metadata)), defaulting to `UndefMetadata()`. Metadata can also be used to choose different computation strategies for different types of signals within the [`compute!`](@ref Cortex.compute!) function.
+*   **Dependency Tracking:** Knows which other signals it depends on (see [`get_dependencies`](@ref Cortex.get_dependencies)) and which signals depend on it (see  [`get_listeners`](@ref Cortex.get_listeners)).
 *   **Notification:** When updated via [`set_value!`](@ref Cortex.set_value!), it notifies its active listeners.
-*   **Pending State:** Can be marked as [`is_pending`](@ref Cortex.is_pending) if its dependencies have updated appropriately, signaling a need for recomputation via [`compute!`](@ref Cortex.compute!).
+*   **Pending State:** Can be marked as [`is_pending`](@ref Cortex.is_pending) if its dependencies have updated appropriately, signaling a need for recomputation via [`compute!`](@ref Cortex.compute!). Read more about the pending state in the [Pending State](@ref signal-pending-state) section.
 *   **External Computation:** Relies on the [`compute!`](@ref Cortex.compute!) function and a provided strategy to update its value based on dependencies.
+*   **Traversal of Dependencies:** The [`process_dependencies!`](@ref Cortex.process_dependencies!) function can be used to traverse the dependency graph and apply a custom logic to the dependencies.
 *   **Weak Dependencies:** Supports 'weak' dependencies, which influence the pending state based only on whether they are computed ([`is_computed`](@ref Cortex.is_computed)), not their 'fresh' status in the same way as strong dependencies. See [`add_dependency!`](@ref Cortex.add_dependency!) for more details.
 *   **Controlled Listening:** Allows dependencies to be added without automatically listening to their updates (`listen=false` in [`add_dependency!`](@ref Cortex.add_dependency!)).
-*   **GraphViz Support:** Signals can be visualized using the `GraphViz.jl` package. Cortex automatically loads the visualization extension when `GraphViz.jl` package is loaded in the current Julia session.
+*   **GraphViz Support:** Signals can be visualized using the `GraphViz.jl` package. Cortex automatically loads the visualization extension when `GraphViz.jl` package is loaded in the current Julia session. Read more about it in the [Visualization](@ref signals-visualization) section.
 
 ```@docs
 Cortex.Signal
@@ -97,7 +98,7 @@ Cortex.is_pending(a_signal_with_value)
 
 Since our signals does not have any dependencies, it is not pending. We will talk more about the dependencies and the [pending state](@ref signal-pending-state) in the [Adding Dependencies](@ref signal-adding-dependencies) section.
 
-We can manually update a signal's value with [`set_value!`](@ref Cortex.set_value!). The `set_value!` function doesn't check if the signal is pending or not. It only updates the value of the signal. Read the [Updating Signal Values](@ref signal-updating-values) section for a more structured way to update a signal's value.
+We can manually update a signal's value with [`set_value!`](@ref Cortex.set_value!). The `set_value!` function doesn't check if the signal is pending or not. It only updates the value of the signal. Read the [Updating Signal Values](@ref signal-computing-values) section for a more structured way to update a signal's value.
     
 
 ```@example signal_examples

@@ -1,8 +1,5 @@
-"""
-    format_time_ns(ns::UInt64)
 
-Convert a UInt64 nanosecond timestamp into a human-readable string.
-"""
+# Convert a UInt64 nanosecond timestamp into a human-readable string.
 function format_time_ns(ns::UInt64)
     if ns < 1_000 # Nanoseconds
         return string(ns, " ns")

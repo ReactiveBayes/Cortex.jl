@@ -68,6 +68,13 @@ julia> Cortex.is_backend_supported(::SomeOtherDataStructure) = Cortex.Unsupporte
 """
 is_backend_supported(::Any) = UnsupportedModelBackend()
 
+"""
+    throw_if_backend_unsupported(backend::Any)
+
+Throws an [`UnsupportedModelBackendError`](@ref) if the backend is unsupported.
+"""
+function throw_if_backend_unsupported end
+
 throw_if_backend_unsupported(backend::Any) = throw_if_backend_unsupported(is_backend_supported(backend), backend)
 throw_if_backend_unsupported(::UnsupportedModelBackend, backend::Any) = throw(UnsupportedModelBackendError(backend))
 throw_if_backend_unsupported(::SupportedModelBackend, backend::Any) = backend

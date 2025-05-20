@@ -48,6 +48,7 @@ If an unsupported data structure is used as a model backend, Cortex.jl will thro
 
 ```@docs
 Cortex.UnsupportedModelBackendError
+Cortex.throw_if_backend_unsupported
 ```
 
 ## [Required Model Backend Methods](@id required_methods_for_model_backend)
@@ -62,6 +63,11 @@ Cortex.get_variable_ids
 Cortex.get_factor_ids
 Cortex.get_connected_variable_ids
 Cortex.get_connected_factor_ids
+Cortex.get_connection
+Cortex.get_connection_label
+Cortex.get_connection_index
+Cortex.get_message_to_variable
+Cortex.get_message_to_factor
 ```
 
 These methods form a complete interface that allows Cortex.jl to:

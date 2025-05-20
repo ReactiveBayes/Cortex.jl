@@ -238,7 +238,7 @@ These types help in dispatching computation rules and managing signal metadata.
 
 ## See Also
 
-- [`prepare_signals_metadata!`](@ref)
+- [`prepare_signals_metadata!`](@ref Cortex.prepare_signals_metadata!)
 - [`Signal`](@ref Cortex.Signal)
 """
 module InferenceSignalTypes
@@ -449,6 +449,13 @@ function process!(
         processor.f(engine, signal, dependencies)
     end
 end
+
+"""
+    update_marginals!(engine::InferenceEngine, variable_id_or_ids)
+
+Updates the marginals for the specified `variable_id_or_ids`.
+"""
+function update_marginals! end
 
 function update_marginals!(engine::InferenceEngine, variable_ids)
     return update_marginals!(engine, (variable_ids,))
