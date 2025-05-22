@@ -601,11 +601,11 @@ This function becomes available when the `GraphViz.jl` package is installed in y
 using GraphViz # enables visualization
 
 # The main signal to visualize
-s = Cortex.Signal()
+s = Cortex.Signal(metadata = :mainsignal)
 
 # Direct dependencies of `s`
-dep1 = Cortex.Signal()
-dep2 = Cortex.Signal()
+dep1 = Cortex.Signal(type = 0x01)
+dep2 = Cortex.Signal(type = 0x02)
 
 Cortex.add_dependency!(s, dep1; intermediate = true, weak = true)
 Cortex.add_dependency!(s, dep2; weak = true)

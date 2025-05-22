@@ -44,25 +44,25 @@ function format_node_value(s::Cortex.Signal)
     if s.value !== Cortex.UndefValue()
         return """<tr> <td align="left">Current value: </td> <td align="left">$(s.value) $(pending_str)</td> </tr>"""
     else
-        return """<tr> <td align="left">Does not have a value</td> <td align="left">$(pending_str)</td></tr>"""
+        return """<tr> <td align="left">No value</td> <td align="left">$(pending_str)</td></tr>"""
     end
 end
 
 # Formats the signal's metadata for display if present
-function format_node_metadata(s::Cortex.Signal)
+function format_node_metadata(s::Cortex.Signal, metadata_to_string_fn)
     if s.metadata !== Cortex.UndefMetadata()
-        return """<tr> <td align="left">Metadata: </td> <td align="left">$(s.metadata)</td> </tr>"""
+        return """<tr> <td align="left">Metadata: </td> <td align="left">$(metadata_to_string_fn(s.metadata))</td> </tr>"""
     else
-        return """<tr> <td align="left">Does not have metadata</td></tr>"""
+        return """<tr> <td align="left">No metadata</td></tr>"""
     end
 end
 
 # Formats the signal's type information using the provided type conversion function
-function format_node_type(s::Cortex.Signal, type_to_string_fn::Function)
+function format_node_type(s::Cortex.Signal, type_to_string_fn)
     if s.type !== 0x00
         return """<tr> <td align="left">Type: </td> <td align="left">$(type_to_string_fn(s.type))</td> </tr>"""
     else
-        return """<tr> <td align="left">Does not have a type</td></tr>"""
+        return ""
     end
 end
 
@@ -184,6 +184,7 @@ function format_signal_listeners(
     footer::Vector{String};
     max_listeners::Int = 10,
     type_to_string_fn,
+    metadata_to_string_fn,
     show_value::Bool = true,
     show_metadata::Bool = true,
     show_type::Bool = true,
@@ -228,6 +229,7 @@ function format_signal_listeners(
             max_dependencies = 0,
             max_listeners = 0,
             type_to_string_fn = type_to_string_fn,
+            metadata_to_string_fn = metadata_to_string_fn,
             show_value = show_value,
             show_metadata = show_metadata,
             show_type = show_type,
@@ -257,7 +259,7 @@ end
         max_depth::Int = 2,
         max_dependencies::Int = 10,
         max_listeners::Int = 10,
-        type_to_string_fn = Cortex.InferenceSignalTypes.to_string,
+        type_to_string_fn = repr,
         show_value::Bool = true,
         show_metadata::Bool = true,
         show_type::Bool = true,
@@ -279,7 +281,8 @@ The visualization includes:
 - `max_depth::Int = 2`: Maximum depth of the dependency tree to display
 - `max_dependencies::Int = 10`: Maximum number of dependencies to show per signal
 - `max_listeners::Int = 10`: Maximum number of listeners to show per signal
-- `type_to_string_fn = Cortex.InferenceSignalTypes.to_string`: Function to convert signal type to string
+- `type_to_string_fn = repr`: Function to convert signal type to string
+- `metadata_to_string_fn = repr`: Function to convert signal metadata to string
 - `show_value::Bool = true`: Whether to display signal values
 - `show_metadata::Bool = true`: Whether to display signal metadata
 - `show_type::Bool = true`: Whether to display signal types
@@ -307,7 +310,8 @@ function GraphViz.load(
     max_depth = 2,
     max_dependencies = 10,
     max_listeners = 10,
-    type_to_string_fn = Cortex.InferenceSignalTypes.to_string,
+    type_to_string_fn = repr,
+    metadata_to_string_fn = repr,
     show_value = true,
     show_metadata = true,
     show_type = true,
@@ -342,6 +346,7 @@ function GraphViz.load(
         max_listeners = max_listeners,
         level = 0,
         type_to_string_fn = type_to_string_fn,
+        metadata_to_string_fn = metadata_to_string_fn,
         show_value = show_value,
         show_metadata = show_metadata,
         show_type = show_type,
@@ -366,6 +371,7 @@ function print_signal_node(
     max_dependencies,
     max_listeners,
     type_to_string_fn,
+    metadata_to_string_fn,
     show_value = true,
     show_metadata = true,
     show_type = true,
@@ -391,7 +397,7 @@ function print_signal_node(
     print(io, """<tr> <td><table border="0" cellborder="0" cellspacing="0">""")
 
     show_value && print(io, format_node_value(s))
-    show_metadata && print(io, format_node_metadata(s))
+    show_metadata && print(io, format_node_metadata(s, metadata_to_string_fn))
     show_type && print(io, format_node_type(s, type_to_string_fn))
 
     print(io, "</table></td></tr>")
@@ -413,6 +419,7 @@ function print_signal_node(
                 max_depth,
                 max_dependencies,
                 type_to_string_fn,
+                metadata_to_string_fn,
                 footer,
                 show_value,
                 show_metadata,
@@ -431,6 +438,7 @@ function print_signal_node(
                 footer;
                 max_listeners = max_listeners,
                 type_to_string_fn = type_to_string_fn,
+                metadata_to_string_fn = metadata_to_string_fn,
                 show_value = show_value,
                 show_metadata = show_metadata,
                 show_type = show_type,
@@ -457,6 +465,7 @@ function format_signal_dependencies(
     max_depth,
     max_dependencies,
     type_to_string_fn,
+    metadata_to_string_fn,
     footer,
     show_value,
     show_metadata,
@@ -486,6 +495,7 @@ function format_signal_dependencies(
             max_dependencies = max_dependencies,
             max_listeners = 0,
             type_to_string_fn = type_to_string_fn,
+            metadata_to_string_fn = metadata_to_string_fn,
             show_value = show_value,
             show_metadata = show_metadata,
             show_type = show_type,

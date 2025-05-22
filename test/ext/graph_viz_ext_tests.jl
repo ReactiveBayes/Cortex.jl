@@ -40,7 +40,7 @@ end
 
     @testset "No value" begin
         s = Cortex.Signal()
-        @test occursin("Does not have a value", to_svg(s))
+        @test occursin("No value", to_svg(s))
     end
 
     for value in (1, 1.0, "hello", [1, 2, 3], (a = 1, b = 2))
@@ -56,7 +56,7 @@ end
 
     @testset "No metadata" begin
         s = Cortex.Signal(1)
-        @test occursin("Does not have metadata", to_svg(s))
+        @test occursin("No metadata", to_svg(s))
     end
 
     for metadata in (1, 1.0, "hello", [1, 2, 3], (a = 1, b = 2))
@@ -72,7 +72,23 @@ end
 
     @testset "No type" begin
         s = Cortex.Signal(1)
-        @test !occursin("0x00", to_svg(s)) && !occursin("Custom type", to_svg(s))
+        @test !occursin("0x00", to_svg(s)) && !occursin("Type", to_svg(s))
+    end
+
+    for type in UInt8(0x01):typemax(UInt8)
+        @testset let s = Cortex.Signal(1, type = type)
+            @test occursin(repr(type), to_svg(s))
+        end
+    end
+end
+
+@testitem "Type appearance can be customized" setup = [GraphVizUtils] begin
+    using GraphViz
+    using .GraphVizUtils
+
+    @testset "No type" begin
+        s = Cortex.Signal(1)
+        @test !occursin("0x00", to_svg(s)) && !occursin("Type", to_svg(s))
     end
 
     for type in (
@@ -83,9 +99,30 @@ end
         Cortex.InferenceSignalTypes.JointMarginal
     )
         @testset let s = Cortex.Signal(1, type = type)
-            @test occursin(Cortex.InferenceSignalTypes.to_string(type), to_svg(s))
+            @test occursin(
+                Cortex.InferenceSignalTypes.to_string(type),
+                to_svg(s; type_to_string_fn = Cortex.InferenceSignalTypes.to_string)
+            )
         end
     end
+end
+
+@testitem "Metadata appearance can be customized" setup = [GraphVizUtils] begin
+    using GraphViz
+    using .GraphVizUtils
+
+    s = Cortex.Signal(1, metadata = (:a, 1))
+
+    function metadata_to_string1(metadata)
+        return "CustomDisplayOfMetadata1($(metadata[1]), $(metadata[2]))"
+    end
+
+    function metadata_to_string2(metadata)
+        return "CustomDisplayOfMetadata2($(metadata[1]), $(metadata[2]))"
+    end
+
+    @test occursin("CustomDisplayOfMetadata1(a, 1)", to_svg(s; metadata_to_string_fn = metadata_to_string1))
+    @test occursin("CustomDisplayOfMetadata2(a, 1)", to_svg(s; metadata_to_string_fn = metadata_to_string2))
 end
 
 @testitem "Signal visualization should include the dependencies" setup = [GraphVizUtils] begin
