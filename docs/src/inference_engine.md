@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `InferenceEngine` is your gateway to probabilistic inference in Cortex.jl. The engine wraps your [model backend](@ref model_backend) and provides a unified interface for computing and updating messages and marginals required for inference.
+The `InferenceEngine` is your gateway to probabilistic inference in Cortex.jl. The engine wraps your [model engine](@ref model_engine) and provides a unified interface for computing and updating messages and marginals required for inference.
 
 Under the hood, the engine uses a [reactive signal system](@ref signals) to track dependencies between computations, update only what's necessary when data changes.
 It identifies which parts of the model need updates and manages computation order for efficiency.
@@ -15,31 +15,31 @@ The engine also provides built-in [tracing capabilities](@ref inference_tracing)
 
 ```@docs
 Cortex.InferenceEngine
-Cortex.get_model_backend
+Cortex.get_model_engine
 ```
 
 ### Variable Operations
 
 ```@docs
-Cortex.get_variable_data(::Cortex.InferenceEngine, ::Any)
+Cortex.get_variable(::Cortex.InferenceEngine, ::Int)
 Cortex.get_variable_ids(::Cortex.InferenceEngine)
-Cortex.get_marginal(::Cortex.InferenceEngine, ::Any)
 ```
 
 ### Factor Operations
 
 ```@docs
-Cortex.get_factor_data(::Cortex.InferenceEngine, ::Any)
+Cortex.get_factor(::Cortex.InferenceEngine, ::Int)
 Cortex.get_factor_ids(::Cortex.InferenceEngine)
 ```
 
-### Message Passing Interface
+### Connection and Message Passing Interface
 
 ```@docs
-Cortex.get_message_to_variable(::Cortex.InferenceEngine, ::Any, ::Any)
-Cortex.get_message_to_factor(::Cortex.InferenceEngine, ::Any, ::Any)
-Cortex.get_connected_variable_ids(::Cortex.InferenceEngine, ::Any)
-Cortex.get_connected_factor_ids(::Cortex.InferenceEngine, ::Any)
+Cortex.get_connection(::Cortex.InferenceEngine, ::Int, ::Int)
+Cortex.get_connection_message_to_variable(::Cortex.InferenceEngine, ::Int, ::Int)
+Cortex.get_connection_message_to_factor(::Cortex.InferenceEngine, ::Int, ::Int)
+Cortex.get_connected_variable_ids(::Cortex.InferenceEngine, ::Int)
+Cortex.get_connected_factor_ids(::Cortex.InferenceEngine, ::Int)
 ```
 
 ### Signal Types

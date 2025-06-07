@@ -18,16 +18,16 @@
         push!(resolver.resolved_factors, factor_id)
     end
 
-    graph = BipartiteFactorGraph()
+    graph = BipartiteFactorGraph(Variable, Factor, Connection)
 
-    x = add_variable!(graph, Variable(:x))
-    y = add_variable!(graph, Variable(:y))
-    z = add_variable!(graph, Variable(:z))
+    x = add_variable!(graph, Variable(name = :x))
+    y = add_variable!(graph, Variable(name = :y))
+    z = add_variable!(graph, Variable(name = :z))
 
-    f1 = add_factor!(graph, Factor(:f1))
-    f2 = add_factor!(graph, Factor(:f2))
+    f1 = add_factor!(graph, Factor(functional_form = :f1))
+    f2 = add_factor!(graph, Factor(functional_form = :f2))
 
-    engine = Cortex.InferenceEngine(model_backend = graph)
+    engine = Cortex.InferenceEngine(model_engine = graph)
     resolver = CustomDependencyResolver()
 
     Cortex.resolve_dependencies!(resolver, engine)
@@ -40,57 +40,60 @@ end
     using BipartiteFactorGraphs
     using .TestUtils
 
-    graph = BipartiteFactorGraph()
+    graph = BipartiteFactorGraph(Variable, Factor, Connection)
 
-    v1 = add_variable!(graph, Variable(:v1))
-    v2 = add_variable!(graph, Variable(:v2))
-    v3 = add_variable!(graph, Variable(:v3))
+    v1 = add_variable!(graph, Variable(name = :v1))
+    v2 = add_variable!(graph, Variable(name = :v2))
+    v3 = add_variable!(graph, Variable(name = :v3))
 
-    f1 = add_factor!(graph, Factor(:f1))
-    f2 = add_factor!(graph, Factor(:f2))
+    f1 = add_factor!(graph, Factor(functional_form = :f1))
+    f2 = add_factor!(graph, Factor(functional_form = :f2))
 
-    add_edge!(graph, v1, f1, Connection(:out))
-    add_edge!(graph, v2, f1, Connection(:out))
-    add_edge!(graph, v2, f2, Connection(:out))
-    add_edge!(graph, v3, f2, Connection(:out))
+    add_edge!(graph, v1, f1, Connection(label = :out))
+    add_edge!(graph, v2, f1, Connection(label = :out))
+    add_edge!(graph, v2, f2, Connection(label = :out))
+    add_edge!(graph, v3, f2, Connection(label = :out))
 
     engine = Cortex.InferenceEngine(
-        model_backend = graph, dependency_resolver = Cortex.DefaultDependencyResolver(), resolve_dependencies = true
+        model_engine = graph, dependency_resolver = Cortex.DefaultDependencyResolver(), resolve_dependencies = true
     )
 
-    v1_marginal = Cortex.get_marginal(engine, v1)
+    v1_variable = Cortex.get_variable(engine, v1)
+    v1_marginal = Cortex.get_variable_marginal(v1_variable)
     v1_marginal_deps = Cortex.get_dependencies(v1_marginal)
     @test length(v1_marginal_deps) == 1
-    @test any(d -> d === Cortex.get_message_to_variable(engine, v1, f1), v1_marginal_deps)
+    @test any(d -> d === Cortex.get_connection_message_to_variable(engine, v1, f1), v1_marginal_deps)
 
-    v2_marginal = Cortex.get_marginal(engine, v2)
+    v2_variable = Cortex.get_variable(engine, v2)
+    v2_marginal = Cortex.get_variable_marginal(v2_variable)
     v2_marginal_deps = Cortex.get_dependencies(v2_marginal)
     @test length(v2_marginal_deps) == 2
-    @test any(d -> d === Cortex.get_message_to_variable(engine, v2, f1), v2_marginal_deps)
-    @test any(d -> d === Cortex.get_message_to_variable(engine, v2, f2), v2_marginal_deps)
+    @test any(d -> d === Cortex.get_connection_message_to_variable(engine, v2, f1), v2_marginal_deps)
+    @test any(d -> d === Cortex.get_connection_message_to_variable(engine, v2, f2), v2_marginal_deps)
 
-    v3_marginal = Cortex.get_marginal(engine, v3)
+    v3_variable = Cortex.get_variable(engine, v3)
+    v3_marginal = Cortex.get_variable_marginal(v3_variable)
     v3_marginal_deps = Cortex.get_dependencies(v3_marginal)
     @test length(v3_marginal_deps) == 1
-    @test any(d -> d === Cortex.get_message_to_variable(engine, v3, f2), v3_marginal_deps)
+    @test any(d -> d === Cortex.get_connection_message_to_variable(engine, v3, f2), v3_marginal_deps)
 
-    message_from_f1_to_v2 = Cortex.get_message_to_variable(engine, v2, f1)
+    message_from_f1_to_v2 = Cortex.get_connection_message_to_variable(engine, v2, f1)
     message_from_f1_to_v2_deps = Cortex.get_dependencies(message_from_f1_to_v2)
     @test length(message_from_f1_to_v2_deps) == 1
-    @test any(d -> d === Cortex.get_message_to_factor(engine, v1, f1), message_from_f1_to_v2_deps)
+    @test any(d -> d === Cortex.get_connection_message_to_factor(engine, v1, f1), message_from_f1_to_v2_deps)
 
-    message_from_f2_to_v2 = Cortex.get_message_to_variable(engine, v2, f2)
+    message_from_f2_to_v2 = Cortex.get_connection_message_to_variable(engine, v2, f2)
     message_from_f2_to_v2_deps = Cortex.get_dependencies(message_from_f2_to_v2)
     @test length(message_from_f2_to_v2_deps) == 1
-    @test any(d -> d === Cortex.get_message_to_factor(engine, v3, f2), message_from_f2_to_v2_deps)
+    @test any(d -> d === Cortex.get_connection_message_to_factor(engine, v3, f2), message_from_f2_to_v2_deps)
 
-    message_from_v2_to_f1 = Cortex.get_message_to_factor(engine, v2, f1)
+    message_from_v2_to_f1 = Cortex.get_connection_message_to_factor(engine, v2, f1)
     message_from_v2_to_f1_deps = Cortex.get_dependencies(message_from_v2_to_f1)
     @test length(message_from_v2_to_f1_deps) == 1
-    @test any(d -> d === Cortex.get_message_to_variable(engine, v2, f2), message_from_v2_to_f1_deps)
+    @test any(d -> d === Cortex.get_connection_message_to_variable(engine, v2, f2), message_from_v2_to_f1_deps)
 
-    message_from_v2_to_f2 = Cortex.get_message_to_factor(engine, v2, f2)
+    message_from_v2_to_f2 = Cortex.get_connection_message_to_factor(engine, v2, f2)
     message_from_v2_to_f2_deps = Cortex.get_dependencies(message_from_v2_to_f2)
     @test length(message_from_v2_to_f2_deps) == 1
-    @test any(d -> d === Cortex.get_message_to_variable(engine, v2, f1), message_from_v2_to_f2_deps)
+    @test any(d -> d === Cortex.get_connection_message_to_variable(engine, v2, f1), message_from_v2_to_f2_deps)
 end

@@ -9,63 +9,95 @@ using TestItemRunner
     @reexport using BipartiteFactorGraphs
     @reexport using Cortex
 
+    import Cortex: Variable, Factor, Connection
+
     export Variable, Factor, Connection
+end
 
-    # For testing purposes we define a simple `Variable` type that is used to test the inference engine
-    # It contains a `marginal` field that is a `Signal` object.
-    # A name and index are also stored to make it easier to identify the variable in tests.
-    struct Variable
-        name::Symbol
-        index::Any
-        marginal::Cortex.Signal
+@testmodule TestDistributions begin
+    using Random
 
-        function Variable(name, index...)
-            return new(name, index, Cortex.Signal())
-        end
+    import Base: precision
+
+    struct Beta
+        a::Float64
+        b::Float64
     end
 
-    function Base.show(io::IO, variable::Variable)
-        print(io, variable.name)
-        if !isempty(variable.index)
-            print(io, "[")
-            join(io, variable.index, ",")
-            print(io, "]")
-        end
+    struct Bernoulli
+        y::Bool
     end
 
-    # For testing purposes we define a simple `Factor` type that is used to test the inference engine
-    # It contains a `fform` field that is a symbol that represents the factor's form.
-    struct Factor
-        fform::Any
+    struct NormalMeanVariance
+        mean::Float64
+        variance::Float64
     end
 
-    function Base.show(io::IO, factor::Factor)
-        print(io, factor.fform)
+    mean(n::NormalMeanVariance) = n.mean
+    var(n::NormalMeanVariance) = n.variance
+    precision(n::NormalMeanVariance) = 1 / n.variance
+
+    function product(left::NormalMeanVariance, right::NormalMeanVariance)
+        xi = left.mean / left.variance + right.mean / right.variance
+        w = 1 / left.variance + 1 / right.variance
+        variance = 1 / w
+        mean = variance * xi
+        return NormalMeanVariance(mean, variance)
     end
 
-    # For testing purposes we define a simple `Connection` type that is used to test the inference engine
-    # It contains a `label` field that is a symbol that represents the connection's label, an `index` field that is an integer that represents the connection's index,
-    # a `message_to_variable` field that is a `Signal` object that represents the message to the variable, 
-    # and a `message_to_factor` field that is a `Signal` object that represents the message to the factor.
-    struct Connection
-        label::Symbol
-        index::Int
-        message_to_variable::Cortex.Signal
-        message_to_factor::Cortex.Signal
+    Random.rand(rng::AbstractRNG, n::NormalMeanVariance) = n.mean + randn(rng) * sqrt(n.variance)
 
-        function Connection(label, index = 0)
-            return new(label, index, Cortex.Signal(), Cortex.Signal())
-        end
+    struct NormalMeanPrecision
+        mean::Float64
+        precision::Float64
     end
 
-    # This is required to be implemented a variable data structure returned from the inference engine's backend
-    Cortex.get_marginal(variable::Variable) = variable.marginal
+    mean(n::NormalMeanPrecision) = n.mean
+    var(n::NormalMeanPrecision) = 1 / n.precision
+    precision(n::NormalMeanPrecision) = n.precision
 
-    # This is required to be implemented a connection data structure returned from the inference engine's backend
-    Cortex.get_connection_label(connection::Connection) = connection.label
-    Cortex.get_connection_index(connection::Connection) = connection.index
-    Cortex.get_message_to_variable(connection::Connection) = connection.message_to_variable
-    Cortex.get_message_to_factor(connection::Connection) = connection.message_to_factor
+    Random.rand(rng::AbstractRNG, n::NormalMeanPrecision) = n.mean + randn(rng) / sqrt(n.precision)
+
+    struct Gamma
+        shape::Float64
+        scale::Float64
+    end
+
+    mean(g::Gamma) = g.shape * g.scale
+    var(g::Gamma) = g.shape * g.scale^2
+
+    struct MvNormalMeanPrecision
+        mean::Vector{Float64}
+        precision::Matrix{Float64}
+    end
+
+    mean(n::MvNormalMeanPrecision) = n.mean
+    cov(n::MvNormalMeanPrecision) = inv(n.precision)
+    precision(n::MvNormalMeanPrecision) = n.precision
+
+    function product(left::NormalMeanPrecision, right::NormalMeanPrecision)
+        xi = left.mean * left.precision + right.mean * right.precision
+        w = left.precision + right.precision
+        precision = w
+        mean = (1 / precision) * xi
+        return NormalMeanPrecision(mean, precision)
+    end
+
+    function product(left::Gamma, right::Gamma)
+        return Gamma(left.shape + right.shape - 1, (left.scale * right.scale) / (left.scale + right.scale))
+    end
+
+    export Beta,
+        Bernoulli,
+        NormalMeanVariance,
+        NormalMeanPrecision,
+        Gamma,
+        MvNormalMeanPrecision,
+        mean,
+        var,
+        precision,
+        cov,
+        product
 end
 
 @testset "Cortex.jl" begin

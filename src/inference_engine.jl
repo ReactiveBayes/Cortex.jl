@@ -20,7 +20,7 @@ Core structure for managing and executing probabilistic inference.
 
 ## Fields
 
-- `model_backend::M`: The underlying model backend (e.g., a `BipartiteFactorGraph`).
+- `model_engine::M`: The underlying model engine (e.g., a `BipartiteFactorGraph`).
 - `dependency_resolver`: Resolves dependencies between signals during inference.
 - `inference_request_processor`: Processes inference requests and manages computation order.
 - `tracer`: Optional tracer for monitoring inference execution.
@@ -30,7 +30,7 @@ Core structure for managing and executing probabilistic inference.
 
 ```julia
 InferenceEngine(;
-    model_backend::M,
+    model_engine::M,
     dependency_resolver = DefaultDependencyResolver(),
     inference_request_processor = InferenceRequestScanner(),
     prepare_signals_metadata::Bool = true,
@@ -41,40 +41,40 @@ InferenceEngine(;
 
 ### Arguments
 
-- `model_backend`: An instance of a supported model backend.
+- `model_engine`: An instance of a supported model engine.
 - `dependency_resolver`: Custom dependency resolver (optional).
 - `inference_request_processor`: Custom request processor (optional).
 - `prepare_signals_metadata`: Whether to initialize signal types and metadata.
 - `resolve_dependencies`: Whether to resolve signal dependencies on creation.
 - `trace`: Whether to enable inference execution tracing.
 
-See also: [`get_model_backend`](@ref), [`update_marginals!`](@ref), [`request_inference_for`](@ref)
+See also: [`get_model_engine`](@ref), [`update_marginals!`](@ref), [`request_inference_for`](@ref)
 """
 mutable struct InferenceEngine{M, D, P, T}
-    model_backend::M
+    model_engine::M
     dependency_resolver::D
     inference_request_processor::P
     tracer::T
     warnings::Vector{InferenceEngineWarning}
 
     function InferenceEngine(;
-        model_backend::M,
+        model_engine::M,
         dependency_resolver::D = DefaultDependencyResolver(),
         inference_request_processor::P = InferenceRequestScanner(),
         prepare_signals_metadata::Bool = true,
         resolve_dependencies::Bool = true,
         trace::Bool = false
     ) where {M, D, P}
-        checked_backend = throw_if_backend_unsupported(model_backend)::M
+        checked_engine = throw_if_engine_unsupported(model_engine)::M
         checked_dependency_resolver = convert(AbstractDependencyResolver, dependency_resolver)
         checked_processor = convert(AbstractInferenceRequestProcessor, inference_request_processor)
         tracer = trace ? InferenceEngineTracer() : nothing
         warnings = InferenceEngineWarning[]
 
         engine = new{
-            typeof(checked_backend), typeof(checked_dependency_resolver), typeof(checked_processor), typeof(tracer)
+            typeof(checked_engine), typeof(checked_dependency_resolver), typeof(checked_processor), typeof(tracer)
         }(
-            checked_backend, checked_dependency_resolver, checked_processor, tracer, warnings
+            checked_engine, checked_dependency_resolver, checked_processor, tracer, warnings
         )
 
         if prepare_signals_metadata
@@ -100,9 +100,9 @@ function Base.show(io::IO, engine::InferenceEngine)
 end
 
 """
-    get_model_backend(engine::InferenceEngine)
+    get_model_engine(engine::InferenceEngine)
 
-Retrieves the underlying model backend from the `InferenceEngine`.
+Retrieves the underlying model engine from the `InferenceEngine`.
 
 ## Arguments
 
@@ -110,13 +110,13 @@ Retrieves the underlying model backend from the `InferenceEngine`.
 
 ## Returns
 
-The model backend object stored within the engine.
+The model engine object stored within the engine.
 
 ## See Also
 
 - [`InferenceEngine`](@ref)
 """
-get_model_backend(engine::InferenceEngine) = engine.model_backend
+get_model_engine(engine::InferenceEngine) = engine.model_engine
 
 get_inference_request_processor(engine::InferenceEngine) = engine.inference_request_processor
 
@@ -132,101 +132,76 @@ end
 Base.broadcastable(engine::InferenceEngine) = Ref(engine)
 
 """
-    get_variable_data(engine::InferenceEngine, variable_id)
+    get_variable(engine::InferenceEngine, variable_id::Int)
 
-Alias for `get_variable_data(get_model_backend(engine), variable_id)`.
+Alias for `get_variable(get_model_engine(engine), variable_id)`.
 """
-get_variable_data(engine::InferenceEngine, variable_id) = get_variable_data(get_model_backend(engine), variable_id)
+get_variable(engine::InferenceEngine, variable_id::Int) = get_variable(get_model_engine(engine), variable_id)::Variable
 
 """
     get_variable_ids(engine::InferenceEngine)
 
-Alias for `get_variable_ids(get_model_backend(engine))`.
+Alias for `get_variable_ids(get_model_engine(engine))`.
 """
-get_variable_ids(engine::InferenceEngine) = get_variable_ids(get_model_backend(engine))
+get_variable_ids(engine::InferenceEngine) = get_variable_ids(get_model_engine(engine))
 
 """
-    get_marginal(engine::InferenceEngine, variable_id) -> Cortex.Signal
+    get_factor(engine::InferenceEngine, factor_id::Int)
 
-Alias for `get_marginal(get_variable_data(engine, variable_id))`.
+Alias for `get_factor(get_model_engine(engine), factor_id)`.
 """
-get_marginal(engine::InferenceEngine, variable_id) = get_marginal(get_variable_data(engine, variable_id))
-
-"""
-    get_factor_data(engine::InferenceEngine, factor_id)
-
-Alias for `get_factor_data(get_model_backend(engine), factor_id)`.
-"""
-get_factor_data(engine::InferenceEngine, factor_id) = get_factor_data(get_model_backend(engine), factor_id)
+get_factor(engine::InferenceEngine, factor_id::Int) = get_factor(get_model_engine(engine), factor_id)::Factor
 
 """
     get_factor_ids(engine::InferenceEngine)
 
-Alias for `get_factor_ids(get_model_backend(engine))`.
+Alias for `get_factor_ids(get_model_engine(engine))`.
 """
-get_factor_ids(engine::InferenceEngine) = get_factor_ids(get_model_backend(engine))
+get_factor_ids(engine::InferenceEngine) = get_factor_ids(get_model_engine(engine))
 
 """
-    get_connection(engine::InferenceEngine, variable_id, factor_id)
+    get_connection(engine::InferenceEngine, variable_id::Int, factor_id::Int)
 
-Alias for `get_connection(get_model_backend(engine), variable_id, factor_id)`.
+Alias for `get_connection(get_model_engine(engine), variable_id, factor_id)`.
 """
-get_connection(engine::InferenceEngine, variable_id, factor_id) = get_connection(
-    get_model_backend(engine), variable_id, factor_id
+get_connection(engine::InferenceEngine, variable_id::Int, factor_id::Int) = get_connection(
+    get_model_engine(engine), variable_id, factor_id
+)::Connection
+
+"""
+    get_connection_message_to_variable(engine::InferenceEngine, variable_id::Int, factor_id::Int)
+
+Alias for `get_connection_message_to_variable(get_connection(engine, variable_id, factor_id)::Connection)::Signal`.
+"""
+get_connection_message_to_variable(engine::InferenceEngine, variable_id::Int, factor_id::Int) = get_connection_message_to_variable(
+    get_connection(engine, variable_id, factor_id)::Connection
+)::Signal
+
+"""
+    get_connection_message_to_factor(engine::InferenceEngine, variable_id::Int, factor_id::Int)
+
+Alias for `get_connection_message_to_factor(get_connection(engine, variable_id, factor_id)::Connection)::Signal`.
+"""
+get_connection_message_to_factor(engine::InferenceEngine, variable_id::Int, factor_id::Int) = get_connection_message_to_factor(
+    get_connection(engine, variable_id, factor_id)::Connection
+)::Signal
+
+"""
+    get_connected_variable_ids(engine::InferenceEngine, factor_id::Int)
+
+Alias for `get_connected_variable_ids(get_model_engine(engine), factor_id)`.
+"""
+get_connected_variable_ids(engine::InferenceEngine, factor_id::Int) = get_connected_variable_ids(
+    get_model_engine(engine), factor_id
 )
 
 """
-    get_connection_label(engine::InferenceEngine, variable_id, factor_id) -> Symbol
+    get_connected_factor_ids(engine::InferenceEngine, variable_id::Int)
 
-Alias for `get_connection_label(get_connection(engine, variable_id, factor_id))`.
+Alias for `get_connected_factor_ids(get_model_engine(engine), variable_id)`.
 """
-get_connection_label(engine::InferenceEngine, variable_id, factor_id) = get_connection_label(
-    get_connection(engine, variable_id, factor_id)
-)
-
-"""
-    get_connection_index(engine::InferenceEngine, variable_id, factor_id) -> Int
-
-Alias for `get_connection_index(get_connection(engine, variable_id, factor_id))`.
-"""
-get_connection_index(engine::InferenceEngine, variable_id, factor_id) = get_connection_index(
-    get_connection(engine, variable_id, factor_id)
-)
-
-"""
-    get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) -> Cortex.Signal
-
-Alias for `get_message_to_variable(get_connection(engine, variable_id, factor_id))`.
-"""
-get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) = get_message_to_variable(
-    get_connection(engine, variable_id, factor_id)
-)
-
-"""
-    get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) -> Cortex.Signal
-
-Alias for `get_message_to_factor(get_connection(engine, variable_id, factor_id))`.
-"""
-get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) = get_message_to_factor(
-    get_connection(engine, variable_id, factor_id)
-)
-
-"""
-    get_connected_variable_ids(engine::InferenceEngine, factor_id)
-
-Alias for `get_connected_variable_ids(get_model_backend(engine), factor_id)`.
-"""
-get_connected_variable_ids(engine::InferenceEngine, factor_id) = get_connected_variable_ids(
-    get_model_backend(engine), factor_id
-)
-
-"""
-    get_connected_factor_ids(engine::InferenceEngine, variable_id)
-
-Alias for `get_connected_factor_ids(get_model_backend(engine), variable_id)`.
-"""
-get_connected_factor_ids(engine::InferenceEngine, variable_id) = get_connected_factor_ids(
-    get_model_backend(engine), variable_id
+get_connected_factor_ids(engine::InferenceEngine, variable_id::Int) = get_connected_factor_ids(
+    get_model_engine(engine), variable_id
 )
 
 """
@@ -307,7 +282,8 @@ This setup is typically done once upon engine creation and is crucial for dispat
 """
 function prepare_signals_metadata!(engine::InferenceEngine)
     for variable_id in get_variable_ids(engine)
-        marginal = get_marginal(engine, variable_id)::Cortex.Signal
+        variable = get_variable(engine, variable_id)
+        marginal = get_variable_marginal(variable)
         marginal.type = Cortex.InferenceSignalTypes.IndividualMarginal
         marginal.metadata = (variable_id,)
     end
@@ -315,11 +291,13 @@ function prepare_signals_metadata!(engine::InferenceEngine)
     for factor_id in get_factor_ids(engine)
         variable_ids = get_connected_variable_ids(engine, factor_id)
         for variable_id in variable_ids
-            message_to_factor = get_message_to_factor(engine, variable_id, factor_id)::Cortex.Signal
+            connection = get_connection(engine, variable_id, factor_id)
+
+            message_to_factor = get_connection_message_to_factor(connection)
             message_to_factor.type = Cortex.InferenceSignalTypes.MessageToFactor
             message_to_factor.metadata = (variable_id, factor_id)
 
-            message_to_variable = get_message_to_variable(engine, variable_id, factor_id)::Cortex.Signal
+            message_to_variable = get_connection_message_to_variable(connection)
             message_to_variable.type = Cortex.InferenceSignalTypes.MessageToVariable
             message_to_variable.metadata = (variable_id, factor_id)
         end
@@ -376,18 +354,25 @@ function request_inference_for(engine::InferenceEngine, variable_id)
 end
 
 function request_inference_for(engine::InferenceEngine, variable_ids::Union{AbstractVector, Tuple})
-    marginals = map(variable_id -> get_marginal(engine, variable_id)::Cortex.Signal, variable_ids)
 
-    for marginal in marginals
+    # Initialize the container for the marginals
+    marginals = Vector{Signal}(undef, length(variable_ids))
+
+    # For each variable, we flip the `is_potentially_pending` flag to `true`
+    # for all of the dependencies of its marginal and the corresponding linked signals
+    @inbounds for (i, variable_id) in enumerate(variable_ids)
+        variable = get_variable(engine, variable_id)
+        marginal = get_variable_marginal(variable)
+
         for dependency in get_dependencies(marginal)
             dependency.props = SignalProps(is_potentially_pending = true, is_pending = false)
         end
-    end
 
-    for variable_id in variable_ids
-        for dependency in get_joint_dependencies(engine.dependency_resolver, engine, variable_id)
-            dependency.props = SignalProps(is_potentially_pending = true, is_pending = false)
+        for linked_signal in get_variable_linked_signals(variable)
+            linked_signal.props = SignalProps(is_potentially_pending = true, is_pending = false)
         end
+
+        marginals[i] = marginal
     end
 
     readines_status = falses(length(variable_ids))
@@ -524,14 +509,13 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
                     end
                 end
 
-                for joint_dependency in get_joint_dependencies(engine.dependency_resolver, engine, variable_id)
-                    # Here it is fine to skip the joint dependency if it is not pending
-                    # because several variables might attempt to update the same joint dependency
-                    if !is_pending(joint_dependency)
+                for linked_signal in get_variable_linked_signals(get_variable(engine, variable_id))
+                    # We skip the linked signal if it is not pending
+                    if !is_pending(linked_signal)
                         continue
                     end
-                    trace_inference_execution(inference_round_trace, variable_id, joint_dependency) do
-                        process!(processor, request.engine, variable_id, joint_dependency)
+                    trace_inference_execution(inference_round_trace, variable_id, linked_signal) do
+                        process!(processor, request.engine, variable_id, linked_signal)
                     end
                 end
             end
@@ -567,7 +551,7 @@ struct TracedInferenceExecution
 end
 
 function Base.show(io::IO, execution::TracedInferenceExecution)
-    variable_data = get_variable_data(execution.engine, execution.variable_id)
+    variable_data = get_variable(execution.engine, execution.variable_id)
 
     signal = execution.signal
     signal_type = signal.type
@@ -576,19 +560,19 @@ function Base.show(io::IO, execution::TracedInferenceExecution)
 
     if signal_type === Cortex.InferenceSignalTypes.MessageToVariable
         (v_id, f_id) = signal.metadata
-        v_data = get_variable_data(execution.engine, v_id)
-        f_data = get_factor_data(execution.engine, f_id)
+        v_data = get_variable(execution.engine, v_id)
+        f_data = get_factor(execution.engine, f_id)
         print(io, "MessageToVariable(from = $(f_data), to = $(v_data))")
     elseif signal_type === Cortex.InferenceSignalTypes.MessageToFactor
         (v_id, f_id) = signal.metadata
-        v_data = get_variable_data(execution.engine, v_id)
-        f_data = get_factor_data(execution.engine, f_id)
+        v_data = get_variable(execution.engine, v_id)
+        f_data = get_factor(execution.engine, f_id)
         print(io, "MessageToFactor(from = $(v_data), to = $(f_data))")
     elseif signal_type === Cortex.InferenceSignalTypes.ProductOfMessages
         print(io, "ProductOfMessages(?)")
     elseif signal_type === Cortex.InferenceSignalTypes.IndividualMarginal
         (v_id,) = signal.metadata
-        v_data = get_variable_data(execution.engine, v_id)
+        v_data = get_variable(execution.engine, v_id)
         print(io, "IndividualMarginal($(v_data))")
     elseif signal_type === Cortex.InferenceSignalTypes.JointMarginal
         print(io, "JointMarginal(?)")
