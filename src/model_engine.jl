@@ -83,6 +83,68 @@ function link_signal_to_variable!(variable::Variable, signal::Signal)
 end
 
 """
+    Factor
+
+A data structure representing a probabilistic factor in a graphical model.
+
+A `Factor` encapsulates the functional form of a probabilistic relationship between variables 
+and maintains references to local marginal beliefs that are relevant to this factor's 
+computation and inference updates.
+
+## Fields
+
+- `functional_form::Any`: The mathematical or computational representation of the factor. 
+  This could be a function, a probability distribution, a constraint, or any other object 
+  that defines the probabilistic relationship encoded by this factor.
+- `local_marginals::Vector{Signal} = Signal[]`: A collection of reactive signals representing 
+  local marginal beliefs associated with this factor. These signals are typically updated 
+  during message-passing inference and may represent beliefs about individual variables 
+  or joint beliefs over subsets of variables connected to this factor.
+
+## See Also
+
+- [`get_factor_functional_form`](@ref): Retrieve the factor's functional form
+- [`get_factor_local_marginals`](@ref): Retrieve the factor's local marginals
+- [`add_local_marginal_to_factor!`](@ref): Add a local marginal to the factor
+- [`Variable`](@ref): The variable data structure that factors connect
+"""
+Base.@kwdef struct Factor
+    functional_form::Any
+    local_marginals::Vector{Signal} = Signal[]
+end
+
+"""
+    get_factor_functional_form(factor::Factor)
+
+Retrieves the functional form of a factor. 
+The functional form represents the mathematical or computational definition of the probabilistic relationship encoded by the factor.
+"""
+function get_factor_functional_form(factor::Factor)
+    return factor.functional_form
+end
+
+"""
+    get_factor_local_marginals(factor::Factor)
+
+Retrieves the local marginals associated with a factor.
+Local marginals are reactive signals that represent beliefs about variables or variable 
+subsets that are relevant to this factor's inference computations.
+"""
+function get_factor_local_marginals(factor::Factor)
+    return factor.local_marginals
+end
+
+"""
+    add_local_marginal_to_factor!(factor::Factor, local_marginal::Signal)
+
+Adds a local marginal signal to a factor's collection of local marginals.
+"""
+function add_local_marginal_to_factor!(factor::Factor, local_marginal::Signal)
+    push!(factor.local_marginals, local_marginal)
+    return nothing
+end
+
+"""
     UnsupportedModelBackendError{B}
 
 An error thrown when attempting to use an unsupported model backend.

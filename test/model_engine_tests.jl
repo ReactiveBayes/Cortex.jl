@@ -51,6 +51,38 @@ end
     @test some_other_signal in get_variable_linked_signals(v1)
 end
 
+@testitem "It should be possible to create a factor" begin
+    import Cortex: Factor, get_factor_functional_form, get_factor_local_marginals
+
+    for functional_form in [:f, :g, :h]
+        f = Factor(functional_form = functional_form)
+
+        @test get_factor_functional_form(f) == functional_form
+        @test get_factor_local_marginals(f) isa Vector{Cortex.Signal}
+    end
+end
+
+@testitem "Local marginals of a factor should be empty by default" begin
+    import Cortex: Factor, get_factor_local_marginals
+
+    f = Factor(functional_form = :f)
+
+    @test isempty(get_factor_local_marginals(f))
+end
+
+@testitem "It should be possible to add a local marginal to a factor" begin
+    import Cortex: Factor, get_factor_local_marginals, add_local_marginal_to_factor!
+
+    f = Factor(functional_form = :f)
+
+    local_marginal = Cortex.Signal()
+
+    add_local_marginal_to_factor!(f, local_marginal)
+
+    @test !isempty(get_factor_local_marginals(f))
+    @test local_marginal in get_factor_local_marginals(f)
+end
+
 @testitem "It should not be possible to create an inference engine for an unsupported model backend" begin
     import Cortex: UnsupportedModelBackendError
 
