@@ -30,8 +30,8 @@ function resolve_factor_dependencies!(::DefaultDependencyResolver, engine::Infer
     for variable_id_1 in ids_of_variables_connected_to_factor, variable_id_2 in ids_of_variables_connected_to_factor
         if variable_id_1 !== variable_id_2
             add_dependency!(
-                get_message_to_variable(engine, variable_id_1, factor_id), # outbound message from factor_id to variable_id_1
-                get_message_to_factor(engine, variable_id_2, factor_id)    # inbound message from variable_id_2 to factor_id
+                get_connection_message_to_variable(engine, variable_id_1, factor_id), # outbound message from factor_id to variable_id_1
+                get_connection_message_to_factor(engine, variable_id_2, factor_id)    # inbound message from variable_id_2 to factor_id
             )
         end
     end
@@ -40,7 +40,8 @@ end
 function resolve_variable_dependencies!(::DefaultDependencyResolver, engine::InferenceEngine, variable_id)
     ids_of_factors_connected_to_variable = get_connected_factor_ids(engine, variable_id)
 
-    marginal_of_variable = get_marginal(engine, variable_id)
+    variable = get_variable(engine, variable_id)
+    marginal_of_variable = get_variable_marginal(variable)
     nfactors = length(ids_of_factors_connected_to_variable)
 
     if nfactors == 0
@@ -54,7 +55,7 @@ function resolve_variable_dependencies!(::DefaultDependencyResolver, engine::Inf
     if nfactors < 2
         add_dependency!(
             marginal_of_variable,
-            get_message_to_variable(engine, variable_id, first(ids_of_factors_connected_to_variable));
+            get_connection_message_to_variable(engine, variable_id, first(ids_of_factors_connected_to_variable));
             intermediate = true
         )
         return nothing
@@ -67,7 +68,7 @@ function resolve_variable_dependencies!(::DefaultDependencyResolver, engine::Inf
 
         # Messages on edge 'k' are a function of messages coming from other factors `!= k`
         for factor in ids_of_factors_connected_to_variable
-            message_from_factor = get_message_to_variable(engine, variable_id, factor)
+            message_from_factor = get_connection_message_to_variable(engine, variable_id, factor)
 
             # Marginal of the variable is a function of the messages coming from the factors
             add_dependency!(marginal_of_variable, message_from_factor; intermediate = true)
@@ -75,12 +76,14 @@ function resolve_variable_dependencies!(::DefaultDependencyResolver, engine::Inf
             # We need to set dependencies on the `message_to_factor` signal too
             # We first check if anyone is actually interested in this message
             # by checking if there are any listeners for this message
-            message_to_factor = get_message_to_factor(engine, variable_id, factor)
+            message_to_factor = get_connection_message_to_factor(engine, variable_id, factor)
             if !isempty(get_listeners(message_to_factor))
                 # If there are listeners, we add a dependency on all other factors
                 # by adding a dependency on all other messages coming from those factors
                 for another_factor in Iterators.filter(Base.Fix1(!==, factor), ids_of_factors_connected_to_variable)
-                    message_from_another_factor = get_message_to_variable(engine, variable_id, another_factor)
+                    message_from_another_factor = get_connection_message_to_variable(
+                        engine, variable_id, another_factor
+                    )
 
                     # A `message_to_factor` signal is a function of all `message_from_another_factor` signals
                     add_dependency!(message_to_factor, message_from_another_factor; intermediate = true)
@@ -107,7 +110,7 @@ function resolve_variable_dependencies!(::DefaultDependencyResolver, engine::Inf
         # We need to set dependencies on the `message_to_factor` signal
         # We first check if anyone is actually interested in this message
         # by checking if there are any listeners for this message
-        message_to_left_factor = get_message_to_factor(engine, variable_id, left_factor)
+        message_to_left_factor = get_connection_message_to_factor(engine, variable_id, left_factor)
         if !isempty(get_listeners(message_to_left_factor))
             add_dependency!(message_to_left_factor, right_dependency; intermediate = true)
         end
@@ -117,7 +120,7 @@ function resolve_variable_dependencies!(::DefaultDependencyResolver, engine::Inf
         # We need to set dependencies on the `message_to_factor` signal
         # We first check if anyone is actually interested in this message
         # by checking if there are any listeners for this message
-        message_to_right_factor = get_message_to_factor(engine, variable_id, right_factor)
+        message_to_right_factor = get_connection_message_to_factor(engine, variable_id, right_factor)
         if !isempty(get_listeners(message_to_right_factor))
             add_dependency!(message_to_right_factor, left_dependency; intermediate = true)
         end
@@ -133,7 +136,9 @@ function form_segment_tree_dependency!(engine::InferenceEngine, range, factors_c
     @assert length(range) >= 1
 
     if length(range) == 1
-        return get_message_to_variable(engine, variable_id, first(view(factors_connected_to_variable, range)))
+        return get_connection_message_to_variable(
+            engine, variable_id, first(view(factors_connected_to_variable, range))
+        )
     end
 
     middle_point = div(length(range), 2)
@@ -147,7 +152,7 @@ function form_segment_tree_dependency!(engine::InferenceEngine, range, factors_c
         # We need to set dependencies on the `message_to_factor` signal
         # We first check if anyone is actually interested in this message
         # by checking if there are any listeners for this message
-        message_to_left_factor = get_message_to_factor(engine, variable_id, left_factor)
+        message_to_left_factor = get_connection_message_to_factor(engine, variable_id, left_factor)
         if !isempty(get_listeners(message_to_left_factor))
             add_dependency!(message_to_left_factor, right_dependency; intermediate = true)
         end
@@ -157,7 +162,7 @@ function form_segment_tree_dependency!(engine::InferenceEngine, range, factors_c
         # We need to set dependencies on the `message_to_factor` signal
         # We first check if anyone is actually interested in this message
         # by checking if there are any listeners for this message
-        message_to_right_factor = get_message_to_factor(engine, variable_id, right_factor)
+        message_to_right_factor = get_connection_message_to_factor(engine, variable_id, right_factor)
         if !isempty(get_listeners(message_to_right_factor))
             add_dependency!(message_to_right_factor, left_dependency; intermediate = true)
         end

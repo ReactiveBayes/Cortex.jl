@@ -262,8 +262,8 @@ throw_if_engine_unsupported(::SupportedModelEngine, engine::Any) = engine
 Retrieves the data structure representing a specific variable from the model engine.
 This function must be implemented by specific model engines. The returned object be [`Cortex.Variable`](@ref).
 """
-function get_variable_data(engine::Any, variable_id::Int)::Variable
-    throw(UnsupportedModelEngineError(engine, get_variable_data))
+function get_variable(engine::Any, variable_id::Int)::Variable
+    throw(UnsupportedModelEngineError(engine, get_variable))
 end
 
 """

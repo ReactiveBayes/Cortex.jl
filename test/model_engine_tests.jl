@@ -147,9 +147,7 @@ end
     struct UnsupportedEngineThatDoesNotImplementInterfaceMethods end
 
     dummy_engine = UnsupportedEngineThatDoesNotImplementInterfaceMethods()
-    @test_throws UnsupportedModelEngineError(dummy_engine, Cortex.get_variable_data) Cortex.get_variable_data(
-        dummy_engine, 1
-    )
+    @test_throws UnsupportedModelEngineError(dummy_engine, Cortex.get_variable) Cortex.get_variable(dummy_engine, 1)
 
     @test_throws UnsupportedModelEngineError(dummy_engine, Cortex.get_factor) Cortex.get_factor(dummy_engine, 1)
 

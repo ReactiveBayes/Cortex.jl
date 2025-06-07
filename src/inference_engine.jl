@@ -132,11 +132,11 @@ end
 Base.broadcastable(engine::InferenceEngine) = Ref(engine)
 
 """
-    get_variable_data(engine::InferenceEngine, variable_id)
+    get_variable(engine::InferenceEngine, variable_id::Int)
 
-Alias for `get_variable_data(get_model_engine(engine), variable_id)`.
+Alias for `get_variable(get_model_engine(engine), variable_id)`.
 """
-get_variable_data(engine::InferenceEngine, variable_id) = get_variable_data(get_model_engine(engine), variable_id)
+get_variable(engine::InferenceEngine, variable_id::Int) = get_variable(get_model_engine(engine), variable_id)::Variable
 
 """
     get_variable_ids(engine::InferenceEngine)
@@ -146,18 +146,11 @@ Alias for `get_variable_ids(get_model_engine(engine))`.
 get_variable_ids(engine::InferenceEngine) = get_variable_ids(get_model_engine(engine))
 
 """
-    get_marginal(engine::InferenceEngine, variable_id) -> Cortex.Signal
+    get_factor(engine::InferenceEngine, factor_id::Int)
 
-Alias for `get_marginal(get_variable_data(engine, variable_id))`.
+Alias for `get_factor(get_model_engine(engine), factor_id)`.
 """
-get_marginal(engine::InferenceEngine, variable_id) = get_marginal(get_variable_data(engine, variable_id))
-
-"""
-    get_factor_data(engine::InferenceEngine, factor_id)
-
-Alias for `get_factor_data(get_model_engine(engine), factor_id)`.
-"""
-get_factor_data(engine::InferenceEngine, factor_id) = get_factor_data(get_model_engine(engine), factor_id)
+get_factor(engine::InferenceEngine, factor_id::Int) = get_factor(get_model_engine(engine), factor_id)::Factor
 
 """
     get_factor_ids(engine::InferenceEngine)
@@ -167,59 +160,43 @@ Alias for `get_factor_ids(get_model_engine(engine))`.
 get_factor_ids(engine::InferenceEngine) = get_factor_ids(get_model_engine(engine))
 
 """
-    get_connection(engine::InferenceEngine, variable_id, factor_id)
+    get_connection(engine::InferenceEngine, variable_id::Int, factor_id::Int)
 
 Alias for `get_connection(get_model_engine(engine), variable_id, factor_id)`.
 """
-get_connection(engine::InferenceEngine, variable_id, factor_id) =
-    get_connection(get_model_engine(engine), variable_id, factor_id)
+get_connection(engine::InferenceEngine, variable_id::Int, factor_id::Int) =
+    get_connection(get_model_engine(engine), variable_id, factor_id)::Connection
 
 """
-    get_connection_label(engine::InferenceEngine, variable_id, factor_id) -> Symbol
+    get_connection_message_to_variable(engine::InferenceEngine, variable_id::Int, factor_id::Int)
 
-Alias for `get_connection_label(get_connection(engine, variable_id, factor_id))`.
+Alias for `get_connection_message_to_variable(get_connection(engine, variable_id, factor_id)::Connection)::Signal`.
 """
-get_connection_label(engine::InferenceEngine, variable_id, factor_id) =
-    get_connection_label(get_connection(engine, variable_id, factor_id))
-
-"""
-    get_connection_index(engine::InferenceEngine, variable_id, factor_id) -> Int
-
-Alias for `get_connection_index(get_connection(engine, variable_id, factor_id))`.
-"""
-get_connection_index(engine::InferenceEngine, variable_id, factor_id) =
-    get_connection_index(get_connection(engine, variable_id, factor_id))
+get_connection_message_to_variable(engine::InferenceEngine, variable_id::Int, factor_id::Int) =
+    get_connection_message_to_variable(get_connection(engine, variable_id, factor_id)::Connection)::Signal
 
 """
-    get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) -> Cortex.Signal
+    get_connection_message_to_factor(engine::InferenceEngine, variable_id::Int, factor_id::Int)
 
-Alias for `get_message_to_variable(get_connection(engine, variable_id, factor_id))`.
+Alias for `get_connection_message_to_factor(get_connection(engine, variable_id, factor_id)::Connection)::Signal`.
 """
-get_message_to_variable(engine::InferenceEngine, variable_id, factor_id) =
-    get_message_to_variable(get_connection(engine, variable_id, factor_id))
-
-"""
-    get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) -> Cortex.Signal
-
-Alias for `get_message_to_factor(get_connection(engine, variable_id, factor_id))`.
-"""
-get_message_to_factor(engine::InferenceEngine, variable_id, factor_id) =
-    get_message_to_factor(get_connection(engine, variable_id, factor_id))
+get_connection_message_to_factor(engine::InferenceEngine, variable_id::Int, factor_id::Int) =
+    get_connection_message_to_factor(get_connection(engine, variable_id, factor_id)::Connection)::Signal
 
 """
-    get_connected_variable_ids(engine::InferenceEngine, factor_id)
+    get_connected_variable_ids(engine::InferenceEngine, factor_id::Int)
 
 Alias for `get_connected_variable_ids(get_model_engine(engine), factor_id)`.
 """
-get_connected_variable_ids(engine::InferenceEngine, factor_id) =
+get_connected_variable_ids(engine::InferenceEngine, factor_id::Int) =
     get_connected_variable_ids(get_model_engine(engine), factor_id)
 
 """
-    get_connected_factor_ids(engine::InferenceEngine, variable_id)
+    get_connected_factor_ids(engine::InferenceEngine, variable_id::Int)
 
 Alias for `get_connected_factor_ids(get_model_engine(engine), variable_id)`.
 """
-get_connected_factor_ids(engine::InferenceEngine, variable_id) =
+get_connected_factor_ids(engine::InferenceEngine, variable_id::Int) =
     get_connected_factor_ids(get_model_engine(engine), variable_id)
 
 """
@@ -300,7 +277,8 @@ This setup is typically done once upon engine creation and is crucial for dispat
 """
 function prepare_signals_metadata!(engine::InferenceEngine)
     for variable_id in get_variable_ids(engine)
-        marginal = get_marginal(engine, variable_id)::Cortex.Signal
+        variable = get_variable(engine, variable_id)
+        marginal = get_variable_marginal(variable)
         marginal.type = Cortex.InferenceSignalTypes.IndividualMarginal
         marginal.metadata = (variable_id,)
     end
@@ -308,11 +286,13 @@ function prepare_signals_metadata!(engine::InferenceEngine)
     for factor_id in get_factor_ids(engine)
         variable_ids = get_connected_variable_ids(engine, factor_id)
         for variable_id in variable_ids
-            message_to_factor = get_message_to_factor(engine, variable_id, factor_id)::Cortex.Signal
+            connection = get_connection(engine, variable_id, factor_id)
+
+            message_to_factor = get_connection_message_to_factor(connection)
             message_to_factor.type = Cortex.InferenceSignalTypes.MessageToFactor
             message_to_factor.metadata = (variable_id, factor_id)
 
-            message_to_variable = get_message_to_variable(engine, variable_id, factor_id)::Cortex.Signal
+            message_to_variable = get_connection_message_to_variable(connection)
             message_to_variable.type = Cortex.InferenceSignalTypes.MessageToVariable
             message_to_variable.metadata = (variable_id, factor_id)
         end
