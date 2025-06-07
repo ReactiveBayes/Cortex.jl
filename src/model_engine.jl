@@ -144,268 +144,184 @@ function add_local_marginal_to_factor!(factor::Factor, local_marginal::Signal)
     return nothing
 end
 
+Base.@kwdef struct Connection
+    label::Symbol
+    index::Int = 0
+    message_to_variable::Signal = Signal()
+    message_to_factor::Signal = Signal()
+end
+
+function get_connection_label(connection::Connection)
+    return connection.label
+end
+
+function get_connection_index(connection::Connection)
+    return connection.index
+end
+
+function get_connection_message_to_variable(connection::Connection)
+    return connection.message_to_variable
+end
+
+function get_connection_message_to_factor(connection::Connection)
+    return connection.message_to_factor
+end
+
 """
-    UnsupportedModelBackendError{B}
+    UnsupportedModelEngineError{B}
 
-An error thrown when attempting to use an unsupported model backend.
+An error thrown when attempting to use an unsupported model engine.
 
-This error is typically thrown by [`throw_if_backend_unsupported`](@ref) when [`is_backend_supported`](@ref)
-returns [`UnsupportedModelBackend`](@ref).
+This error is typically thrown by [`throw_if_engine_unsupported`](@ref) when [`is_engine_supported`](@ref)
+returns [`UnsupportedModelEngine`](@ref).
 
 ## Fields
 
-- `model_backend::B`: The unsupported model backend instance.
+- `model_engine::B`: The unsupported model engine instance.
 
 ## See Also
 
-- [`is_backend_supported`](@ref)
-- [`throw_if_backend_unsupported`](@ref)
-- [`UnsupportedModelBackend`](@ref)
+- [`is_engine_supported`](@ref)
+- [`throw_if_engine_unsupported`](@ref)
+- [`UnsupportedModelEngine`](@ref)
 """
-struct UnsupportedModelBackendError{B} <: Exception
-    model_backend::B
+struct UnsupportedModelEngineError{B, F} <: Exception
+    model_engine::B
+    missing_function::F
 end
 
-function Base.showerror(io::IO, e::UnsupportedModelBackendError)
-    print(io, "The model backend of type `$(typeof(e.model_backend))` is not supported.")
+function Base.showerror(io::IO, e::UnsupportedModelEngineError)
+    if isnothing(e.missing_function)
+        print(io, "The model engine of type `$(typeof(e.model_engine))` is not supported.")
+    else
+        print(
+            io,
+            "The model engine of type `$(typeof(e.model_engine))` does not implement the function `$(e.missing_function)`."
+        )
+    end
 end
 
-"A trait object indicating a supported model backend. Use this as a return value of [`Cortex.is_backend_supported`](@ref)."
-struct SupportedModelBackend end
+"A trait object indicating a supported model engine. Use this as a return value of [`Cortex.is_engine_supported`](@ref)."
+struct SupportedModelEngine end
 
-"A trait object indicating an unsupported model backend. Used as a default return value of [`Cortex.is_backend_supported`](@ref)."
-struct UnsupportedModelBackend end
+"A trait object indicating an unsupported model engine. Used as a default return value of [`Cortex.is_engine_supported`](@ref)."
+struct UnsupportedModelEngine end
 
 """
-    is_backend_supported(backend::Any) -> Union{SupportedModelBackend, UnsupportedModelBackend}
+    is_engine_supported(engine::Any) -> Union{SupportedModelEngine, UnsupportedModelEngine}
 
-Checks if a given `backend` is supported by the `InferenceEngine`.
+Checks if a given `engine` is supported by the `InferenceEngine`.
 
-This function should be extended by specific backend implementations.
+This function should be extended by specific engine implementations.
 
 ## Arguments
 
-- `backend::Any`: The model backend instance to check.
+- `engine::Any`: The model engine instance to check.
 
 ## Returns
 
-- `SupportedModelBackend()` if the backend is supported.
-- `UnsupportedModelBackend()` otherwise.
+- `SupportedModelEngine()` if the engine is supported.
+- `UnsupportedModelEngine()` otherwise.
 
 ## Example 
 
 ```jldoctest
-julia> struct CustomModelBackend end
+julia> struct CustomModelEngine end
 
-julia> Cortex.is_backend_supported(::CustomModelBackend) = Cortex.SupportedModelBackend();
+julia> Cortex.is_engine_supported(::CustomModelEngine) = Cortex.SupportedModelEngine();
 ```
 
 ```jldoctest
 julia> struct SomeOtherDataStructure end
 
-julia> Cortex.is_backend_supported(::SomeOtherDataStructure) = Cortex.UnsupportedModelBackend();
+julia> Cortex.is_engine_supported(::SomeOtherDataStructure) = Cortex.UnsupportedModelEngine();
 ```
 
 ## See Also
 
-- [`SupportedModelBackend`](@ref)
-- [`UnsupportedModelBackend`](@ref)
-- [`throw_if_backend_unsupported`](@ref)
+- [`SupportedModelEngine`](@ref)
+- [`UnsupportedModelEngine`](@ref)
+- [`throw_if_engine_unsupported`](@ref)
 """
-is_backend_supported(::Any) = UnsupportedModelBackend()
-
-"""
-    throw_if_backend_unsupported(backend::Any)
-
-Throws an [`UnsupportedModelBackendError`](@ref) if the backend is unsupported.
-"""
-function throw_if_backend_unsupported end
-
-throw_if_backend_unsupported(backend::Any) = throw_if_backend_unsupported(is_backend_supported(backend), backend)
-throw_if_backend_unsupported(::UnsupportedModelBackend, backend::Any) = throw(UnsupportedModelBackendError(backend))
-throw_if_backend_unsupported(::SupportedModelBackend, backend::Any) = backend
+is_engine_supported(::Any) = UnsupportedModelEngine()
 
 """
-    get_variable_data(model_backend, variable_id)
+    throw_if_engine_unsupported(engine::Any)
 
-Retrieves the data structure representing a specific variable from the model backend.
-
-This function must be implemented by specific model backends. The returned object must implement
-`get_marginal(variable_data_object) -> Cortex.Signal`.
-
-## Arguments
-
-- `model_backend`: The model backend instance.
-- `variable_id`: The identifier of the variable to retrieve.
-
-## Returns
-
-A model backend-specific data structure for the variable.
-
-## See Also
-
-- [`get_marginal`](@ref)
-- [`get_variable_ids`](@ref)
+Throws an [`UnsupportedModelEngineError`](@ref) if the engine is unsupported.
 """
-function get_variable_data end
+function throw_if_engine_unsupported end
+
+throw_if_engine_unsupported(engine::Any) = throw_if_engine_unsupported(is_engine_supported(engine), engine)
+throw_if_engine_unsupported(::UnsupportedModelEngine, engine::Any) = throw(UnsupportedModelEngineError(engine, nothing))
+throw_if_engine_unsupported(::SupportedModelEngine, engine::Any) = engine
 
 """
-    get_marginal(variable_data)
+    get_variable(model_engine, variable_id::Int)::Variable
 
-Retrieves the marginal [`Signal`](@ref Cortex.Signal) associated with a variable data structure.
-
-This function must be implemented for any variable data structure returned by [`get_variable_data`](@ref).
-
-## Arguments
-
-- `variable_data`: The model backend-specific data structure representing a variable.
-
-## Returns
-
-- `Cortex.Signal`: The reactive signal representing the variable's marginal.
-
-## See Also
-
-- [`get_variable_data`](@ref)
+Retrieves the data structure representing a specific variable from the model engine.
+This function must be implemented by specific model engines. The returned object be [`Cortex.Variable`](@ref).
 """
-function get_marginal end
+function get_variable_data(engine::Any, variable_id::Int)::Variable
+    throw(UnsupportedModelEngineError(engine, get_variable_data))
+end
 
 """
-    get_factor_data(model_backend, factor_id)
+    get_factor(model_engine, factor_id::Int)::Factor
 
-Retrieves the data structure representing a specific factor from the model backend.
-
-This function must be implemented by specific model backends.
-
-## Arguments
-
-- `model_backend`: The model backend instance.
-- `factor_id`: The identifier of the factor to retrieve.
-
-## Returns
-
-A model backend-specific data structure for the factor.
-
-## See Also
-
-- [`get_factor_ids`](@ref)
+Retrieves the data structure representing a specific factor from the model engine.
+This function must be implemented by specific model engines. The returned object be [`Cortex.Factor`](@ref).
 """
-function get_factor_data end
+function get_factor(engine::Any, factor_id::Int)::Factor
+    throw(UnsupportedModelEngineError(engine, get_factor))
+end
 
 """
-    get_variable_ids(model_backend)
+    get_variable_ids(model_engine)
 
-Retrieves an iterator over all variable identifiers in the model backend.
-
-This function must be implemented by specific model backends.
-
-## Arguments
-
-- `model_backend`: The model backend instance.
-
-## Returns
-
-An iterator of variable identifiers.
-
-## See Also
-
-- [`get_variable_data`](@ref)
+Retrieves an iterator over all variable identifiers in the model engine.
+This function must be implemented by specific model engines.
 """
-function get_variable_ids end
+function get_variable_ids(engine::Any)
+    throw(UnsupportedModelEngineError(engine, get_variable_ids))
+end
 
 """
-    get_factor_ids(model_backend)
+    get_factor_ids(model_engine)
 
-Retrieves an iterator over all factor identifiers in the model backend.
-
-This function must be implemented by specific model backends.
-
-## Arguments
-
-- `model_backend`: The model backend instance.
-
-## Returns
-
-An iterator of factor identifiers.
-
-## See Also
-
-- [`get_factor_data`](@ref)
+Retrieves an iterator over all factor identifiers in the model engine.
+This function must be implemented by specific model engines.
 """
-function get_factor_ids end
+function get_factor_ids(engine::Any)
+    throw(UnsupportedModelEngineError(engine, get_factor_ids))
+end
 
 """
-    get_connection(model_backend, variable_id, factor_id)
+    get_connection(model_engine, variable_id::Int, factor_id::Int)::Connection
 
 Retrieves the data structure representing the connection between a specified variable and factor.
-
-This function must be implemented by specific model backends. The returned object must implement:
-- `get_connection_label(connection_object) -> Symbol`
-- `get_connection_index(connection_object) -> Int`
-- `get_message_to_variable(connection_object) -> Cortex.Signal`
-- `get_message_to_factor(connection_object) -> Cortex.Signal`
-
-## Arguments
-
-- `model_backend`: The model backend instance.
-- `variable_id`: The identifier of the variable in the connection.
-- `factor_id`: The identifier of the factor in the connection.
-
-## Returns
-
-A model backend-specific data structure for the connection.
-
-## See Also
-
-- [`get_connection_label`](@ref)
-- [`get_connection_index`](@ref)
-- [`get_message_to_variable`](@ref)
-- [`get_message_to_factor`](@ref)
+The returned object must be [`Cortex.Connection`](@ref).
 """
-function get_connection end
+function get_connection(engine::Any, variable_id::Int, factor_id::Int)::Connection
+    throw(UnsupportedModelEngineError(engine, get_connection))
+end
 
 """
-    get_connected_variable_ids(model_backend, factor_id)
+    get_connected_variable_ids(model_engine, factor_id::Int)
 
 Retrieves an iterator over the identifiers of variables connected to a given factor.
-
-This function must be implemented by specific model backends.
-
-## Arguments
-
-- `model_backend`: The model backend instance.
-- `factor_id`: The identifier of the factor.
-
-## Returns
-
-An iterator of connected variable identifiers.
-
-## See Also
-
-- [`get_connected_factor_ids`](@ref)
-- [`get_connection`](@ref)
+This function must be implemented by specific model engines.
 """
-function get_connected_variable_ids end
+function get_connected_variable_ids(engine::Any, factor_id::Int)
+    throw(UnsupportedModelEngineError(engine, get_connected_variable_ids))
+end
 
 """
-    get_connected_factor_ids(model_backend, variable_id)
+    get_connected_factor_ids(model_engine, variable_id::Int)
 
 Retrieves an iterator over the identifiers of factors connected to a given variable.
-
-This function must be implemented by specific model backends.
-
-## Arguments
-
-- `model_backend`: The model backend instance.
-- `variable_id`: The identifier of the variable.
-
-## Returns
-
-An iterator of connected factor identifiers.
-
-## See Also
-
-- [`get_connected_variable_ids`](@ref)
-- [`get_connection`](@ref)
+This function must be implemented by specific model engines.
 """
-function get_connected_factor_ids end
+function get_connected_factor_ids(engine::Any, variable_id::Int)
+    throw(UnsupportedModelEngineError(engine, get_connected_factor_ids))
+end

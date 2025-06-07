@@ -83,18 +83,89 @@ end
     @test local_marginal in get_factor_local_marginals(f)
 end
 
+@testitem "It should be possible to create a connection" begin
+    import Cortex:
+        Connection,
+        get_connection_label,
+        get_connection_index,
+        get_connection_message_to_variable,
+        get_connection_message_to_factor
+
+    for label in [:c, :d, :e]
+        for index in [1, 2, 3]
+            c = Connection(label = label, index = index)
+
+            @test get_connection_label(c) == label
+            @test get_connection_index(c) == index
+            @test get_connection_message_to_variable(c) isa Cortex.Signal
+            @test get_connection_message_to_factor(c) isa Cortex.Signal
+        end
+    end
+end
+
+@testitem "Default index of a connection should be 0" begin
+    import Cortex: Connection, get_connection_index
+
+    c = Connection(label = :c)
+
+    @test get_connection_index(c) == 0
+end
+
+@testitem "`UnsupportedModelEngineError` should have a human readable message" begin
+    import Cortex: UnsupportedModelEngineError
+    import Base: showerror
+
+    @test sprint(showerror, UnsupportedModelEngineError(1, nothing)) ==
+        "The model engine of type `Int64` is not supported."
+
+    @test sprint(showerror, UnsupportedModelEngineError(1, Cortex.get_variable_data)) ==
+        "The model engine of type `Int64` does not implement the function `get_variable_data`."
+
+    @test sprint(showerror, UnsupportedModelEngineError(1, Cortex.get_factor)) ==
+        "The model engine of type `Int64` does not implement the function `get_factor`."
+end
+
 @testitem "It should not be possible to create an inference engine for an unsupported model backend" begin
-    import Cortex: UnsupportedModelBackendError
+    import Cortex: UnsupportedModelEngineError
 
-    @test_throws UnsupportedModelBackendError(1) Cortex.InferenceEngine(model_backend = 1)
-    @test_throws UnsupportedModelBackendError("string") Cortex.InferenceEngine(model_backend = "string")
+    @test_throws UnsupportedModelEngineError(1, nothing) Cortex.InferenceEngine(model_engine = 1)
+    @test_throws UnsupportedModelEngineError("string", nothing) Cortex.InferenceEngine(model_engine = "string")
 
-    @test_throws "The model backend of type `Int64` is not supported." Cortex.InferenceEngine(model_backend = 1)
-    @test_throws "The model backend of type `String` is not supported." Cortex.InferenceEngine(model_backend = "string")
+    @test_throws "The model engine of type `Int64` is not supported." Cortex.InferenceEngine(model_engine = 1)
+    @test_throws "The model engine of type `String` is not supported." Cortex.InferenceEngine(model_engine = "string")
 
     # Test with a custom, unsupported struct type
-    struct MyDummyUnsupportedBackend end
+    struct MyDummyUnsupportedEngine end
 
-    dummy_backend = MyDummyUnsupportedBackend()
-    @test_throws UnsupportedModelBackendError(dummy_backend) Cortex.InferenceEngine(model_backend = dummy_backend)
+    dummy_engine = MyDummyUnsupportedEngine()
+    @test_throws UnsupportedModelEngineError(dummy_engine, nothing) Cortex.InferenceEngine(model_engine = dummy_engine)
+end
+
+@testitem "An engine that does not implement interface methods should throw an error" begin
+    import Cortex: UnsupportedModelEngineError
+
+    struct UnsupportedEngineThatDoesNotImplementInterfaceMethods end
+
+    dummy_engine = UnsupportedEngineThatDoesNotImplementInterfaceMethods()
+    @test_throws UnsupportedModelEngineError(dummy_engine, Cortex.get_variable_data) Cortex.get_variable_data(
+        dummy_engine, 1
+    )
+
+    @test_throws UnsupportedModelEngineError(dummy_engine, Cortex.get_factor) Cortex.get_factor(dummy_engine, 1)
+
+    @test_throws UnsupportedModelEngineError(dummy_engine, Cortex.get_variable_ids) Cortex.get_variable_ids(
+        dummy_engine
+    )
+    @test_throws UnsupportedModelEngineError(dummy_engine, Cortex.get_factor_ids) Cortex.get_factor_ids(dummy_engine)
+
+    @test_throws UnsupportedModelEngineError(dummy_engine, Cortex.get_connection) Cortex.get_connection(
+        dummy_engine, 1, 1
+    )
+
+    @test_throws UnsupportedModelEngineError(dummy_engine, Cortex.get_connected_variable_ids) Cortex.get_connected_variable_ids(
+        dummy_engine, 1
+    )
+    @test_throws UnsupportedModelEngineError(dummy_engine, Cortex.get_connected_factor_ids) Cortex.get_connected_factor_ids(
+        dummy_engine, 1
+    )
 end
