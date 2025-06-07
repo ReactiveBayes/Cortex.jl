@@ -20,7 +20,7 @@ Core structure for managing and executing probabilistic inference.
 
 ## Fields
 
-- `model_engine::M`: The underlying model backend (e.g., a `BipartiteFactorGraph`).
+- `model_engine::M`: The underlying model engine (e.g., a `BipartiteFactorGraph`).
 - `dependency_resolver`: Resolves dependencies between signals during inference.
 - `inference_request_processor`: Processes inference requests and manages computation order.
 - `tracer`: Optional tracer for monitoring inference execution.
@@ -41,7 +41,7 @@ InferenceEngine(;
 
 ### Arguments
 
-- `model_engine`: An instance of a supported model backend.
+- `model_engine`: An instance of a supported model engine.
 - `dependency_resolver`: Custom dependency resolver (optional).
 - `inference_request_processor`: Custom request processor (optional).
 - `prepare_signals_metadata`: Whether to initialize signal types and metadata.
@@ -102,7 +102,7 @@ end
 """
     get_model_engine(engine::InferenceEngine)
 
-Retrieves the underlying model backend from the `InferenceEngine`.
+Retrieves the underlying model engine from the `InferenceEngine`.
 
 ## Arguments
 
@@ -110,7 +110,7 @@ Retrieves the underlying model backend from the `InferenceEngine`.
 
 ## Returns
 
-The model backend object stored within the engine.
+The model engine object stored within the engine.
 
 ## See Also
 

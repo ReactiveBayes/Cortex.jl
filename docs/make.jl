@@ -19,7 +19,7 @@ makedocs(;
     pages = [
         "Home" => "index.md",
         "Signals: The Core of Reactivity" => "signals.md",
-        "Model Backend: The Foundation" => "model_backend.md",
+        "Model Engine: The Foundation" => "model_engine.md",
         "Inference Engine: The Brain" => "inference_engine.md"
     ]
 )

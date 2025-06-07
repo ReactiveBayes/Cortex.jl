@@ -230,16 +230,18 @@ function Base.show(io::IO, connection::Connection)
 end
 
 """
-    UnsupportedModelEngineError{B}
+    UnsupportedModelEngineError(engine, [ missing_function ])
 
 An error thrown when attempting to use an unsupported model engine.
 
 This error is typically thrown by [`throw_if_engine_unsupported`](@ref) when [`is_engine_supported`](@ref)
-returns [`UnsupportedModelEngine`](@ref).
+returns [`UnsupportedModelEngine`](@ref). Additionaly, accepts a function name that was missing from the model engine.
+In this case, the error message will include the missing function name.
 
 ## Fields
 
-- `model_engine::B`: The unsupported model engine instance.
+- `model_engine`: The unsupported model engine instance.
+- `missing_function`: The name of the function that was missing from the model engine.
 
 ## See Also
 
