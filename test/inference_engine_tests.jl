@@ -574,17 +574,7 @@ end
     using .TestUtils, .TestDistributions
     using JET, BipartiteFactorGraphs, StableRNGs, Random
 
-    struct StructuredResolver <: Cortex.AbstractDependencyResolver
-        joint_dependencies::Dict{Any, Vector{Cortex.Signal}}
-
-        function StructuredResolver()
-            return new(Dict{Any, Vector{Cortex.Signal}}())
-        end
-    end
-
-    function Cortex.get_joint_dependencies(resolver::StructuredResolver, engine::Cortex.InferenceEngine, variable_id)
-        return get(resolver.joint_dependencies, variable_id, [])
-    end
+    struct StructuredResolver <: Cortex.AbstractDependencyResolver end
 
     function Cortex.resolve_variable_dependencies!(::StructuredResolver, engine::Cortex.InferenceEngine, variable_id)
         return Cortex.resolve_variable_dependencies!(Cortex.DefaultDependencyResolver(), engine, variable_id)
@@ -632,11 +622,11 @@ end
                         type = Cortex.InferenceSignalTypes.JointMarginal, metadata = (factor_id, cluster)
                     )
                     for v_id in cluster
-                        if haskey(resolver.joint_dependencies, v_id)
-                            push!(resolver.joint_dependencies[v_id], new_joint_marginal)
-                        else
-                            resolver.joint_dependencies[v_id] = [new_joint_marginal]
-                        end
+                        # Add the linked signal to the variable
+                        Cortex.link_signal_to_variable!(Cortex.get_variable(engine, v_id), new_joint_marginal)
+
+                        # Add the joint marginal to the factor
+                        Cortex.add_local_marginal_to_factor!(Cortex.get_factor(engine, factor_id), new_joint_marginal)
 
                         # Should be always weak here?
                         Cortex.add_dependency!(

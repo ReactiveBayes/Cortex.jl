@@ -354,18 +354,25 @@ function request_inference_for(engine::InferenceEngine, variable_id)
 end
 
 function request_inference_for(engine::InferenceEngine, variable_ids::Union{AbstractVector, Tuple})
-    marginals = map(variable_id -> get_variable_marginal(get_variable(engine, variable_id)), variable_ids)
 
-    for marginal in marginals
+    # Initialize the container for the marginals
+    marginals = Vector{Signal}(undef, length(variable_ids))
+
+    # For each variable, we flip the `is_potentially_pending` flag to `true`
+    # for all of the dependencies of its marginal and the corresponding linked signals
+    @inbounds for (i, variable_id) in enumerate(variable_ids)
+        variable = get_variable(engine, variable_id)
+        marginal = get_variable_marginal(variable)
+
         for dependency in get_dependencies(marginal)
             dependency.props = SignalProps(is_potentially_pending = true, is_pending = false)
         end
-    end
 
-    for variable_id in variable_ids
-        for dependency in get_joint_dependencies(engine.dependency_resolver, engine, variable_id)
-            dependency.props = SignalProps(is_potentially_pending = true, is_pending = false)
+        for linked_signal in get_variable_linked_signals(variable)
+            linked_signal.props = SignalProps(is_potentially_pending = true, is_pending = false)
         end
+
+        marginals[i] = marginal
     end
 
     readines_status = falses(length(variable_ids))
@@ -502,14 +509,13 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
                     end
                 end
 
-                for joint_dependency in get_joint_dependencies(engine.dependency_resolver, engine, variable_id)
-                    # Here it is fine to skip the joint dependency if it is not pending
-                    # because several variables might attempt to update the same joint dependency
-                    if !is_pending(joint_dependency)
+                for linked_signal in get_variable_linked_signals(get_variable(engine, variable_id))
+                    # We skip the linked signal if it is not pending
+                    if !is_pending(linked_signal)
                         continue
                     end
-                    trace_inference_execution(inference_round_trace, variable_id, joint_dependency) do
-                        process!(processor, request.engine, variable_id, joint_dependency)
+                    trace_inference_execution(inference_round_trace, variable_id, linked_signal) do
+                        process!(processor, request.engine, variable_id, linked_signal)
                     end
                 end
             end
