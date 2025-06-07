@@ -1,3 +1,87 @@
+
+"""
+    Variable
+
+A data structure representing a probabilistic variable in a model.
+
+A `Variable` encapsulates the essential components of a probabilistic variable, including its 
+identity, current marginal belief (as a reactive signal), and any signals that should be 
+automatically updated when the variable's marginal changes.
+
+## Fields
+
+- `name::Symbol`: The symbolic name of the variable, used for identification and display.
+- `index::Any = nothing`: An optional index for the variable, useful for indexed variable families 
+  (e.g., `x[1]`, `x[2]`, etc.). Can be any type that makes sense for the specific use case.
+- `marginal::Signal = Signal()`: A reactive signal representing the current marginal belief 
+  over this variable. Updated automatically during inference.
+- `linked_signals::Vector{Signal} = Signal[]`: A collection of signals that should be 
+  automatically updated when this variable's marginal changes. These might represent joint 
+  marginals around factors, or any other derived quantities that depend on this variable.
+
+## See Also
+
+- [`get_variable_name`](@ref): Retrieve the variable's name
+- [`get_variable_index`](@ref): Retrieve the variable's index  
+- [`get_variable_marginal`](@ref): Retrieve the variable's marginal signal
+- [`get_variable_linked_signals`](@ref): Retrieve the variable's linked signals
+- [`link_signal_to_variable!`](@ref): Link additional signals to the variable
+"""
+Base.@kwdef struct Variable
+    name::Symbol
+    index::Any = nothing
+    marginal::Signal = Signal()
+    linked_signals::Vector{Signal} = Signal[]
+end
+
+"""
+    get_variable_name(variable::Variable)
+
+Retrieves the name of a variable.
+"""
+function get_variable_name(variable::Variable)
+    return variable.name
+end
+
+"""
+    get_variable_index(variable::Variable)
+
+Retrieves the index of a variable.
+"""
+function get_variable_index(variable::Variable)
+    return variable.index
+end
+
+"""
+    get_variable_marginal(variable::Variable)
+
+Retrieves the marginal of a variable.
+"""
+function get_variable_marginal(variable::Variable)
+    return variable.marginal
+end
+
+"""
+    get_variable_linked_signals(variable::Variable)
+
+Retrieves the linked signals of a variable. 
+The linked signals are the signals that should be updated when the marginal (which is a signal) of the variable is updated.
+Those may, for example, represent joint marginals around certain factors, but any other signal can be linked as well.
+"""
+function get_variable_linked_signals(variable::Variable)
+    return variable.linked_signals
+end
+
+"""
+    link_signal_to_variable!(variable::Variable, signal::Signal)
+
+Links a signal to a variable. The linked signal will be updated automatically when the marginal of the variable is updated.
+"""
+function link_signal_to_variable!(variable::Variable, signal::Signal)
+    push!(variable.linked_signals, signal)
+    return nothing
+end
+
 """
     UnsupportedModelBackendError{B}
 
