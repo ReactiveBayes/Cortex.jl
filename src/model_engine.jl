@@ -82,6 +82,14 @@ function link_signal_to_variable!(variable::Variable, signal::Signal)
     return nothing
 end
 
+function Base.show(io::IO, variable::Variable)
+    print(io, "Variable(name = $(variable.name)")
+    if !isnothing(variable.index)
+        print(io, ", index = $(variable.index)")
+    end
+    print(io, ")")
+end
+
 """
     Factor
 
@@ -144,6 +152,32 @@ function add_local_marginal_to_factor!(factor::Factor, local_marginal::Signal)
     return nothing
 end
 
+function Base.show(io::IO, factor::Factor)
+    print(io, "Factor(functional_form = $(factor.functional_form))")
+end
+
+"""
+    Connection
+
+A data structure representing a connection between a variable and a factor in a probabilistic graphical model.
+
+A `Connection` encapsulates the communication interface between variables and factors during 
+message-passing inference. It maintains the bidirectional message signals and provides 
+identification through labels and indices.
+
+## Fields
+
+- `label::Symbol`: A symbolic label identifying the role or type of this connection 
+  (e.g., `:observation`, `:prior`, `:likelihood`). Used for semantic identification 
+  of the connection's purpose in the model.
+- `index::Int = 0`: A numeric index for the connection, useful when multiple connections 
+  of the same type exist between a variable-factor pair, or for ordering connections 
+  in message-passing algorithms.
+- `message_to_variable::Signal = Signal()`: A reactive signal carrying messages sent 
+  from the factor to the variable. Updated during factor-to-variable message passing.
+- `message_to_factor::Signal = Signal()`: A reactive signal carrying messages sent 
+  from the variable to the factor. Updated during variable-to-factor message passing.
+"""
 Base.@kwdef struct Connection
     label::Symbol
     index::Int = 0
@@ -151,20 +185,48 @@ Base.@kwdef struct Connection
     message_to_factor::Signal = Signal()
 end
 
+"""
+    get_connection_label(connection::Connection)
+
+Retrieves the symbolic label of a connection.
+"""
 function get_connection_label(connection::Connection)
     return connection.label
 end
 
+"""
+    get_connection_index(connection::Connection)
+
+Retrieves the numeric index of a connection.
+"""
 function get_connection_index(connection::Connection)
     return connection.index
 end
 
+"""
+    get_connection_message_to_variable(connection::Connection)
+
+Retrieves the reactive signal carrying messages from factor to variable.
+"""
 function get_connection_message_to_variable(connection::Connection)
     return connection.message_to_variable
 end
 
+"""
+    get_connection_message_to_factor(connection::Connection)
+
+Retrieves the reactive signal carrying messages from variable to factor.
+"""
 function get_connection_message_to_factor(connection::Connection)
     return connection.message_to_factor
+end
+
+function Base.show(io::IO, connection::Connection)
+    print(io, "Connection(label = $(connection.label)")
+    if !iszero(connection.index)
+        print(io, ", index = $(connection.index)")
+    end
+    print(io, ")")
 end
 
 """

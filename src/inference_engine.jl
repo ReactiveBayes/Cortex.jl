@@ -349,7 +349,7 @@ function request_inference_for(engine::InferenceEngine, variable_id)
 end
 
 function request_inference_for(engine::InferenceEngine, variable_ids::Union{AbstractVector, Tuple})
-    marginals = map(variable_id -> get_marginal(engine, variable_id)::Cortex.Signal, variable_ids)
+    marginals = map(variable_id -> get_variable_marginal(get_variable(engine, variable_id)), variable_ids)
 
     for marginal in marginals
         for dependency in get_dependencies(marginal)
@@ -537,7 +537,7 @@ struct TracedInferenceExecution
 end
 
 function Base.show(io::IO, execution::TracedInferenceExecution)
-    variable_data = get_variable_data(execution.engine, execution.variable_id)
+    variable_data = get_variable(execution.engine, execution.variable_id)
 
     signal = execution.signal
     signal_type = signal.type
@@ -546,19 +546,19 @@ function Base.show(io::IO, execution::TracedInferenceExecution)
 
     if signal_type === Cortex.InferenceSignalTypes.MessageToVariable
         (v_id, f_id) = signal.metadata
-        v_data = get_variable_data(execution.engine, v_id)
-        f_data = get_factor_data(execution.engine, f_id)
+        v_data = get_variable(execution.engine, v_id)
+        f_data = get_factor(execution.engine, f_id)
         print(io, "MessageToVariable(from = $(f_data), to = $(v_data))")
     elseif signal_type === Cortex.InferenceSignalTypes.MessageToFactor
         (v_id, f_id) = signal.metadata
-        v_data = get_variable_data(execution.engine, v_id)
-        f_data = get_factor_data(execution.engine, f_id)
+        v_data = get_variable(execution.engine, v_id)
+        f_data = get_factor(execution.engine, f_id)
         print(io, "MessageToFactor(from = $(v_data), to = $(f_data))")
     elseif signal_type === Cortex.InferenceSignalTypes.ProductOfMessages
         print(io, "ProductOfMessages(?)")
     elseif signal_type === Cortex.InferenceSignalTypes.IndividualMarginal
         (v_id,) = signal.metadata
-        v_data = get_variable_data(execution.engine, v_id)
+        v_data = get_variable(execution.engine, v_id)
         print(io, "IndividualMarginal($(v_data))")
     elseif signal_type === Cortex.InferenceSignalTypes.JointMarginal
         print(io, "JointMarginal(?)")
