@@ -118,8 +118,8 @@ end
     @test sprint(showerror, UnsupportedModelEngineError(1, nothing)) ==
         "The model engine of type `Int64` is not supported."
 
-    @test sprint(showerror, UnsupportedModelEngineError(1, Cortex.get_variable_data)) ==
-        "The model engine of type `Int64` does not implement the function `get_variable_data`."
+    @test sprint(showerror, UnsupportedModelEngineError(1, Cortex.get_variable)) ==
+        "The model engine of type `Int64` does not implement the function `get_variable`."
 
     @test sprint(showerror, UnsupportedModelEngineError(1, Cortex.get_factor)) ==
         "The model engine of type `Int64` does not implement the function `get_factor`."
