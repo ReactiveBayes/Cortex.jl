@@ -164,40 +164,45 @@ get_factor_ids(engine::InferenceEngine) = get_factor_ids(get_model_engine(engine
 
 Alias for `get_connection(get_model_engine(engine), variable_id, factor_id)`.
 """
-get_connection(engine::InferenceEngine, variable_id::Int, factor_id::Int) =
-    get_connection(get_model_engine(engine), variable_id, factor_id)::Connection
+get_connection(engine::InferenceEngine, variable_id::Int, factor_id::Int) = get_connection(
+    get_model_engine(engine), variable_id, factor_id
+)::Connection
 
 """
     get_connection_message_to_variable(engine::InferenceEngine, variable_id::Int, factor_id::Int)
 
 Alias for `get_connection_message_to_variable(get_connection(engine, variable_id, factor_id)::Connection)::Signal`.
 """
-get_connection_message_to_variable(engine::InferenceEngine, variable_id::Int, factor_id::Int) =
-    get_connection_message_to_variable(get_connection(engine, variable_id, factor_id)::Connection)::Signal
+get_connection_message_to_variable(engine::InferenceEngine, variable_id::Int, factor_id::Int) = get_connection_message_to_variable(
+    get_connection(engine, variable_id, factor_id)::Connection
+)::Signal
 
 """
     get_connection_message_to_factor(engine::InferenceEngine, variable_id::Int, factor_id::Int)
 
 Alias for `get_connection_message_to_factor(get_connection(engine, variable_id, factor_id)::Connection)::Signal`.
 """
-get_connection_message_to_factor(engine::InferenceEngine, variable_id::Int, factor_id::Int) =
-    get_connection_message_to_factor(get_connection(engine, variable_id, factor_id)::Connection)::Signal
+get_connection_message_to_factor(engine::InferenceEngine, variable_id::Int, factor_id::Int) = get_connection_message_to_factor(
+    get_connection(engine, variable_id, factor_id)::Connection
+)::Signal
 
 """
     get_connected_variable_ids(engine::InferenceEngine, factor_id::Int)
 
 Alias for `get_connected_variable_ids(get_model_engine(engine), factor_id)`.
 """
-get_connected_variable_ids(engine::InferenceEngine, factor_id::Int) =
-    get_connected_variable_ids(get_model_engine(engine), factor_id)
+get_connected_variable_ids(engine::InferenceEngine, factor_id::Int) = get_connected_variable_ids(
+    get_model_engine(engine), factor_id
+)
 
 """
     get_connected_factor_ids(engine::InferenceEngine, variable_id::Int)
 
 Alias for `get_connected_factor_ids(get_model_engine(engine), variable_id)`.
 """
-get_connected_factor_ids(engine::InferenceEngine, variable_id::Int) =
-    get_connected_factor_ids(get_model_engine(engine), variable_id)
+get_connected_factor_ids(engine::InferenceEngine, variable_id::Int) = get_connected_factor_ids(
+    get_model_engine(engine), variable_id
+)
 
 """
     set_signals_variants!(engine::InferenceEngine)
@@ -317,13 +322,159 @@ function request_inference_for(engine::InferenceEngine, variable_ids::Union{Abst
     return InferenceRequest(engine, variable_ids, marginals, readines_status)
 end
 
+"""
+    AbstractInferenceRequestProcessor
+
+Abstract type for inference request processors that handle different types of inference signals.
+Subtypes must implement methods for processing various signal variants.
+"""
 abstract type AbstractInferenceRequestProcessor end
 
-function process_message_to_variable end
-function process_message_to_factor end
-function process_individual_marginal end
-function process_product_of_messages end
-function process_joint_marginal end
+"""
+    compute_message_to_variable(processor, engine, variant, signal, dependencies)
+
+Compute a message from a factor to a variable.
+
+# Arguments
+- `processor::AbstractInferenceRequestProcessor`: The processor instance
+- `engine::InferenceEngine`: The inference engine
+- `variant::InferenceSignalVariants.MessageToVariable`: The message variant
+- `signal::InferenceSignal`: The signal to compute
+- `dependencies`: The dependencies of the signal
+
+# Returns
+The computed message value.
+
+# Throws
+Error if not implemented by the processor.
+"""
+function compute_message_to_variable!(
+    processor::AbstractInferenceRequestProcessor,
+    engine::InferenceEngine,
+    variant::InferenceSignalVariants.MessageToVariable,
+    signal::InferenceSignal,
+    dependencies
+)
+    error(
+        "The function `compute_message_to_variable` is not implemented for the processor of type $(typeof(processor))"
+    )
+end
+
+"""
+    compute_message_to_factor(processor, engine, variant, signal, dependencies)
+
+Compute a message from a variable to a factor.
+
+# Arguments
+- `processor::AbstractInferenceRequestProcessor`: The processor instance
+- `engine::InferenceEngine`: The inference engine
+- `variant::InferenceSignalVariants.MessageToFactor`: The message variant
+- `signal::InferenceSignal`: The signal to compute
+- `dependencies`: The dependencies of the signal
+
+# Returns
+The computed message value.
+
+# Throws
+Error if not implemented by the processor.
+"""
+function compute_message_to_factor!(
+    processor::AbstractInferenceRequestProcessor,
+    engine::InferenceEngine,
+    variant::InferenceSignalVariants.MessageToFactor,
+    signal::InferenceSignal,
+    dependencies
+)
+    error("The function `compute_message_to_factor` is not implemented for the processor of type $(typeof(processor))")
+end
+
+"""
+    compute_individual_marginal(processor, engine, variant, signal, dependencies)
+
+Compute an individual marginal for a variable.
+
+# Arguments
+- `processor::AbstractInferenceRequestProcessor`: The processor instance
+- `engine::InferenceEngine`: The inference engine
+- `variant::InferenceSignalVariants.IndividualMarginal`: The marginal variant
+- `signal::InferenceSignal`: The signal to compute
+- `dependencies`: The dependencies of the signal
+
+# Returns
+The computed marginal value.
+
+# Throws
+Error if not implemented by the processor.
+"""
+function compute_individual_marginal!(
+    processor::AbstractInferenceRequestProcessor,
+    engine::InferenceEngine,
+    variant::InferenceSignalVariants.IndividualMarginal,
+    signal::InferenceSignal,
+    dependencies
+)
+    error(
+        "The function `compute_individual_marginal` is not implemented for the processor of type $(typeof(processor))"
+    )
+end
+
+"""
+    compute_product_of_messages(processor, engine, variant, signal, dependencies)
+
+Compute the product of multiple messages.
+
+# Arguments
+- `processor::AbstractInferenceRequestProcessor`: The processor instance
+- `engine::InferenceEngine`: The inference engine
+- `variant::InferenceSignalVariants.ProductOfMessages`: The product variant
+- `signal::InferenceSignal`: The signal to compute
+- `dependencies`: The dependencies of the signal
+
+# Returns
+The computed product value.
+
+# Throws
+Error if not implemented by the processor.
+"""
+function compute_product_of_messages!(
+    processor::AbstractInferenceRequestProcessor,
+    engine::InferenceEngine,
+    variant::InferenceSignalVariants.ProductOfMessages,
+    signal::InferenceSignal,
+    dependencies
+)
+    error(
+        "The function `compute_product_of_messages` is not implemented for the processor of type $(typeof(processor))"
+    )
+end
+
+"""
+    compute_joint_marginal(processor, engine, variant, signal, dependencies)
+
+Compute a joint marginal for multiple variables.
+
+# Arguments
+- `processor::AbstractInferenceRequestProcessor`: The processor instance
+- `engine::InferenceEngine`: The inference engine
+- `variant::InferenceSignalVariants.JointMarginal`: The joint marginal variant
+- `signal::InferenceSignal`: The signal to compute
+- `dependencies`: The dependencies of the signal
+
+# Returns
+The computed joint marginal value.
+
+# Throws
+Error if not implemented by the processor.
+"""
+function compute_joint_marginal!(
+    processor::AbstractInferenceRequestProcessor,
+    engine::InferenceEngine,
+    variant::InferenceSignalVariants.JointMarginal,
+    signal::InferenceSignal,
+    dependencies
+)
+    error("The function `compute_joint_marginal` is not implemented for the processor of type $(typeof(processor))")
+end
 
 function process!(
     processor::AbstractInferenceRequestProcessor, engine::InferenceEngine, variable_id, dependency::InferenceSignal
@@ -332,23 +483,23 @@ function process!(
         variant = signal.variant::InferenceSignalVariant
 
         if isa(variant, InferenceSignalVariants.MessageToVariable)
-            process_message_to_variable(
+            compute_message_to_variable!(
                 processor, engine, variant::InferenceSignalVariants.MessageToVariable, signal, dependencies
             )
         elseif isa(variant, InferenceSignalVariants.MessageToFactor)
-            process_message_to_factor(
+            compute_message_to_factor!(
                 processor, engine, variant::InferenceSignalVariants.MessageToFactor, signal, dependencies
             )
         elseif isa(variant, InferenceSignalVariants.IndividualMarginal)
-            process_individual_marginal(
+            compute_individual_marginal!(
                 processor, engine, variant::InferenceSignalVariants.IndividualMarginal, signal, dependencies
             )
         elseif isa(variant, InferenceSignalVariants.ProductOfMessages)
-            process_product_of_messages(
+            compute_product_of_messages!(
                 processor, engine, variant::InferenceSignalVariants.ProductOfMessages, signal, dependencies
             )
         elseif isa(variant, InferenceSignalVariants.JointMarginal)
-            process_joint_marginal(
+            compute_joint_marginal!(
                 processor, engine, variant::InferenceSignalVariants.JointMarginal, signal, dependencies
             )
         else

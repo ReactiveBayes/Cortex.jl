@@ -58,8 +58,6 @@ function format_node_variant(s::Cortex.Signal, variant_to_string_fn::Function)
     end
 end
 
-
-
 # Creates the node header with title and optional depth level indicator
 function format_node_header(title::String, level::Int; show_depth::Bool = true)
     depth_info = show_depth && level > 0 ? """<font point-size="8" color="gray">Depth: $level</font>""" : ""
@@ -387,7 +385,7 @@ function print_signal_node(
         print(io, format_node_variant(s, variant_to_string_fn))
         has_content = true
     end
-    
+
     # If no content was added, add a placeholder row
     if !has_content
         print(io, """<tr> <td align="left"></td></tr>""")
@@ -447,16 +445,7 @@ end
 
 # Formats and renders dependencies of a signal node, creating child nodes and edges
 function format_signal_dependencies(
-    s,
-    dependencies,
-    id,
-    level,
-    max_depth,
-    max_dependencies,
-    variant_to_string_fn,
-    footer,
-    show_value,
-    show_variant
+    s, dependencies, id, level, max_depth, max_dependencies, variant_to_string_fn, footer, show_value, show_variant
 )
     result = IOBuffer()
     print(result, """<tr> <td> <table border="0" cellborder="0" cellspacing="0">""")

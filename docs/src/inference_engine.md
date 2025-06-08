@@ -48,6 +48,12 @@ The engine uses different signal variants to manage various aspects of inference
 
 ```@docs
 Cortex.InferenceSignalVariants
+Cortex.InferenceSignalVariants.Unspecified
+Cortex.InferenceSignalVariants.MessageToFactor
+Cortex.InferenceSignalVariants.MessageToVariable
+Cortex.InferenceSignalVariants.ProductOfMessages
+Cortex.InferenceSignalVariants.IndividualMarginal
+Cortex.InferenceSignalVariants.JointMarginal
 Cortex.InferenceSignalVariant
 Cortex.InferenceSignal
 Cortex.create_inference_signal
@@ -61,6 +67,12 @@ Cortex.request_inference_for
 Cortex.InferenceRequest
 Cortex.scan_inference_request
 Cortex.InferenceRequestScanner
+Cortex.AbstractInferenceRequestProcessor
+Cortex.compute_message_to_variable
+Cortex.compute_message_to_factor
+Cortex.compute_individual_marginal
+Cortex.compute_product_of_messages
+Cortex.compute_joint_marginal
 Cortex.process_inference_request
 Cortex.process!
 Cortex.update_marginals!

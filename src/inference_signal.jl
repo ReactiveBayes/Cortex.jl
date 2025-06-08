@@ -2,59 +2,83 @@
 """
     InferenceSignalVariants
 
-A data type that represents different variants of signals used in inference.
-These variants are used to identify the role and context of a signal in the inference process.
-
-# Variants
-
-- `Unspecified`: A variant that is used by default when no other variant is specified.
-- `MessageToFactor`: A message from a factor to a variable, containing:
-  - `variable_id::Int`: The ID of the target variable
-  - `factor_id::Int`: The ID of the source factor
-- `MessageToVariable`: A message from a variable to a factor, containing:
-  - `variable_id::Int`: The ID of the source variable
-  - `factor_id::Int`: The ID of the target factor
-- `ProductOfMessages`: A product of messages from a variable to multiple factors, containing:
-  - `variable_id::Int`: The ID of the source variable
-  - `range::UnitRange{Int}`: The range of factor IDs
-  - `factors_connected_to_variable::Vector{Int}`: The IDs of factors connected to the variable
-- `IndividualMarginal`: An individual marginal of a variable, containing:
-  - `variable_id::Int`: The ID of the variable
-- `JointMarginal`: A joint marginal of a factor, containing:
-  - `factor_id::Int`: The ID of the factor
-  - `variable_ids::Vector{Int}`: The IDs of variables connected to the factor
-
-See also: [`InferenceSignal`](@ref), [`create_inference_signal`](@ref)
+A module containing the different variants of inference signals used in the inference engine.
+These variants define the structure and behavior of messages passed between variables and factors.
 """
 module InferenceSignalVariants
-# A variant that is used by default when no other variant is specified
+
+"""
+    Unspecified
+
+A variant that is used by default when no other variant is specified.
+"""
 struct Unspecified end
 
-# A message from a factor to a variable
+"""
+    MessageToFactor
+
+A message from a factor to a variable.
+
+# Fields
+- `variable_id::Int`: The ID of the target variable
+- `factor_id::Int`: The ID of the source factor
+"""
 struct MessageToFactor
     variable_id::Int
     factor_id::Int
 end
 
-# A message from a variable to a factor
+"""
+    MessageToVariable
+
+A message from a variable to a factor.
+
+# Fields
+- `variable_id::Int`: The ID of the source variable
+- `factor_id::Int`: The ID of the target factor
+"""
 struct MessageToVariable
     variable_id::Int
     factor_id::Int
 end
 
-# A product of messages from a variable to a factor
+"""
+    ProductOfMessages
+
+A product of messages from a variable to multiple factors.
+
+# Fields
+- `variable_id::Int`: The ID of the source variable
+- `range::UnitRange{Int}`: The range of factor IDs
+- `factors_connected_to_variable::Vector{Int}`: The IDs of factors connected to the variable
+"""
 struct ProductOfMessages
     variable_id::Int
     range::UnitRange{Int}
     factors_connected_to_variable::Vector{Int}
 end
 
-# An individual marginal of a variable
+"""
+    IndividualMarginal
+
+An individual marginal of a variable.
+
+# Fields
+- `variable_id::Int`: The ID of the variable
+"""
 struct IndividualMarginal
     variable_id::Int
 end
 
-# A joint marginal of a factor
+"""
+    JointMarginal
+
+A joint marginal of a factor.
+
+# Fields
+- `factor_id::Int`: The ID of the factor
+- `variable_ids::Vector{Int}`: The IDs of variables connected to the factor
+"""
 struct JointMarginal
     factor_id::Int
     variable_ids::Vector{Int}

@@ -548,17 +548,21 @@ end
     return @inbounds(props.chunks[chunk_index] & (mask << offset_within_chunk)) != 0
 end
 
-@inline is_dependency_intermediate(props::SignalDependenciesProps, index::Int)::Bool =
-    is_dependency(props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble)
+@inline is_dependency_intermediate(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
+    props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble
+)
 
-@inline is_dependency_weak(props::SignalDependenciesProps, index::Int)::Bool =
-    is_dependency(props, index, SignalDependenciesProps_IsWeakMask_SingleNibble)
+@inline is_dependency_weak(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
+    props, index, SignalDependenciesProps_IsWeakMask_SingleNibble
+)
 
-@inline is_dependency_computed(props::SignalDependenciesProps, index::Int)::Bool =
-    is_dependency(props, index, SignalDependenciesProps_IsComputedMask_SingleNibble)
+@inline is_dependency_computed(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
+    props, index, SignalDependenciesProps_IsComputedMask_SingleNibble
+)
 
-@inline is_dependency_fresh(props::SignalDependenciesProps, index::Int)::Bool =
-    is_dependency(props, index, SignalDependenciesProps_IsFreshMask_SingleNibble)
+@inline is_dependency_fresh(props::SignalDependenciesProps, index::Int)::Bool = is_dependency(
+    props, index, SignalDependenciesProps_IsFreshMask_SingleNibble
+)
 
 @inline function set_dependency!(props::SignalDependenciesProps, index::Int, mask::UInt64)
     chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
@@ -566,17 +570,21 @@ end
     return nothing
 end
 
-@inline set_dependency_intermediate!(props::SignalDependenciesProps, index::Int) =
-    set_dependency!(props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble)
+@inline set_dependency_intermediate!(props::SignalDependenciesProps, index::Int) = set_dependency!(
+    props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble
+)
 
-@inline set_dependency_weak!(props::SignalDependenciesProps, index::Int) =
-    set_dependency!(props, index, SignalDependenciesProps_IsWeakMask_SingleNibble)
+@inline set_dependency_weak!(props::SignalDependenciesProps, index::Int) = set_dependency!(
+    props, index, SignalDependenciesProps_IsWeakMask_SingleNibble
+)
 
-@inline set_dependency_computed!(props::SignalDependenciesProps, index::Int) =
-    set_dependency!(props, index, SignalDependenciesProps_IsComputedMask_SingleNibble)
+@inline set_dependency_computed!(props::SignalDependenciesProps, index::Int) = set_dependency!(
+    props, index, SignalDependenciesProps_IsComputedMask_SingleNibble
+)
 
-@inline set_dependency_fresh!(props::SignalDependenciesProps, index::Int) =
-    set_dependency!(props, index, SignalDependenciesProps_IsFreshMask_SingleNibble)
+@inline set_dependency_fresh!(props::SignalDependenciesProps, index::Int) = set_dependency!(
+    props, index, SignalDependenciesProps_IsFreshMask_SingleNibble
+)
 
 @inline function unset_dependency!(props::SignalDependenciesProps, index::Int, mask::UInt64)
     chunk_index, offset_within_chunk = signal_dependencies_props_get_offset(index)
@@ -584,17 +592,21 @@ end
     return nothing
 end
 
-@inline unset_dependency_intermediate!(props::SignalDependenciesProps, index::Int) =
-    unset_dependency!(props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble)
+@inline unset_dependency_intermediate!(props::SignalDependenciesProps, index::Int) = unset_dependency!(
+    props, index, SignalDependenciesProps_IsIntermediateMask_SingleNibble
+)
 
-@inline unset_dependency_weak!(props::SignalDependenciesProps, index::Int) =
-    unset_dependency!(props, index, SignalDependenciesProps_IsWeakMask_SingleNibble)
+@inline unset_dependency_weak!(props::SignalDependenciesProps, index::Int) = unset_dependency!(
+    props, index, SignalDependenciesProps_IsWeakMask_SingleNibble
+)
 
-@inline unset_dependency_computed!(props::SignalDependenciesProps, index::Int) =
-    unset_dependency!(props, index, SignalDependenciesProps_IsComputedMask_SingleNibble)
+@inline unset_dependency_computed!(props::SignalDependenciesProps, index::Int) = unset_dependency!(
+    props, index, SignalDependenciesProps_IsComputedMask_SingleNibble
+)
 
-@inline unset_dependency_fresh!(props::SignalDependenciesProps, index::Int) =
-    unset_dependency!(props, index, SignalDependenciesProps_IsFreshMask_SingleNibble)
+@inline unset_dependency_fresh!(props::SignalDependenciesProps, index::Int) = unset_dependency!(
+    props, index, SignalDependenciesProps_IsFreshMask_SingleNibble
+)
 
 @inline function set_all_dependencies!(props::SignalDependenciesProps, mask::UInt64)
     for i in eachindex(props.chunks)
@@ -603,17 +615,21 @@ end
     return nothing
 end
 
-@inline set_all_dependencies_intermediate!(props::SignalDependenciesProps) =
-    set_all_dependencies!(props, SignalDependenciesProps_IsIntermediateMask_AllNibbles)
+@inline set_all_dependencies_intermediate!(props::SignalDependenciesProps) = set_all_dependencies!(
+    props, SignalDependenciesProps_IsIntermediateMask_AllNibbles
+)
 
-@inline set_all_dependencies_weak!(props::SignalDependenciesProps) =
-    set_all_dependencies!(props, SignalDependenciesProps_IsWeakMask_AllNibbles)
+@inline set_all_dependencies_weak!(props::SignalDependenciesProps) = set_all_dependencies!(
+    props, SignalDependenciesProps_IsWeakMask_AllNibbles
+)
 
-@inline set_all_dependencies_computed!(props::SignalDependenciesProps) =
-    set_all_dependencies!(props, SignalDependenciesProps_IsComputedMask_AllNibbles)
+@inline set_all_dependencies_computed!(props::SignalDependenciesProps) = set_all_dependencies!(
+    props, SignalDependenciesProps_IsComputedMask_AllNibbles
+)
 
-@inline set_all_dependencies_fresh!(props::SignalDependenciesProps) =
-    set_all_dependencies!(props, SignalDependenciesProps_IsFreshMask_AllNibbles)
+@inline set_all_dependencies_fresh!(props::SignalDependenciesProps) = set_all_dependencies!(
+    props, SignalDependenciesProps_IsFreshMask_AllNibbles
+)
 
 @inline function unset_all_dependencies!(props::SignalDependenciesProps, mask::UInt64)
     for i in eachindex(props.chunks)
@@ -622,17 +638,21 @@ end
     return nothing
 end
 
-@inline unset_all_dependencies_intermediate!(props::SignalDependenciesProps) =
-    unset_all_dependencies!(props, SignalDependenciesProps_IsIntermediateMask_AllNibbles)
+@inline unset_all_dependencies_intermediate!(props::SignalDependenciesProps) = unset_all_dependencies!(
+    props, SignalDependenciesProps_IsIntermediateMask_AllNibbles
+)
 
-@inline unset_all_dependencies_weak!(props::SignalDependenciesProps) =
-    unset_all_dependencies!(props, SignalDependenciesProps_IsWeakMask_AllNibbles)
+@inline unset_all_dependencies_weak!(props::SignalDependenciesProps) = unset_all_dependencies!(
+    props, SignalDependenciesProps_IsWeakMask_AllNibbles
+)
 
-@inline unset_all_dependencies_computed!(props::SignalDependenciesProps) =
-    unset_all_dependencies!(props, SignalDependenciesProps_IsComputedMask_AllNibbles)
+@inline unset_all_dependencies_computed!(props::SignalDependenciesProps) = unset_all_dependencies!(
+    props, SignalDependenciesProps_IsComputedMask_AllNibbles
+)
 
-@inline unset_all_dependencies_fresh!(props::SignalDependenciesProps) =
-    unset_all_dependencies!(props, SignalDependenciesProps_IsFreshMask_AllNibbles)
+@inline unset_all_dependencies_fresh!(props::SignalDependenciesProps) = unset_all_dependencies!(
+    props, SignalDependenciesProps_IsFreshMask_AllNibbles
+)
 
 # is_meeting_pending_criteria(props::SignalDependenciesProps) -> Bool
 #

@@ -244,11 +244,11 @@ end
 
     struct BetaBernoulliInferenceRequestProcessor <: Cortex.AbstractInferenceRequestProcessor end
 
-    function Cortex.process_message_to_variable(
+    function Cortex.compute_message_to_variable!(
         processor::BetaBernoulliInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.MessageToVariable,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         factor = Cortex.get_factor(engine, variant.factor_id)
@@ -263,11 +263,11 @@ end
         error("Unreachable reached")
     end
 
-    function Cortex.process_individual_marginal(
+    function Cortex.compute_individual_marginal!(
         processor::BetaBernoulliInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.IndividualMarginal,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         answer = Cortex.get_value(dependencies[1])::Beta
@@ -278,11 +278,11 @@ end
         return answer
     end
 
-    function Cortex.process_product_of_messages(
+    function Cortex.compute_product_of_messages!(
         processor::BetaBernoulliInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.ProductOfMessages,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         answer = Cortex.get_value(dependencies[1])::Beta
@@ -293,21 +293,21 @@ end
         return answer
     end
 
-    function Cortex.process_message_to_factor(
+    function Cortex.compute_message_to_factor!(
         processor::BetaBernoulliInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.MessageToFactor,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         error("Should not be invoked")
     end
 
-    function Cortex.process_joint_marginal(
+    function Cortex.compute_joint_marginal!(
         processor::BetaBernoulliInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.JointMarginal,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         error("Should not be invoked")
@@ -382,41 +382,41 @@ end
 
     struct SSMBeliefPropagationInferenceRequestProcessor <: Cortex.AbstractInferenceRequestProcessor end
 
-    function Cortex.process_individual_marginal(
+    function Cortex.compute_individual_marginal!(
         processor::SSMBeliefPropagationInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.IndividualMarginal,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return reduce(product, Cortex.get_value.(dependencies))
     end
 
-    function Cortex.process_product_of_messages(
+    function Cortex.compute_product_of_messages!(
         processor::SSMBeliefPropagationInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.ProductOfMessages,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return reduce(product, Cortex.get_value.(dependencies))
     end
 
-    function Cortex.process_message_to_factor(
+    function Cortex.compute_message_to_factor!(
         processor::SSMBeliefPropagationInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.MessageToFactor,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return reduce(product, Cortex.get_value.(dependencies))
     end
 
-    function Cortex.process_message_to_variable(
+    function Cortex.compute_message_to_variable!(
         processor::SSMBeliefPropagationInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.MessageToVariable,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         @assert length(dependencies) == 1
@@ -495,51 +495,51 @@ end
 
     struct TypeStableSSMBeliefPropagationInferenceRequestProcessor <: Cortex.AbstractInferenceRequestProcessor end
 
-    function Cortex.process_individual_marginal(
+    function Cortex.compute_individual_marginal!(
         processor::TypeStableSSMBeliefPropagationInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.IndividualMarginal,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return 1
     end
 
-    function Cortex.process_product_of_messages(
+    function Cortex.compute_product_of_messages!(
         processor::TypeStableSSMBeliefPropagationInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.ProductOfMessages,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return 1
     end
 
-    function Cortex.process_message_to_factor(
+    function Cortex.compute_message_to_factor!(
         processor::TypeStableSSMBeliefPropagationInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.MessageToFactor,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return 1
     end
 
-    function Cortex.process_message_to_variable(
+    function Cortex.compute_message_to_variable!(
         processor::TypeStableSSMBeliefPropagationInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.MessageToVariable,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return 1
     end
 
-    function Cortex.process_joint_marginal(
+    function Cortex.compute_joint_marginal!(
         processor::TypeStableSSMBeliefPropagationInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.JointMarginal,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return 1
@@ -630,31 +630,31 @@ end
 
     struct SSMMeanFieldInferenceRequestProcessor <: Cortex.AbstractInferenceRequestProcessor end
 
-    function Cortex.process_individual_marginal(
+    function Cortex.compute_individual_marginal!(
         processor::SSMMeanFieldInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.IndividualMarginal,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return reduce(product, Cortex.get_value.(dependencies))
     end
 
-    function Cortex.process_message_to_factor(
+    function Cortex.compute_message_to_factor!(
         processor::SSMMeanFieldInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.MessageToFactor,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return reduce(product, Cortex.get_value.(dependencies))
     end
 
-    function Cortex.process_message_to_variable(
+    function Cortex.compute_message_to_variable!(
         processor::SSMMeanFieldInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.MessageToVariable,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         @assert length(dependencies) == 2
@@ -916,41 +916,41 @@ end
 
     struct SSMStructuredInferenceRequestProcessor <: Cortex.AbstractInferenceRequestProcessor end
 
-    function Cortex.process_individual_marginal(
+    function Cortex.compute_individual_marginal!(
         processor::SSMStructuredInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.IndividualMarginal,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return reduce(product, Cortex.get_value.(dependencies))
     end
 
-    function Cortex.process_message_to_factor(
+    function Cortex.compute_message_to_factor!(
         processor::SSMStructuredInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.MessageToFactor,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return reduce(product, Cortex.get_value.(dependencies))
     end
 
-    function Cortex.process_product_of_messages(
+    function Cortex.compute_product_of_messages!(
         processor::SSMStructuredInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.ProductOfMessages,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return reduce(product, Cortex.get_value.(dependencies))
     end
 
-    function Cortex.process_joint_marginal(
+    function Cortex.compute_joint_marginal!(
         processor::SSMStructuredInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.JointMarginal,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         @assert length(dependencies) == 3
@@ -978,11 +978,11 @@ end
         return MvNormalMeanPrecision(μ, W)
     end
 
-    function Cortex.process_message_to_variable(
+    function Cortex.compute_message_to_variable!(
         processor::SSMStructuredInferenceRequestProcessor,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.MessageToVariable,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         factor = Cortex.get_factor(engine, variant.factor_id)
@@ -1152,11 +1152,11 @@ end
 
     struct InferenceRequestProcessorForTestingTracing <: Cortex.AbstractInferenceRequestProcessor end
 
-    function Cortex.process_message_to_variable(
+    function Cortex.compute_message_to_variable!(
         processor::InferenceRequestProcessorForTestingTracing,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.MessageToVariable,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         factor = Cortex.get_factor(engine, variant.factor_id)
@@ -1169,11 +1169,11 @@ end
         end
     end
 
-    function Cortex.process_individual_marginal(
+    function Cortex.compute_individual_marginal!(
         processor::InferenceRequestProcessorForTestingTracing,
         engine::Cortex.InferenceEngine,
         variant::Cortex.InferenceSignalVariants.IndividualMarginal,
-        signal::Cortex.Signal,
+        signal::Cortex.InferenceSignal,
         dependencies
     )
         return sum(Cortex.get_value.(dependencies))
