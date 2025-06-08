@@ -7,7 +7,7 @@
         @test get_variable_name(v) == name
         @test get_variable_index(v) isa Nothing
         @test get_variable_marginal(v) isa Cortex.Signal
-        @test get_variable_linked_signals(v) isa Vector{Cortex.Signal}
+        @test get_variable_linked_signals(v) isa Vector{Cortex.InferenceSignal}
     end
 
     for index in [1, 2, 3]
@@ -16,7 +16,7 @@
         @test get_variable_name(v) == :v
         @test get_variable_index(v) == index
         @test get_variable_marginal(v) isa Cortex.Signal
-        @test get_variable_linked_signals(v) isa Vector{Cortex.Signal}
+        @test get_variable_linked_signals(v) isa Vector{Cortex.InferenceSignal}
     end
 end
 
@@ -31,7 +31,7 @@ end
 @testitem "It should be possible to create a variable with a marginal" begin
     import Cortex: Variable, get_variable_marginal
 
-    external_signal = Cortex.Signal()
+    external_signal = Cortex.create_inference_signal()
 
     v = Variable(name = :v, marginal = external_signal)
 
@@ -43,7 +43,7 @@ end
 
     v1 = Variable(name = :v1)
 
-    some_other_signal = Cortex.Signal()
+    some_other_signal = Cortex.create_inference_signal()
 
     link_signal_to_variable!(v1, some_other_signal)
 
@@ -58,7 +58,7 @@ end
         f = Factor(functional_form = functional_form)
 
         @test get_factor_functional_form(f) == functional_form
-        @test get_factor_local_marginals(f) isa Vector{Cortex.Signal}
+        @test get_factor_local_marginals(f) isa Vector{Cortex.InferenceSignal}
     end
 end
 
@@ -75,7 +75,7 @@ end
 
     f = Factor(functional_form = :f)
 
-    local_marginal = Cortex.Signal()
+    local_marginal = Cortex.create_inference_signal()
 
     add_local_marginal_to_factor!(f, local_marginal)
 
