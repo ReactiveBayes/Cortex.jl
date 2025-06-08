@@ -78,7 +78,7 @@ mutable struct InferenceEngine{M, D, P, T}
         )
 
         if prepare_signals_metadata
-            prepare_signals_metadata!(engine)
+            set_signals_variants!(engine)
         end
 
         if resolve_dependencies
@@ -164,110 +164,50 @@ get_factor_ids(engine::InferenceEngine) = get_factor_ids(get_model_engine(engine
 
 Alias for `get_connection(get_model_engine(engine), variable_id, factor_id)`.
 """
-get_connection(engine::InferenceEngine, variable_id::Int, factor_id::Int) = get_connection(
-    get_model_engine(engine), variable_id, factor_id
-)::Connection
+get_connection(engine::InferenceEngine, variable_id::Int, factor_id::Int) =
+    get_connection(get_model_engine(engine), variable_id, factor_id)::Connection
 
 """
     get_connection_message_to_variable(engine::InferenceEngine, variable_id::Int, factor_id::Int)
 
 Alias for `get_connection_message_to_variable(get_connection(engine, variable_id, factor_id)::Connection)::Signal`.
 """
-get_connection_message_to_variable(engine::InferenceEngine, variable_id::Int, factor_id::Int) = get_connection_message_to_variable(
-    get_connection(engine, variable_id, factor_id)::Connection
-)::Signal
+get_connection_message_to_variable(engine::InferenceEngine, variable_id::Int, factor_id::Int) =
+    get_connection_message_to_variable(get_connection(engine, variable_id, factor_id)::Connection)::Signal
 
 """
     get_connection_message_to_factor(engine::InferenceEngine, variable_id::Int, factor_id::Int)
 
 Alias for `get_connection_message_to_factor(get_connection(engine, variable_id, factor_id)::Connection)::Signal`.
 """
-get_connection_message_to_factor(engine::InferenceEngine, variable_id::Int, factor_id::Int) = get_connection_message_to_factor(
-    get_connection(engine, variable_id, factor_id)::Connection
-)::Signal
+get_connection_message_to_factor(engine::InferenceEngine, variable_id::Int, factor_id::Int) =
+    get_connection_message_to_factor(get_connection(engine, variable_id, factor_id)::Connection)::Signal
 
 """
     get_connected_variable_ids(engine::InferenceEngine, factor_id::Int)
 
 Alias for `get_connected_variable_ids(get_model_engine(engine), factor_id)`.
 """
-get_connected_variable_ids(engine::InferenceEngine, factor_id::Int) = get_connected_variable_ids(
-    get_model_engine(engine), factor_id
-)
+get_connected_variable_ids(engine::InferenceEngine, factor_id::Int) =
+    get_connected_variable_ids(get_model_engine(engine), factor_id)
 
 """
     get_connected_factor_ids(engine::InferenceEngine, variable_id::Int)
 
 Alias for `get_connected_factor_ids(get_model_engine(engine), variable_id)`.
 """
-get_connected_factor_ids(engine::InferenceEngine, variable_id::Int) = get_connected_factor_ids(
-    get_model_engine(engine), variable_id
-)
+get_connected_factor_ids(engine::InferenceEngine, variable_id::Int) =
+    get_connected_factor_ids(get_model_engine(engine), variable_id)
 
 """
-    InferenceSignalTypes
+    set_signals_variants!(engine::InferenceEngine)
 
-Module defining constants for different types of signals used within the inference engine.
-These types help in dispatching computation rules and managing signal metadata.
-
-## Constants
-
-- [`MessageToVariable`](@ref Cortex.InferenceSignalTypes.MessageToVariable): Signal representing a message from a factor to a variable.
-- [`MessageToFactor`](@ref Cortex.InferenceSignalTypes.MessageToFactor): Signal representing a message from a variable to a factor.
-- [`ProductOfMessages`](@ref Cortex.InferenceSignalTypes.ProductOfMessages): Signal representing an intermediate product of messages, often a dependency for an `IndividualMarginal`.
-- [`IndividualMarginal`](@ref Cortex.InferenceSignalTypes.IndividualMarginal): Signal representing the marginal distribution of a single variable.
-- [`JointMarginal`](@ref Cortex.InferenceSignalTypes.JointMarginal): Signal representing the joint marginal distribution of a set of variables.
-
-## See Also
-
-- [`prepare_signals_metadata!`](@ref Cortex.prepare_signals_metadata!)
-- [`Signal`](@ref Cortex.Signal)
-"""
-module InferenceSignalTypes
-
-"Type constant for a [`Signal`](@ref Cortex.Signal) representing a message from a factor to a variable."
-const MessageToVariable = UInt8(0x01)
-
-"Type constant for a [`Signal`](@ref Cortex.Signal) representing a message from a variable to a factor."
-const MessageToFactor = UInt8(0x02)
-
-"Type constant for a [`Signal`](@ref Cortex.Signal) representing an intermediate product of messages."
-const ProductOfMessages = UInt8(0x03)
-
-"Type constant for a [`Signal`](@ref Cortex.Signal) representing the marginal distribution of a single variable."
-const IndividualMarginal = UInt8(0x04)
-
-"Type constant for a [`Signal`](@ref Cortex.Signal) representing the joint marginal distribution of a set of variables."
-const JointMarginal = UInt8(0x05)
-
-function to_string(type::UInt8)
-    if type === 0x00
-        return ""
-    elseif type === MessageToVariable
-        return "MessageToVariable"
-    elseif type === MessageToFactor
-        return "MessageToFactor"
-    elseif type === ProductOfMessages
-        return "ProductOfMessages"
-    elseif type === IndividualMarginal
-        return "IndividualMarginal"
-    elseif type === JointMarginal
-        return "JointMarginal"
-    else
-        return "UnknownType($(repr(type)))"
-    end
-end
-end
-
-"""
-    prepare_signals_metadata!(engine::InferenceEngine)
-
-Initializes the `type` and `metadata` fields for relevant signals within the `InferenceEngine`.
+Initializes the `variant` field for relevant signals within the `InferenceEngine`.
 
 This function iterates through variables and factors in the model backend, setting:
-- Marginals: `type` to [`IndividualMarginal`](@ref Cortex.InferenceSignalTypes.IndividualMarginal) and `metadata` to `(variable_id,)`.
-- Messages to Factors: `type` to [`MessageToFactor`](@ref Cortex.InferenceSignalTypes.MessageToFactor) and `metadata` to `(variable_id, factor_id)`.
-- Messages to Variables: `type` to [`MessageToVariable`](@ref Cortex.InferenceSignalTypes.MessageToVariable) and `metadata` to `(variable_id, factor_id)`.
+- Marginals: `variant` to [`IndividualMarginal`](@ref Cortex.InferenceSignalVariants.IndividualMarginal).
+- Messages to Factors: `variant` to [`MessageToFactor`](@ref Cortex.InferenceSignalVariants.MessageToFactor).
+- Messages to Variables: `variant` to [`MessageToVariable`](@ref Cortex.InferenceSignalVariants.MessageToVariable).
 
 This setup is typically done once upon engine creation and is crucial for dispatching appropriate computation rules during inference.
 
@@ -280,12 +220,11 @@ This setup is typically done once upon engine creation and is crucial for dispat
 - [`InferenceEngine`](@ref)
 - [`InferenceSignalTypes`](@ref)
 """
-function prepare_signals_metadata!(engine::InferenceEngine)
+function set_signals_variants!(engine::InferenceEngine)
     for variable_id in get_variable_ids(engine)
         variable = get_variable(engine, variable_id)
         marginal = get_variable_marginal(variable)
-        marginal.type = Cortex.InferenceSignalTypes.IndividualMarginal
-        marginal.metadata = (variable_id,)
+        set_variant!(marginal, InferenceSignalVariants.IndividualMarginal(variable_id))
     end
 
     for factor_id in get_factor_ids(engine)
@@ -294,12 +233,10 @@ function prepare_signals_metadata!(engine::InferenceEngine)
             connection = get_connection(engine, variable_id, factor_id)
 
             message_to_factor = get_connection_message_to_factor(connection)
-            message_to_factor.type = Cortex.InferenceSignalTypes.MessageToFactor
-            message_to_factor.metadata = (variable_id, factor_id)
+            set_variant!(message_to_factor, InferenceSignalVariants.MessageToFactor(variable_id, factor_id))
 
             message_to_variable = get_connection_message_to_variable(connection)
-            message_to_variable.type = Cortex.InferenceSignalTypes.MessageToVariable
-            message_to_variable.metadata = (variable_id, factor_id)
+            set_variant!(message_to_variable, InferenceSignalVariants.MessageToVariable(variable_id, factor_id))
         end
     end
 end
@@ -430,11 +367,8 @@ struct CallbackInferenceRequestProcessor{F} <: AbstractInferenceRequestProcessor
     f::F
 end
 
-Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} = CallbackInferenceRequestProcessor{
-    F
-}(
-    f
-)
+Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} =
+    CallbackInferenceRequestProcessor{F}(f)
 
 "Internal functor for `InferenceRequestProcessor` to apply the computation logic."
 function process!(
