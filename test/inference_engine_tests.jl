@@ -1,12 +1,33 @@
 @testitem "InferenceEngine specific signals should be pretty-printed with their type" setup = [TestUtils] begin
-    @test Cortex.InferenceSignalTypes.to_string(UInt8(0x00)) == ""
-    @test Cortex.InferenceSignalTypes.to_string(Cortex.InferenceSignalTypes.MessageToVariable) == "MessageToVariable"
-    @test Cortex.InferenceSignalTypes.to_string(Cortex.InferenceSignalTypes.MessageToFactor) == "MessageToFactor"
-    @test Cortex.InferenceSignalTypes.to_string(Cortex.InferenceSignalTypes.ProductOfMessages) == "ProductOfMessages"
-    @test Cortex.InferenceSignalTypes.to_string(Cortex.InferenceSignalTypes.IndividualMarginal) == "IndividualMarginal"
-    @test Cortex.InferenceSignalTypes.to_string(Cortex.InferenceSignalTypes.JointMarginal) == "JointMarginal"
+    @test occursin("Unspecified", string(Cortex.InferenceSignalVariants.Unspecified()))
+    @test occursin("MessageToVariable", string(Cortex.InferenceSignalVariants.MessageToVariable(1, 2)))
+    @test occursin("MessageToFactor", string(Cortex.InferenceSignalVariants.MessageToFactor(1, 2)))
+    @test occursin("ProductOfMessages", string(Cortex.InferenceSignalVariants.ProductOfMessages(1, 2:3, [4, 5])))
+    @test occursin("IndividualMarginal", string(Cortex.InferenceSignalVariants.IndividualMarginal(1)))
+    @test occursin("JointMarginal", string(Cortex.InferenceSignalVariants.JointMarginal(3, [1, 2])))
+end
 
-    @test Cortex.InferenceSignalTypes.to_string(UInt8(0x11)) == "UnknownType(0x11)"
+@testitem "isa_variant should work with inference signal variants" setup = [TestUtils] begin
+    using .TestUtils
+    using JET
+
+    c = Cortex.create_inference_signal()
+
+    @test Cortex.isa_variant(c, Cortex.InferenceSignalVariants.Unspecified)
+
+    Cortex.set_variant!(c, Cortex.InferenceSignalVariants.MessageToVariable(1, 2))
+    @test Cortex.isa_variant(c, Cortex.InferenceSignalVariants.MessageToVariable)
+    @test !Cortex.isa_variant(c, Cortex.InferenceSignalVariants.MessageToFactor)
+
+    Cortex.set_variant!(c, Cortex.InferenceSignalVariants.MessageToFactor(1, 2))
+    @test Cortex.isa_variant(c, Cortex.InferenceSignalVariants.MessageToFactor)
+    @test !Cortex.isa_variant(c, Cortex.InferenceSignalVariants.MessageToVariable)
+
+    JET.@test_opt Cortex.isa_variant(c, Cortex.InferenceSignalVariants.MessageToVariable)
+    JET.@test_opt Cortex.isa_variant(c, Cortex.InferenceSignalVariants.MessageToFactor)
+
+    @test @allocated(Cortex.isa_variant(c, Cortex.InferenceSignalVariants.MessageToVariable)) == 0
+    @test @allocated(Cortex.isa_variant(c, Cortex.InferenceSignalVariants.MessageToFactor)) == 0
 end
 
 @testitem "InferenceEngine should save a warning for a variable that has no connected factors" setup = [TestUtils] begin
@@ -43,26 +64,30 @@ end
 
     engine = Cortex.InferenceEngine(model_engine = graph)
 
-    @test Cortex.get_connection_message_to_variable(engine, v1, f1).type ==
-        Cortex.InferenceSignalTypes.MessageToVariable
-    @test Cortex.get_connection_message_to_variable(engine, v2, f2).type ==
-        Cortex.InferenceSignalTypes.MessageToVariable
-    @test Cortex.get_connection_message_to_variable(engine, v3, f1).type ==
-        Cortex.InferenceSignalTypes.MessageToVariable
-    @test Cortex.get_connection_message_to_variable(engine, v3, f2).type ==
-        Cortex.InferenceSignalTypes.MessageToVariable
+    @test Cortex.get_variant(Cortex.get_connection_message_to_variable(engine, v1, f1)) ==
+        Cortex.InferenceSignalVariants.MessageToVariable(v1, f1)
+    @test Cortex.get_variant(Cortex.get_connection_message_to_variable(engine, v2, f2)) ==
+        Cortex.InferenceSignalVariants.MessageToVariable(v2, f2)
+    @test Cortex.get_variant(Cortex.get_connection_message_to_variable(engine, v3, f1)) ==
+        Cortex.InferenceSignalVariants.MessageToVariable(v3, f1)
+    @test Cortex.get_variant(Cortex.get_connection_message_to_variable(engine, v3, f2)) ==
+        Cortex.InferenceSignalVariants.MessageToVariable(v3, f2)
 
-    @test Cortex.get_connection_message_to_factor(engine, v1, f1).type == Cortex.InferenceSignalTypes.MessageToFactor
-    @test Cortex.get_connection_message_to_factor(engine, v2, f2).type == Cortex.InferenceSignalTypes.MessageToFactor
-    @test Cortex.get_connection_message_to_factor(engine, v3, f1).type == Cortex.InferenceSignalTypes.MessageToFactor
-    @test Cortex.get_connection_message_to_factor(engine, v3, f2).type == Cortex.InferenceSignalTypes.MessageToFactor
+    @test Cortex.get_variant(Cortex.get_connection_message_to_factor(engine, v1, f1)) ==
+        Cortex.InferenceSignalVariants.MessageToFactor(v1, f1)
+    @test Cortex.get_variant(Cortex.get_connection_message_to_factor(engine, v2, f2)) ==
+        Cortex.InferenceSignalVariants.MessageToFactor(v2, f2)
+    @test Cortex.get_variant(Cortex.get_connection_message_to_factor(engine, v3, f1)) ==
+        Cortex.InferenceSignalVariants.MessageToFactor(v3, f1)
+    @test Cortex.get_variant(Cortex.get_connection_message_to_factor(engine, v3, f2)) ==
+        Cortex.InferenceSignalVariants.MessageToFactor(v3, f2)
 
-    @test Cortex.get_variable_marginal(Cortex.get_variable(engine, v1)).type ==
-        Cortex.InferenceSignalTypes.IndividualMarginal
-    @test Cortex.get_variable_marginal(Cortex.get_variable(engine, v2)).type ==
-        Cortex.InferenceSignalTypes.IndividualMarginal
-    @test Cortex.get_variable_marginal(Cortex.get_variable(engine, v3)).type ==
-        Cortex.InferenceSignalTypes.IndividualMarginal
+    @test Cortex.get_variant(Cortex.get_variable_marginal(Cortex.get_variable(engine, v1))) ==
+        Cortex.InferenceSignalVariants.IndividualMarginal(v1)
+    @test Cortex.get_variant(Cortex.get_variable_marginal(Cortex.get_variable(engine, v2))) ==
+        Cortex.InferenceSignalVariants.IndividualMarginal(v2)
+    @test Cortex.get_variant(Cortex.get_variable_marginal(Cortex.get_variable(engine, v3))) ==
+        Cortex.InferenceSignalVariants.IndividualMarginal(v3)
 end
 
 @testitem "An empty inference round should be created for an empty model that has no pending messages" setup = [
@@ -107,8 +132,8 @@ end
 
         vm = Cortex.get_variable_marginal(Cortex.get_variable(inference_engine, vc))
 
-        left = Cortex.Signal()
-        right = Cortex.Signal()
+        left = Cortex.create_inference_signal()
+        right = Cortex.create_inference_signal()
 
         Cortex.add_dependency!(Cortex.get_connection_message_to_variable(inference_engine, vc, f1), left)
         Cortex.add_dependency!(Cortex.get_connection_message_to_variable(inference_engine, vc, f2), right)
@@ -217,29 +242,53 @@ end
     using .TestUtils, .TestDistributions
     using JET, BipartiteFactorGraphs, StableRNGs
 
-    function computer(engine::Cortex.InferenceEngine, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
-        if signal.type == Cortex.InferenceSignalTypes.MessageToVariable
-            _, factor_id = (signal.metadata::Tuple{Int, Int})
+    struct BetaBernoulliInferenceRequestProcessor <: Cortex.AbstractInferenceRequestProcessor end
 
-            factor = Cortex.get_factor(engine, factor_id)
+    function Cortex.process_message_to_variable(
+        processor::BetaBernoulliInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        factor_id::Int,
+        signal::Cortex.Signal,
+        dependencies
+    )
+        factor = Cortex.get_factor(engine, factor_id)
 
-            if Cortex.get_factor_functional_form(factor) === :bernoulli
-                r = Cortex.get_value(dependencies[1])::Bool
-                return Beta(one(r) + r, 2one(r) - r)
-            elseif Cortex.get_factor_functional_form(factor) === :prior
-                error("Should not be invoked")
-            end
-        elseif signal.type == Cortex.InferenceSignalTypes.IndividualMarginal ||
-            signal.type == Cortex.InferenceSignalTypes.ProductOfMessages
-            answer = Cortex.get_value(dependencies[1])::Beta
-            for i in 2:length(dependencies)
-                @inbounds next = Cortex.get_value(dependencies[i])::Beta
-                answer = Beta(answer.a + next.a - 1, answer.b + next.b - 1)
-            end
-            return answer
+        if Cortex.get_factor_functional_form(factor) === :bernoulli
+            r = Cortex.get_value(dependencies[1])::Bool
+            return Beta(one(r) + r, 2one(r) - r)
+        elseif Cortex.get_factor_functional_form(factor) === :prior
+            error("Should not be invoked")
         end
 
         error("Unreachable reached")
+    end
+
+    function Cortex.process_individual_marginal(
+        processor::BetaBernoulliInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        signal::Cortex.Signal,
+        dependencies
+    )
+        answer = Cortex.get_value(dependencies[1])::Beta
+        for i in 2:length(dependencies)
+            @inbounds next = Cortex.get_value(dependencies[i])::Beta
+            answer = Beta(answer.a + next.a - 1, answer.b + next.b - 1)
+        end
+        return answer
+    end
+
+    function Cortex.process_product_of_messages(
+        processor::BetaBernoulliInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        range::UnitRange{Int},
+        factor_ids::Vector{Int},
+        signal::Cortex.Signal,
+        dependencies
+    )
+        return Cortex.process_individual_marginal(processor, engine, variable_id, signal, dependencies)
     end
 
     function make_beta_bernoulli_model(n)
@@ -263,7 +312,7 @@ end
         engine = Cortex.InferenceEngine(
             model_engine = graph,
             dependency_resolver = Cortex.DefaultDependencyResolver(),
-            inference_request_processor = computer
+            inference_request_processor = BetaBernoulliInferenceRequestProcessor()
         )
 
         return engine, p, o, f
@@ -305,25 +354,59 @@ end
     using .TestUtils, .TestDistributions
     using JET, BipartiteFactorGraphs, StableRNGs
 
-    function computer(engine::Cortex.InferenceEngine, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
-        if signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
-            return reduce(product, Cortex.get_value.(dependencies))
-        elseif signal.type == Cortex.InferenceSignalTypes.MessageToFactor
-            return reduce(product, Cortex.get_value.(dependencies))
-        elseif signal.type == Cortex.InferenceSignalTypes.MessageToVariable
-            @assert length(dependencies) == 1
-            input = Cortex.get_value(dependencies[1])
+    struct SSMBeliefPropagationInferenceRequestProcessor <: Cortex.AbstractInferenceRequestProcessor end
 
-            if typeof(input) <: Real
-                return NormalMeanVariance(input, 1.0)
-            elseif typeof(input) <: NormalMeanVariance
-                return NormalMeanVariance(input.mean, input.variance + 1.0)
-            else
-                error("Unreachable reached")
-            end
+    function Cortex.process_individual_marginal(
+        processor::SSMBeliefPropagationInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        signal::Cortex.Signal,
+        dependencies
+    )
+        return reduce(product, Cortex.get_value.(dependencies))
+    end
+
+    function Cortex.process_product_of_messages(
+        processor::SSMBeliefPropagationInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        range::UnitRange{Int},
+        factor_ids::Vector{Int},
+        signal::Cortex.Signal,
+        dependencies
+    )
+        return reduce(product, Cortex.get_value.(dependencies))
+    end
+
+    function Cortex.process_message_to_factor(
+        processor::SSMBeliefPropagationInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        factor_id::Int,
+        signal::Cortex.Signal,
+        dependencies
+    )
+        return reduce(product, Cortex.get_value.(dependencies))
+    end
+
+    function Cortex.process_message_to_variable(
+        processor::SSMBeliefPropagationInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        factor_id::Int,
+        signal::Cortex.Signal,
+        dependencies
+    )
+        @assert length(dependencies) == 1
+        input = Cortex.get_value(dependencies[1])
+
+        if typeof(input) <: Real
+            return NormalMeanVariance(input, 1.0)
+        elseif typeof(input) <: NormalMeanVariance
+            return NormalMeanVariance(input.mean, input.variance + 1.0)
+        else
+            error("Unreachable reached")
         end
-
-        error("Unreachable reached")
     end
 
     # In this model, we assume that both the likelihood and the transition are Normal
@@ -350,7 +433,7 @@ end
         engine = Cortex.InferenceEngine(
             model_engine = graph,
             dependency_resolver = Cortex.DefaultDependencyResolver(),
-            inference_request_processor = computer
+            inference_request_processor = SSMBeliefPropagationInferenceRequestProcessor()
         )
 
         return engine, x, y, likelihood, transition
@@ -385,6 +468,7 @@ end
 @testitem "Inference in a simple SSM model - Mean Field" setup = [TestUtils, TestDistributions] begin
     using .TestUtils, .TestDistributions
     using JET, BipartiteFactorGraphs, StableRNGs, Random
+    using Cortex.Moshi.Match: @match
 
     struct MeanFieldResolver <: Cortex.AbstractDependencyResolver end
 
@@ -412,52 +496,78 @@ end
         end
     end
 
-    function get_name_of_variable(engine::Cortex.InferenceEngine, variable_id)
-        return Cortex.get_variable_name(Cortex.get_variable(engine, variable_id))
+    function get_name_of_variable(engine::Cortex.InferenceEngine, signal::Cortex.InferenceSignal)
+        @match signal.variant begin
+            Cortex.InferenceSignalVariants.IndividualMarginal(variable_id) =>
+                Cortex.get_variable_name(Cortex.get_variable(engine, variable_id))
+            _ => error("Unreachable reached")
+        end
     end
 
-    function computer(engine::Cortex.InferenceEngine, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
-        if signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
-            return reduce(product, Cortex.get_value.(dependencies))
-        elseif signal.type == Cortex.InferenceSignalTypes.MessageToFactor
-            return reduce(product, Cortex.get_value.(dependencies))
-        elseif signal.type == Cortex.InferenceSignalTypes.MessageToVariable
-            @assert length(dependencies) == 2
+    struct SSMMeanFieldInferenceRequestProcessor <: Cortex.AbstractInferenceRequestProcessor end
 
-            x = findfirst(d -> get_name_of_variable(engine, first(d.metadata)) == :x, dependencies)
-            y = findfirst(d -> get_name_of_variable(engine, first(d.metadata)) == :y, dependencies)
-            ssnoise = findfirst(d -> get_name_of_variable(engine, first(d.metadata)) == :ssnoise, dependencies)
-            obsnoise = findfirst(d -> get_name_of_variable(engine, first(d.metadata)) == :obsnoise, dependencies)
+    function Cortex.process_individual_marginal(
+        processor::SSMMeanFieldInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        signal::Cortex.Signal,
+        dependencies
+    )
+        return reduce(product, Cortex.get_value.(dependencies))
+    end
 
-            if !isnothing(x) && !isnothing(ssnoise)
-                return NormalMeanPrecision(
-                    mean(Cortex.get_value(dependencies[x])), mean(Cortex.get_value(dependencies[ssnoise]))
-                )
-            end
+    function Cortex.process_message_to_factor(
+        processor::SSMMeanFieldInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        factor_id::Int,
+        signal::Cortex.Signal,
+        dependencies
+    )
+        return reduce(product, Cortex.get_value.(dependencies))
+    end
 
-            if !isnothing(y) && !isnothing(obsnoise)
-                return NormalMeanPrecision(
-                    Cortex.get_value(dependencies[y]), mean(Cortex.get_value(dependencies[obsnoise]))
-                )
-            end
+    function Cortex.process_message_to_variable(
+        processor::SSMMeanFieldInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        factor_id::Int,
+        signal::Cortex.Signal,
+        dependencies
+    )
+        @assert length(dependencies) == 2
 
-            if !isnothing(y) && !isnothing(x)
-                q_out = Cortex.get_value(dependencies[y])
-                q_μ = Cortex.get_value(dependencies[x])
-                θ = 2 / (var(q_μ) + abs2(q_out - mean(q_μ)))
-                α = convert(typeof(θ), 1.5)
-                return Gamma(α, θ)
-            end
+        x = findfirst(d -> get_name_of_variable(engine, d) == :x, dependencies)
+        y = findfirst(d -> get_name_of_variable(engine, d) == :y, dependencies)
+        ssnoise = findfirst(d -> get_name_of_variable(engine, d) == :ssnoise, dependencies)
+        obsnoise = findfirst(d -> get_name_of_variable(engine, d) == :obsnoise, dependencies)
 
-            if filter(d -> get_name_of_variable(engine, first(d.metadata)) == :x, dependencies) |> length == 2
-                q_out = Cortex.get_value(dependencies[1])
-                q_μ = Cortex.get_value(dependencies[2])
-                θ = 2 / (var(q_out) + var(q_μ) + abs2(mean(q_out) - mean(q_μ)))
-                α = convert(typeof(θ), 1.5)
-                return Gamma(α, θ)
-            end
+        if !isnothing(x) && !isnothing(ssnoise)
+            return NormalMeanPrecision(
+                mean(Cortex.get_value(dependencies[x])), mean(Cortex.get_value(dependencies[ssnoise]))
+            )
+        end
 
-            error("Unreachable reached")
+        if !isnothing(y) && !isnothing(obsnoise)
+            return NormalMeanPrecision(
+                Cortex.get_value(dependencies[y]), mean(Cortex.get_value(dependencies[obsnoise]))
+            )
+        end
+
+        if !isnothing(y) && !isnothing(x)
+            q_out = Cortex.get_value(dependencies[y])
+            q_μ = Cortex.get_value(dependencies[x])
+            θ = 2 / (var(q_μ) + abs2(q_out - mean(q_μ)))
+            α = convert(typeof(θ), 1.5)
+            return Gamma(α, θ)
+        end
+
+        if filter(d -> get_name_of_variable(engine, d) == :x, dependencies) |> length == 2
+            q_out = Cortex.get_value(dependencies[1])
+            q_μ = Cortex.get_value(dependencies[2])
+            θ = 2 / (var(q_out) + var(q_μ) + abs2(mean(q_out) - mean(q_μ)))
+            α = convert(typeof(θ), 1.5)
+            return Gamma(α, θ)
         end
 
         error("Unreachable reached")
@@ -488,7 +598,9 @@ end
         end
 
         engine = Cortex.InferenceEngine(
-            model_engine = graph, dependency_resolver = MeanFieldResolver(), inference_request_processor = computer
+            model_engine = graph,
+            dependency_resolver = MeanFieldResolver(),
+            inference_request_processor = SSMMeanFieldInferenceRequestProcessor()
         )
 
         # Initial marginals
@@ -573,6 +685,7 @@ end
 @testitem "Inference in a simple SSM model - Structured" setup = [TestUtils, TestDistributions] begin
     using .TestUtils, .TestDistributions
     using JET, BipartiteFactorGraphs, StableRNGs, Random
+    using Cortex.Moshi.Match: @match
 
     struct StructuredResolver <: Cortex.AbstractDependencyResolver end
 
@@ -618,9 +731,11 @@ end
                 if length(cluster) == 1
                     return Cortex.get_variable_marginal(Cortex.get_variable(engine, first(cluster)))
                 else
-                    new_joint_marginal = Cortex.Signal(
-                        type = Cortex.InferenceSignalTypes.JointMarginal, metadata = (factor_id, cluster)
+                    new_joint_marginal = Cortex.create_inference_signal()
+                    Cortex.set_variant!(
+                        new_joint_marginal, Cortex.InferenceSignalVariants.JointMarginal(factor_id, cluster)
                     )
+
                     for v_id in cluster
                         # Add the linked signal to the variable
                         Cortex.link_signal_to_variable!(Cortex.get_variable(engine, v_id), new_joint_marginal)
@@ -640,7 +755,7 @@ end
             end
 
             for d1 in deps, d2 in deps
-                if d1.type === Cortex.InferenceSignalTypes.JointMarginal && d1 !== d2
+                if Cortex.isa_variant(d1, Cortex.InferenceSignalVariants.JointMarginal) && d1 !== d2
                     Cortex.add_dependency!(d1, d2; weak = true)
                 end
             end
@@ -670,93 +785,137 @@ end
         end
     end
 
-    function get_name_of_variable(engine::Cortex.InferenceEngine, variable_id)
-        return Cortex.get_variable_name(Cortex.get_variable(engine, variable_id))
+    function get_name_of_variable(engine::Cortex.InferenceEngine, signal::Cortex.InferenceSignal)
+        @match signal.variant begin
+            Cortex.InferenceSignalVariants.IndividualMarginal(variable_id) =>
+                Cortex.get_variable_name(Cortex.get_variable(engine, variable_id))
+            _ => error("Unreachable reached")
+        end
     end
 
-    function computer(engine::Cortex.InferenceEngine, signal::Cortex.Signal, dependencies::Vector{Cortex.Signal})
-        if signal.type == Cortex.InferenceSignalTypes.IndividualMarginal
-            return reduce(product, Cortex.get_value.(dependencies))
-        elseif signal.type == Cortex.InferenceSignalTypes.MessageToFactor
-            return reduce(product, Cortex.get_value.(dependencies))
-        elseif signal.type == Cortex.InferenceSignalTypes.ProductOfMessages
-            return reduce(product, Cortex.get_value.(dependencies))
-        elseif signal.type == Cortex.InferenceSignalTypes.JointMarginal
-            msg1 = dependencies[1]
-            msg2 = dependencies[2]
-            mrg  = dependencies[3]
+    struct SSMStructuredInferenceRequestProcessor <: Cortex.AbstractInferenceRequestProcessor end
 
-            @assert msg1.type == Cortex.InferenceSignalTypes.MessageToFactor
-            @assert msg2.type == Cortex.InferenceSignalTypes.MessageToFactor
-            @assert mrg.type == Cortex.InferenceSignalTypes.IndividualMarginal
+    function Cortex.process_individual_marginal(
+        processor::SSMStructuredInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        signal::Cortex.Signal,
+        dependencies
+    )
+        return reduce(product, Cortex.get_value.(dependencies))
+    end
 
-            msg1_value = Cortex.get_value(msg1)
-            msg2_value = Cortex.get_value(msg2)
-            mrg_value = Cortex.get_value(mrg)
+    function Cortex.process_message_to_factor(
+        processor::SSMStructuredInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        factor_id::Int,
+        signal::Cortex.Signal,
+        dependencies
+    )
+        return reduce(product, Cortex.get_value.(dependencies))
+    end
 
-            xi_out, W_out = (precision(msg1_value) * mean(msg1_value), precision(msg1_value))
-            xi_μ, W_μ = (precision(msg2_value) * mean(msg2_value), precision(msg2_value))
+    function Cortex.process_product_of_messages(
+        processor::SSMStructuredInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        range::UnitRange{Int},
+        factor_ids::Vector{Int},
+        signal::Cortex.Signal,
+        dependencies
+    )
+        return reduce(product, Cortex.get_value.(dependencies))
+    end
 
-            W_bar = mean(mrg_value)
+    function Cortex.process_joint_marginal(
+        processor::SSMStructuredInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        factor_id::Int,
+        variable_ids::Vector{Int},
+        signal::Cortex.Signal,
+        dependencies
+    )
+        @assert length(dependencies) == 3
 
-            W = [W_out+W_bar -W_bar; -W_bar W_μ+W_bar]
-            μ = inv(W) * [xi_out; xi_μ]
+        msg1 = dependencies[1]
+        msg2 = dependencies[2]
+        mrg  = dependencies[3]
 
-            return MvNormalMeanPrecision(μ, W)
+        @assert Cortex.isa_variant(msg1, Cortex.InferenceSignalVariants.MessageToFactor)
+        @assert Cortex.isa_variant(msg2, Cortex.InferenceSignalVariants.MessageToFactor)
+        @assert Cortex.isa_variant(mrg, Cortex.InferenceSignalVariants.IndividualMarginal)
 
-        elseif signal.type == Cortex.InferenceSignalTypes.MessageToVariable
-            v, f = (signal.metadata::Tuple{Int, Int})
+        msg1_value = Cortex.get_value(msg1)
+        msg2_value = Cortex.get_value(msg2)
+        mrg_value = Cortex.get_value(mrg)
 
-            factor = Cortex.get_factor(engine, f)
+        xi_out, W_out = (precision(msg1_value) * mean(msg1_value), precision(msg1_value))
+        xi_μ, W_μ = (precision(msg2_value) * mean(msg2_value), precision(msg2_value))
 
-            if Cortex.get_factor_functional_form(factor) === :likelihood
-                y = findfirst(d -> get_name_of_variable(engine, first(d.metadata)) == :y, dependencies)
-                x = findfirst(d -> get_name_of_variable(engine, first(d.metadata)) == :x, dependencies)
-                obsnoise = findfirst(d -> get_name_of_variable(engine, first(d.metadata)) == :obsnoise, dependencies)
+        W_bar = mean(mrg_value)
 
-                if !isnothing(y) && !isnothing(obsnoise)
-                    return NormalMeanPrecision(
-                        Cortex.get_value(dependencies[y]), mean(Cortex.get_value(dependencies[obsnoise]))
-                    )
-                end
+        W = [W_out+W_bar -W_bar; -W_bar W_μ+W_bar]
+        μ = inv(W) * [xi_out; xi_μ]
 
-                if !isnothing(x) && !isnothing(y)
-                    q_out = Cortex.get_value(dependencies[y])
-                    q_μ = Cortex.get_value(dependencies[x])
-                    θ = 2 / (var(q_μ) + abs2(q_out - mean(q_μ)))
-                    α = convert(typeof(θ), 1.5)
-                    return Gamma(α, θ)
-                end
+        return MvNormalMeanPrecision(μ, W)
+    end
 
-                error("unreachable reached in likelihood")
-            elseif Cortex.get_factor_functional_form(factor) === :transition
-                msg = findfirst(d -> d.type == Cortex.InferenceSignalTypes.MessageToFactor, dependencies)
-                mrg = findfirst(d -> d.type == Cortex.InferenceSignalTypes.IndividualMarginal, dependencies)
-                jmrg = findfirst(d -> d.type == Cortex.InferenceSignalTypes.JointMarginal, dependencies)
+    function Cortex.process_message_to_variable(
+        processor::SSMStructuredInferenceRequestProcessor,
+        engine::Cortex.InferenceEngine,
+        variable_id::Int,
+        factor_id::Int,
+        signal::Cortex.Signal,
+        dependencies
+    )
+        factor = Cortex.get_factor(engine, factor_id)
 
-                if !isnothing(msg) && !isnothing(mrg)
-                    v_msg = Cortex.get_value(dependencies[msg])
-                    v_mrg = Cortex.get_value(dependencies[mrg])
+        if Cortex.get_factor_functional_form(factor) === :likelihood
+            y = findfirst(d -> get_name_of_variable(engine, d) == :y, dependencies)
+            x = findfirst(d -> get_name_of_variable(engine, d) == :x, dependencies)
+            obsnoise = findfirst(d -> get_name_of_variable(engine, d) == :obsnoise, dependencies)
 
-                    m_μ_mean = mean(v_msg)
-                    m_μ_var = var(v_msg)
-
-                    return NormalMeanPrecision(m_μ_mean, inv(m_μ_var + inv(mean(v_mrg))))
-                elseif !isnothing(jmrg)
-                    v_jmrg = Cortex.get_value(dependencies[jmrg])
-                    m, V = (mean(v_jmrg), cov(v_jmrg))
-                    θ = 2 / (V[1, 1] - V[1, 2] - V[2, 1] + V[2, 2] + abs2(m[1] - m[2]))
-                    α = convert(typeof(θ), 1.5)
-                    return Gamma(α, θ)
-                end
-
-                error("unreachable reached")
-            else
-                error("unreachable reached")
+            if !isnothing(y) && !isnothing(obsnoise)
+                return NormalMeanPrecision(
+                    Cortex.get_value(dependencies[y]), mean(Cortex.get_value(dependencies[obsnoise]))
+                )
             end
-        end
 
-        error("Unreachable reached")
+            if !isnothing(x) && !isnothing(y)
+                q_out = Cortex.get_value(dependencies[y])
+                q_μ = Cortex.get_value(dependencies[x])
+                θ = 2 / (var(q_μ) + abs2(q_out - mean(q_μ)))
+                α = convert(typeof(θ), 1.5)
+                return Gamma(α, θ)
+            end
+
+            error("unreachable reached in likelihood")
+        elseif Cortex.get_factor_functional_form(factor) === :transition
+            msg = findfirst(d -> Cortex.isa_variant(d, Cortex.InferenceSignalVariants.MessageToFactor), dependencies)
+            mrg = findfirst(d -> Cortex.isa_variant(d, Cortex.InferenceSignalVariants.IndividualMarginal), dependencies)
+            jmrg = findfirst(d -> Cortex.isa_variant(d, Cortex.InferenceSignalVariants.JointMarginal), dependencies)
+
+            if !isnothing(msg) && !isnothing(mrg)
+                v_msg = Cortex.get_value(dependencies[msg])
+                v_mrg = Cortex.get_value(dependencies[mrg])
+
+                m_μ_mean = mean(v_msg)
+                m_μ_var = var(v_msg)
+
+                return NormalMeanPrecision(m_μ_mean, inv(m_μ_var + inv(mean(v_mrg))))
+            elseif !isnothing(jmrg)
+                v_jmrg = Cortex.get_value(dependencies[jmrg])
+                m, V = (mean(v_jmrg), cov(v_jmrg))
+                θ = 2 / (V[1, 1] - V[1, 2] - V[2, 1] + V[2, 2] + abs2(m[1] - m[2]))
+                α = convert(typeof(θ), 1.5)
+                return Gamma(α, θ)
+            end
+
+            error("unreachable reached")
+        else
+            error("unreachable reached")
+        end
     end
 
     function make_ssm_model(n)
@@ -786,7 +945,7 @@ end
         engine = Cortex.InferenceEngine(
             model_engine = graph,
             dependency_resolver = StructuredResolver(),
-            inference_request_processor = computer,
+            inference_request_processor = SSMStructuredInferenceRequestProcessor(),
             trace = true
         )
 

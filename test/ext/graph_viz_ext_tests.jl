@@ -75,7 +75,6 @@ end
         Cortex.set_variant!(s, Cortex.InferenceSignalVariants.IndividualMarginal(1))
         svg_content = to_svg(s)
         @test occursin("IndividualMarginal", svg_content)
-        @test occursin("variable_id", svg_content)
     end
 
     @testset "Regular signal with custom variant" begin

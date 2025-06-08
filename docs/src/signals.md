@@ -151,6 +151,7 @@ signal_with_simple_variant = Cortex.Signal(variant="simple_string_variant")
 Cortex.get_value(::Cortex.Signal)
 Cortex.get_variant(::Cortex.Signal)
 Cortex.set_variant!(::Cortex.Signal, Any)
+Cortex.isa_variant
 Cortex.is_computed(::Cortex.Signal)
 Cortex.is_pending(::Cortex.Signal)
 Cortex.set_value!(::Cortex.Signal, Any)

@@ -319,10 +319,33 @@ end
 
 abstract type AbstractInferenceRequestProcessor end
 
+import Moshi.Match: @match
+
+function process_message_to_variable end
+function process_message_to_factor end
+function process_individual_marginal end
+function process_product_of_messages end
+function process_joint_marginal end
+
 function process!(
     processor::AbstractInferenceRequestProcessor, engine::InferenceEngine, variable_id, dependency::Signal
 )
-    throw(MethodError(process!, (processor, engine, variable_id, dependency)))
+    compute!(dependency) do signal, dependencies
+        return @match signal.variant begin
+            InferenceSignalVariants.MessageToVariable(variable_id, factor_id) =>
+                process_message_to_variable(processor, engine, variable_id, factor_id, signal, dependencies)
+            InferenceSignalVariants.MessageToFactor(variable_id, factor_id) =>
+                process_message_to_factor(processor, engine, variable_id, factor_id, signal, dependencies)
+            InferenceSignalVariants.IndividualMarginal(variable_id) =>
+                process_individual_marginal(processor, engine, variable_id, signal, dependencies)
+            InferenceSignalVariants.ProductOfMessages(variable_id, range, factor_ids) =>
+                process_product_of_messages(processor, engine, variable_id, range, factor_ids, signal, dependencies)
+            InferenceSignalVariants.JointMarginal(factor_id, variable_ids) =>
+                process_joint_marginal(processor, engine, factor_id, variable_ids, signal, dependencies)
+            InferenceSignalVariants.Unspecified => error(lazy"The variant of the signal $signal is unspecified.")
+            _ => error(lazy"Unprocessed signal variant: $(signal.variant)")
+        end
+    end
 end
 
 "Internal function to process dependencies for an inference request."
@@ -360,23 +383,6 @@ function scan_inference_request(request::InferenceRequest)
         process_inference_request(scanner, request, variable_id, marginal)
     end
     return scanner.signals
-end
-
-"Internal struct that wraps a user-provided computation function for processing by `update_marginals!`."
-struct CallbackInferenceRequestProcessor{F} <: AbstractInferenceRequestProcessor
-    f::F
-end
-
-Base.convert(::Type{AbstractInferenceRequestProcessor}, f::F) where {F <: Function} =
-    CallbackInferenceRequestProcessor{F}(f)
-
-"Internal functor for `InferenceRequestProcessor` to apply the computation logic."
-function process!(
-    processor::CallbackInferenceRequestProcessor, engine::InferenceEngine, variable_id, dependency::Signal
-)
-    compute!(dependency) do signal, dependencies
-        processor.f(engine, signal, dependencies)
-    end
 end
 
 """

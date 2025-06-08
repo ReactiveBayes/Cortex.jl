@@ -88,3 +88,7 @@ See also [`InferenceSignalVariants`](@ref) for the possible variants.
 function create_inference_signal()::InferenceSignal
     return Signal(Any, InferenceSignalVariant, UndefValue(), InferenceSignalVariants.Unspecified())
 end
+
+function isa_variant(s::InferenceSignal, ::Type{T}) where {T}
+    return Moshi.Data.isa_variant(s.variant, T)
+end

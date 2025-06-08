@@ -21,7 +21,7 @@
 end
 
 @testitem "Signal Variant" begin
-    import Cortex: Signal, get_value, get_variant, set_variant!, UndefVariant
+    import Cortex: Signal, get_value, get_variant, set_variant!, UndefVariant, isa_variant
 
     @testset "Default Values" begin
         s = Signal(42)
@@ -31,9 +31,13 @@ end
 
         set_variant!(s, 1)
         @test get_variant(s) === 1
+        @test isa_variant(s, Int)
+        @test !isa_variant(s, String)
 
         set_variant!(s, "2")
         @test get_variant(s) === "2"
+        @test isa_variant(s, String)
+        @test !isa_variant(s, Int)
     end
 
     @testset "Custom Variant" begin
@@ -51,6 +55,8 @@ end
         s = Signal(Int, Int, 42, 1)
         @test get_variant(s) === 1
         @test get_value(s) === 42
+        @test isa_variant(s, Int)
+        @test !isa_variant(s, String)
 
         set_variant!(s, 2)
         @test get_variant(s) === 2

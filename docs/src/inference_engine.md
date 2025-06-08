@@ -63,7 +63,6 @@ Cortex.scan_inference_request
 Cortex.InferenceRequestScanner
 Cortex.process_inference_request
 Cortex.process!
-Cortex.CallbackInferenceRequestProcessor
 Cortex.update_marginals!
 ```
 
