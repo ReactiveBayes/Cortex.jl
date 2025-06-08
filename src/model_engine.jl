@@ -104,7 +104,7 @@ computation and inference updates.
 - `functional_form::Any`: The mathematical or computational representation of the factor. 
   This could be a function, a probability distribution, a constraint, or any other object 
   that defines the probabilistic relationship encoded by this factor.
-- `local_marginals::Vector{Signal} = Signal[]`: A collection of reactive signals representing 
+- `local_marginals::Vector{InferenceSignal} = InferenceSignal[]`: A collection of reactive signals representing 
   local marginal beliefs associated with this factor. These signals are typically updated 
   during message-passing inference and may represent beliefs about individual variables 
   or joint beliefs over subsets of variables connected to this factor.
@@ -143,7 +143,7 @@ function get_factor_local_marginals(factor::Factor)
 end
 
 """
-    add_local_marginal_to_factor!(factor::Factor, local_marginal::Signal)
+    add_local_marginal_to_factor!(factor::Factor, local_marginal::InferenceSignal)
 
 Adds a local marginal signal to a factor's collection of local marginals.
 """
@@ -173,9 +173,9 @@ identification through labels and indices.
 - `index::Int = 0`: A numeric index for the connection, useful when multiple connections 
   of the same type exist between a variable-factor pair, or for ordering connections 
   in message-passing algorithms.
-- `message_to_variable::Signal = Signal()`: A reactive signal carrying messages sent 
+- `message_to_variable::InferenceSignal = create_inference_signal()`: A reactive signal carrying messages sent 
   from the factor to the variable. Updated during factor-to-variable message passing.
-- `message_to_factor::Signal = Signal()`: A reactive signal carrying messages sent 
+- `message_to_factor::InferenceSignal = create_inference_signal()`: A reactive signal carrying messages sent 
   from the variable to the factor. Updated during variable-to-factor message passing.
 """
 Base.@kwdef struct Connection

@@ -68,11 +68,11 @@ Cortex.InferenceRequest
 Cortex.scan_inference_request
 Cortex.InferenceRequestScanner
 Cortex.AbstractInferenceRequestProcessor
-Cortex.compute_message_to_variable
-Cortex.compute_message_to_factor
-Cortex.compute_individual_marginal
-Cortex.compute_product_of_messages
-Cortex.compute_joint_marginal
+Cortex.compute_message_to_variable!
+Cortex.compute_message_to_factor!
+Cortex.compute_individual_marginal!
+Cortex.compute_product_of_messages!
+Cortex.compute_joint_marginal!
 Cortex.process_inference_request
 Cortex.process!
 Cortex.update_marginals!
