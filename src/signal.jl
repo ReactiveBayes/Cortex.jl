@@ -7,12 +7,12 @@ This indicates that the signal has not yet been computed or has been invalidated
 struct UndefValue end
 
 """
-    UndefMetadata
+    UndefVariant
 
-A singleton type used to represent an undefined or uninitialized state within a [`Signal`](@ref).
-This indicates that the signal has no metadata.
+A singleton type used to represent an undefined or uninitialized variant within a [`Signal`](@ref).
+This indicates that the signal has no variant defined.  
 """
-struct UndefMetadata end
+struct UndefVariant end
 
 # Stores properties of a `Signal`'s dependencies in a bit-packed format.
 #
@@ -52,11 +52,17 @@ end
 
 """
     Signal()
-    Signal(value; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
+    Signal(value; variant::Any = UndefVariant())
+    Signal(::Type{D}, ::Type{V}, value::D, variant::V) where {D, V}
 
 A reactive signal that holds a value and tracks dependencies as well as notifies listeners when the value changes.
 If created without an initial value, the signal is initialized with [`UndefValue()`](@ref).
-The `metadata` field can be used to store arbitrary metadata about the signal. Default value is [`UndefMetadata()`](@ref).
+The `variant` field can be used to store arbitrary variant information about the signal. Default value is [`UndefVariant()`](@ref).
+
+A signal has two type parameters:
+- `D` is the type of the value, which can be stored in the signal
+- `V` is the type of the variant of the signal
+Note, that the signal can have dependencies and listeners only on signals that have the same type parameters.
 
 A signal is said to be 'pending' if it is ready for potential recomputation (due to updated dependencies).
 However, a signal is not recomputed immediately when it becomes pending. Moreover, a Signal does not know 
@@ -71,52 +77,60 @@ A signal may become 'pending' if all its dependencies meet the following criteri
 
 A signal can depend on another signal without listening to it, see [`add_dependency!`](@ref) for more details.
 
-The `type` field is an optional `UInt8` type identifier. 
-It might be useful to choose different computation strategies for different types of signals within the [`compute!`](@ref) function.
-
 See also: [`add_dependency!`](@ref), [`set_value!`](@ref), [`compute!`](@ref), [`process_dependencies!`](@ref)
 """
-mutable struct Signal
-    value::Any
-    metadata::Any
+mutable struct Signal{D, V}
+    value::D
+    variant::V
 
-    type::UInt8
     props::SignalProps
 
     const dependencies_props::SignalDependenciesProps
-    const dependencies::Vector{Signal}
-
+    const dependencies::Vector{Signal{D, V}}
     const listenmask::BitVector
-    const listeners::Vector{Signal}
+    const listeners::Vector{Signal{D, V}}
 
-    # Constructor for creating an empty signal
-    function Signal(; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
-        return new(
-            UndefValue(),
-            metadata,
-            type,
+    # The most general constructor
+    function Signal(::Type{D}, ::Type{V}, value::D, variant::V) where {D, V}
+        return new{D, V}(
+            value,
+            variant,
             SignalProps(),
             SignalDependenciesProps(),
-            Vector{Signal}(),
+            Vector{Signal{D, V}}(),
             trues(0),
-            Vector{Signal}()
+            Vector{Signal{D, V}}()
         )
+    end
+
+    # Constructor for creating an empty signal
+    function Signal(; variant::Any = UndefVariant())
+        return Signal(Any, Any, UndefValue(), variant)
     end
 
     # Constructor for creating a new signal with a value
-    function Signal(value::Any; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
-        return new(
-            value,
-            metadata,
-            type,
-            SignalProps(),
-            SignalDependenciesProps(),
-            Vector{Signal}(),
-            trues(0),
-            Vector{Signal}()
-        )
+    function Signal(value::Any; variant::Any = UndefVariant())
+        return Signal(Any, Any, value, variant)
     end
 end
+
+"""
+    value_type(::Signal{D}) where {D}
+
+Get the type of specified in the signal's type parameter `D`. Note, that this is not the same as the type of the value stored in the signal.
+For example, the `value_type` of a signal with type parameter `Any` is `Any`, but the value of the signal can be `Int`.
+The `value_type` indicates all possible types of the value that can be stored in the signal.
+"""
+value_type(::Signal{D}) where {D} = D
+
+"""
+    variant_type(::Signal{D, V}) where {D, V}
+
+Get the type of specified in the signal's type parameter `V`. Note, that this is not the same as the type of the variant stored in the signal.
+For example, the `variant_type` of a signal with type parameter `Any` is `Any`, but the variant of the signal can be `Int`.
+The `variant_type` indicates all possible types of the variant that can be stored in the signal.
+"""
+variant_type(::Signal{D, V}) where {D, V} = V
 
 """
     is_pending(s::Signal) -> Bool
@@ -159,44 +173,53 @@ function get_value(s::Signal)
 end
 
 """
-    get_type(s::Signal) -> UInt8
+    get_variant(s::Signal)
 
-Get the type identifier (UInt8) of the signal `s`.
-Defaults to `0x00` if not specified during construction.
+Get the variant of the signal `s`.
 """
-function get_type(s::Signal)::UInt8
-    return s.type
+function get_variant(s::Signal)
+    return s.variant
 end
 
 """
-    get_metadata(s::Signal)
+    set_variant!(s::Signal, variant)
 
-Get the metadata associated with the signal `s`.
+Set the variant of the signal `s` to the given `variant`.
 """
-function get_metadata(s::Signal)
-    return s.metadata
+function set_variant!(s::Signal, @nospecialize(variant))
+    s.variant = variant
+    return nothing
 end
 
 """
-    get_dependencies(s::Signal) -> Vector{Signal}
+    isa_variant(s::Signal, T)
+
+Check if the currently set variant of the signal `s` is of type `T`.
+"""
+function isa_variant(s::Signal, ::Type{T}) where {T}
+    return typeof(s.variant) <: T
+end
+
+"""
+    get_dependencies(s::Signal)
 
 Get the list of signals that the signal `s` depends on.
 """
-function get_dependencies(s::Signal)::Vector{Signal}
+function get_dependencies(s::Signal)
     return s.dependencies
 end
 
 """
-    get_listeners(s::Signal) -> Vector{Signal}
+    get_listeners(s::Signal)
 
 Get the list of signals that listen to the signal `s` (i.e., signals that depend on `s`).
 """
-function get_listeners(s::Signal)::Vector{Signal}
+function get_listeners(s::Signal)
     return s.listeners
 end
 
 """
-    set_value!(s::Signal, value::Any)
+    set_value!(s::Signal, value)
 
 Set the `value` of the signal `s`. Notifies all the active listeners of the signal.
 
@@ -230,7 +253,7 @@ function set_value!(signal::Signal, @nospecialize(value))
 end
 
 """
-    add_dependency!(signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true, intermediate::Bool = false)
+    add_dependency!(signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true, intermediate::Bool = false, check_computed::Bool = true)
 
 Add `dependency` to the list of dependencies for signal `signal`.
 Also adds `signal` to the list of listeners for `dependency`.
@@ -255,6 +278,10 @@ further updates to `dependency` will not trigger notifications to `signal`.
 
 The same dependency should not be added multiple times. Doing so will result in wrong notification behaviour and likely will lead to incorrect results.
 Note that this function does nothing if `signal === dependency`.
+
+!!! note
+    Signals can only depend on other signals with the same type parameters `{D, V}`. Attempting to add a dependency 
+    with different type parameters will result in an error.
 """
 function add_dependency!(
     signal::Signal,
@@ -333,15 +360,11 @@ end
 function Base.show(io::IO, s::Signal)
     val_str = is_computed(s) ? repr(get_value(s)) : "#undef"
     pending_str = is_pending(s) ? "true" : "false"
-    type_str = repr(get_type(s)) # Use repr directly for type
-    meta = get_metadata(s)
+    variant_str = repr(get_variant(s)) # Use repr directly for type
 
     print(io, "Signal(value=", val_str, ", pending=", pending_str) # New order
-    if get_type(s) !== 0x00
-        print(io, ", type=", type_str)                               # New order
-    end
-    if meta !== UndefMetadata()
-        print(io, ", metadata=", repr(meta))
+    if get_variant(s) !== UndefVariant()
+        print(io, ", variant=", variant_str)                               # New order
     end
     print(io, ")")
 end
@@ -396,7 +419,7 @@ function compute_value!(strategy, signal, dependencies)
     error("`compute_value!` must be implemented for the given strategy of type `$(typeof(strategy))`")
 end
 
-function compute_value!(strategy::F, signal::Signal, dependencies::Vector{Signal}) where {F <: Function}
+function compute_value!(strategy::F, signal::Signal, dependencies::AbstractVector) where {F <: Function}
     return strategy(signal, dependencies)
 end
 

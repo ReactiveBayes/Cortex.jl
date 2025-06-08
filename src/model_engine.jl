@@ -13,9 +13,9 @@ automatically updated when the variable's marginal changes.
 - `name::Symbol`: The symbolic name of the variable, used for identification and display.
 - `index::Any = nothing`: An optional index for the variable, useful for indexed variable families 
   (e.g., `x[1]`, `x[2]`, etc.). Can be any type that makes sense for the specific use case.
-- `marginal::Signal = Signal()`: A reactive signal representing the current marginal belief 
+- `marginal::InferenceSignal = create_inference_signal()`: A reactive signal representing the current marginal belief 
   over this variable. Updated automatically during inference.
-- `linked_signals::Vector{Signal} = Signal[]`: A collection of signals that should be 
+- `linked_signals::Vector{InferenceSignal} = InferenceSignal[]`: A collection of signals that should be 
   automatically updated when this variable's marginal changes. These might represent joint 
   marginals around factors, or any other derived quantities that depend on this variable.
 
@@ -30,8 +30,8 @@ automatically updated when the variable's marginal changes.
 Base.@kwdef struct Variable
     name::Symbol
     index::Any = nothing
-    marginal::Signal = Signal()
-    linked_signals::Vector{Signal} = Signal[]
+    marginal::InferenceSignal = create_inference_signal()
+    linked_signals::Vector{InferenceSignal} = InferenceSignal[]
 end
 
 """
@@ -73,11 +73,11 @@ function get_variable_linked_signals(variable::Variable)
 end
 
 """
-    link_signal_to_variable!(variable::Variable, signal::Signal)
+    link_signal_to_variable!(variable::Variable, signal::InferenceSignal)
 
 Links a signal to a variable. The linked signal will be updated automatically when the marginal of the variable is updated.
 """
-function link_signal_to_variable!(variable::Variable, signal::Signal)
+function link_signal_to_variable!(variable::Variable, signal::InferenceSignal)
     push!(variable.linked_signals, signal)
     return nothing
 end
@@ -104,7 +104,7 @@ computation and inference updates.
 - `functional_form::Any`: The mathematical or computational representation of the factor. 
   This could be a function, a probability distribution, a constraint, or any other object 
   that defines the probabilistic relationship encoded by this factor.
-- `local_marginals::Vector{Signal} = Signal[]`: A collection of reactive signals representing 
+- `local_marginals::Vector{InferenceSignal} = InferenceSignal[]`: A collection of reactive signals representing 
   local marginal beliefs associated with this factor. These signals are typically updated 
   during message-passing inference and may represent beliefs about individual variables 
   or joint beliefs over subsets of variables connected to this factor.
@@ -118,7 +118,7 @@ computation and inference updates.
 """
 Base.@kwdef struct Factor
     functional_form::Any
-    local_marginals::Vector{Signal} = Signal[]
+    local_marginals::Vector{InferenceSignal} = InferenceSignal[]
 end
 
 """
@@ -143,11 +143,11 @@ function get_factor_local_marginals(factor::Factor)
 end
 
 """
-    add_local_marginal_to_factor!(factor::Factor, local_marginal::Signal)
+    add_local_marginal_to_factor!(factor::Factor, local_marginal::InferenceSignal)
 
 Adds a local marginal signal to a factor's collection of local marginals.
 """
-function add_local_marginal_to_factor!(factor::Factor, local_marginal::Signal)
+function add_local_marginal_to_factor!(factor::Factor, local_marginal::InferenceSignal)
     push!(factor.local_marginals, local_marginal)
     return nothing
 end
@@ -173,16 +173,16 @@ identification through labels and indices.
 - `index::Int = 0`: A numeric index for the connection, useful when multiple connections 
   of the same type exist between a variable-factor pair, or for ordering connections 
   in message-passing algorithms.
-- `message_to_variable::Signal = Signal()`: A reactive signal carrying messages sent 
+- `message_to_variable::InferenceSignal = create_inference_signal()`: A reactive signal carrying messages sent 
   from the factor to the variable. Updated during factor-to-variable message passing.
-- `message_to_factor::Signal = Signal()`: A reactive signal carrying messages sent 
+- `message_to_factor::InferenceSignal = create_inference_signal()`: A reactive signal carrying messages sent 
   from the variable to the factor. Updated during variable-to-factor message passing.
 """
 Base.@kwdef struct Connection
     label::Symbol
     index::Int = 0
-    message_to_variable::Signal = Signal()
-    message_to_factor::Signal = Signal()
+    message_to_variable::InferenceSignal = create_inference_signal()
+    message_to_factor::InferenceSignal = create_inference_signal()
 end
 
 """

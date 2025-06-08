@@ -48,21 +48,13 @@ function format_node_value(s::Cortex.Signal)
     end
 end
 
-# Formats the signal's metadata for display if present
-function format_node_metadata(s::Cortex.Signal)
-    if s.metadata !== Cortex.UndefMetadata()
-        return """<tr> <td align="left">Metadata: </td> <td align="left">$(s.metadata)</td> </tr>"""
+# Formats the signal's variant for display if present
+function format_node_variant(s::Cortex.Signal, variant_to_string_fn::Function)
+    variant = Cortex.get_variant(s)
+    if variant !== Cortex.UndefVariant()
+        return """<tr> <td align="left">Variant: </td> <td align="left">$(variant_to_string_fn(variant))</td> </tr>"""
     else
-        return """<tr> <td align="left">Does not have metadata</td></tr>"""
-    end
-end
-
-# Formats the signal's type information using the provided type conversion function
-function format_node_type(s::Cortex.Signal, type_to_string_fn::Function)
-    if s.type !== 0x00
-        return """<tr> <td align="left">Type: </td> <td align="left">$(type_to_string_fn(s.type))</td> </tr>"""
-    else
-        return """<tr> <td align="left">Does not have a type</td></tr>"""
+        return """<tr> <td align="left">Does not have a variant</td></tr>"""
     end
 end
 
@@ -101,7 +93,7 @@ function format_node_attributes(attrs::Dict{String, String})
 end
 
 # Calculates statistics for a collection of dependencies
-function calculate_dependency_stats(s::Cortex.Signal, dependencies::Vector{Cortex.Signal}, start_idx::Int)
+function calculate_dependency_stats(s::Cortex.Signal, dependencies::Vector{<:Cortex.Signal}, start_idx::Int)
     stats = Dict(
         :total => length(dependencies) - start_idx + 1, :weak => 0, :intermediate => 0, :fresh => 0, :pending => 0
     )
@@ -183,10 +175,9 @@ function format_signal_listeners(
     id::String,
     footer::Vector{String};
     max_listeners::Int = 10,
-    type_to_string_fn,
+    variant_to_string_fn,
     show_value::Bool = true,
-    show_metadata::Bool = true,
-    show_type::Bool = true,
+    show_variant::Bool = true,
     show_hints::Bool = true
 )
     result = IOBuffer()
@@ -227,10 +218,9 @@ function format_signal_listeners(
             max_depth = 0,  # Don't show listener's dependencies
             max_dependencies = 0,
             max_listeners = 0,
-            type_to_string_fn = type_to_string_fn,
+            variant_to_string_fn = variant_to_string_fn,
             show_value = show_value,
-            show_metadata = show_metadata,
-            show_type = show_type,
+            show_variant = show_variant,
             show_listeners = false,  # Don't show listener's listeners to avoid recursion
             show_depth = false, # Don't show depth as it is irrelevant for listeners
             show_hints = false # Don't show hints as it is irrelevant for listeners
@@ -257,17 +247,16 @@ end
         max_depth::Int = 2,
         max_dependencies::Int = 10,
         max_listeners::Int = 10,
-        type_to_string_fn = Cortex.InferenceSignalTypes.to_string,
+        variant_to_string_fn = string,
         show_value::Bool = true,
-        show_metadata::Bool = true,
-        show_type::Bool = true,
+        show_variant::Bool = true,
         show_listeners::Bool = true
     ) -> GraphViz.Graph
 
 Creates a GraphViz visualization of a Signal and its dependency graph.
 
 The visualization includes:
-- The signal's value, metadata, and type (if present)
+- The signal's value and variant (if present)
 - Dependencies and their relationships
 - Listeners and their states
 - Visual indicators for pending, computed, and intermediate states
@@ -279,10 +268,9 @@ The visualization includes:
 - `max_depth::Int = 2`: Maximum depth of the dependency tree to display
 - `max_dependencies::Int = 10`: Maximum number of dependencies to show per signal
 - `max_listeners::Int = 10`: Maximum number of listeners to show per signal
-- `type_to_string_fn = Cortex.InferenceSignalTypes.to_string`: Function to convert signal type to string
+- `variant_to_string_fn = string`: Function to convert signal variant to string
 - `show_value::Bool = true`: Whether to display signal values
-- `show_metadata::Bool = true`: Whether to display signal metadata
-- `show_type::Bool = true`: Whether to display signal types
+- `show_variant::Bool = true`: Whether to display signal variants
 - `show_listeners::Bool = true`: Whether to display signal listeners
 
 # Visual Styling
@@ -307,10 +295,9 @@ function GraphViz.load(
     max_depth = 2,
     max_dependencies = 10,
     max_listeners = 10,
-    type_to_string_fn = Cortex.InferenceSignalTypes.to_string,
+    variant_to_string_fn = string,
     show_value = true,
-    show_metadata = true,
-    show_type = true,
+    show_variant = true,
     show_listeners = true
 )
     io = IOBuffer()
@@ -341,10 +328,9 @@ function GraphViz.load(
         max_dependencies = max_dependencies,
         max_listeners = max_listeners,
         level = 0,
-        type_to_string_fn = type_to_string_fn,
+        variant_to_string_fn = variant_to_string_fn,
         show_value = show_value,
-        show_metadata = show_metadata,
-        show_type = show_type,
+        show_variant = show_variant,
         show_listeners = show_listeners
     )
 
@@ -365,10 +351,9 @@ function print_signal_node(
     max_depth,
     max_dependencies,
     max_listeners,
-    type_to_string_fn,
+    variant_to_string_fn,
     show_value = true,
-    show_metadata = true,
-    show_type = true,
+    show_variant = true,
     show_listeners = true,
     show_depth = true,
     show_hints = true
@@ -390,9 +375,21 @@ function print_signal_node(
     print(io, format_node_header(title, level; show_depth = show_depth))
     print(io, """<tr> <td><table border="0" cellborder="0" cellspacing="0">""")
 
-    show_value && print(io, format_node_value(s))
-    show_metadata && print(io, format_node_metadata(s))
-    show_type && print(io, format_node_type(s, type_to_string_fn))
+    # Ensure we always have at least one row to avoid empty table syntax errors
+    has_content = false
+    if show_value
+        print(io, format_node_value(s))
+        has_content = true
+    end
+    if show_variant
+        print(io, format_node_variant(s, variant_to_string_fn))
+        has_content = true
+    end
+
+    # If no content was added, add a placeholder row
+    if !has_content
+        print(io, """<tr> <td align="left"></td></tr>""")
+    end
 
     print(io, "</table></td></tr>")
 
@@ -412,11 +409,10 @@ function print_signal_node(
                 level,
                 max_depth,
                 max_dependencies,
-                type_to_string_fn,
+                variant_to_string_fn,
                 footer,
                 show_value,
-                show_metadata,
-                show_type
+                show_variant
             )
         )
     end
@@ -430,10 +426,9 @@ function print_signal_node(
                 id,
                 footer;
                 max_listeners = max_listeners,
-                type_to_string_fn = type_to_string_fn,
+                variant_to_string_fn = variant_to_string_fn,
                 show_value = show_value,
-                show_metadata = show_metadata,
-                show_type = show_type,
+                show_variant = show_variant,
                 show_hints = show_hints
             )
         )
@@ -450,17 +445,7 @@ end
 
 # Formats and renders dependencies of a signal node, creating child nodes and edges
 function format_signal_dependencies(
-    s,
-    dependencies,
-    id,
-    level,
-    max_depth,
-    max_dependencies,
-    type_to_string_fn,
-    footer,
-    show_value,
-    show_metadata,
-    show_type
+    s, dependencies, id, level, max_depth, max_dependencies, variant_to_string_fn, footer, show_value, show_variant
 )
     result = IOBuffer()
     print(result, """<tr> <td> <table border="0" cellborder="0" cellspacing="0">""")
@@ -485,10 +470,9 @@ function format_signal_dependencies(
             max_depth = max_depth - 1,
             max_dependencies = max_dependencies,
             max_listeners = 0,
-            type_to_string_fn = type_to_string_fn,
+            variant_to_string_fn = variant_to_string_fn,
             show_value = show_value,
-            show_metadata = show_metadata,
-            show_type = show_type,
+            show_variant = show_variant,
             show_listeners = false
         )
         push!(footer, String(take!(dependency_node_io)))

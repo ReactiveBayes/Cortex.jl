@@ -22,14 +22,14 @@ end
         @test GraphViz.load(s) isa GraphViz.Graph
     end
 
-    # Initialized signal with a metadata
-    @testset let s = Cortex.Signal("hello", metadata = (:a, 1))
+    # Initialized signal with a variant
+    @testset let s = Cortex.Signal("hello", variant = (:a, 1))
         @test GraphViz.load(s) isa GraphViz.Graph
     end
 
     # Check that the result is actually different
-    signal1 = Cortex.Signal("hello 1", metadata = (:a, 1))
-    signal2 = Cortex.Signal("hello 2", metadata = (:a, 1))
+    signal1 = Cortex.Signal("hello 1", variant = (:a, 1))
+    signal2 = Cortex.Signal("hello 2", variant = (:a, 1))
 
     @test to_svg(signal1) != to_svg(signal2)
 end
@@ -50,41 +50,37 @@ end
     end
 end
 
-@testitem "Signal visualization should include the metadata" setup = [GraphVizUtils] begin
+@testitem "Signal visualization should include the variant" setup = [GraphVizUtils] begin
     using GraphViz
     using .GraphVizUtils
 
-    @testset "No metadata" begin
+    @testset "No variant" begin
         s = Cortex.Signal(1)
-        @test occursin("Does not have metadata", to_svg(s))
+        @test occursin("Does not have a variant", to_svg(s))
     end
 
-    for metadata in (1, 1.0, "hello", [1, 2, 3], (a = 1, b = 2))
-        @testset let s = Cortex.Signal(1, metadata = metadata)
-            @test occursin(string(metadata), to_svg(s))
+    for variant in (1, 1.0, "hello", [1, 2, 3], (a = 1, b = 2))
+        @testset let s = Cortex.Signal(1, variant = variant)
+            @test occursin(string(variant), to_svg(s))
         end
     end
 end
 
-@testitem "Signal visualization should include the type" setup = [GraphVizUtils] begin
+@testitem "Signal visualization should work with inference signal variants" setup = [GraphVizUtils] begin
     using GraphViz
     using .GraphVizUtils
 
-    @testset "No type" begin
-        s = Cortex.Signal(1)
-        @test !occursin("0x00", to_svg(s)) && !occursin("Custom type", to_svg(s))
+    @testset "Inference signal with variant" begin
+        s = Cortex.create_inference_signal()
+        Cortex.set_variant!(s, Cortex.InferenceSignalVariants.IndividualMarginal(1))
+        svg_content = to_svg(s)
+        @test occursin("IndividualMarginal", svg_content)
     end
 
-    for type in (
-        Cortex.InferenceSignalTypes.MessageToVariable,
-        Cortex.InferenceSignalTypes.MessageToFactor,
-        Cortex.InferenceSignalTypes.ProductOfMessages,
-        Cortex.InferenceSignalTypes.IndividualMarginal,
-        Cortex.InferenceSignalTypes.JointMarginal
-    )
-        @testset let s = Cortex.Signal(1, type = type)
-            @test occursin(Cortex.InferenceSignalTypes.to_string(type), to_svg(s))
-        end
+    @testset "Regular signal with custom variant" begin
+        s = Cortex.Signal(1, variant = "custom_variant")
+        svg_content = to_svg(s)
+        @test occursin("custom_variant", svg_content)
     end
 end
 
@@ -100,8 +96,8 @@ end
     @testset "Two dependencies" begin
         s = Cortex.Signal()
 
-        dep1 = Cortex.Signal("dep1", metadata = (:a, 1))
-        dep2 = Cortex.Signal("hello world", metadata = (:b, 2))
+        dep1 = Cortex.Signal("dep1", variant = (:a, 1))
+        dep2 = Cortex.Signal("hello world", variant = (:b, 2))
 
         Cortex.add_dependency!(s, dep1)
         Cortex.add_dependency!(s, dep2)
@@ -121,7 +117,7 @@ end
     @testset "A dependency but depth is too small for visualization" begin
         s = Cortex.Signal()
 
-        dep1 = Cortex.Signal("dep1", metadata = (:a, 1))
+        dep1 = Cortex.Signal("dep1", variant = (:a, 1))
 
         Cortex.add_dependency!(s, dep1)
 
@@ -198,7 +194,7 @@ end
     using GraphViz
     using .GraphVizUtils
 
-    s = Cortex.Signal(42, metadata = (:test, 1), type = 0x01)
+    s = Cortex.Signal(42, variant = (:test, 1))
 
     # Test show_value option
     s_with_value = to_svg(s; show_value = true)
@@ -208,48 +204,41 @@ end
     @test occursin("42", s_with_value)
     @test !occursin("42", s_without_value)
 
-    # Test show_metadata option
-    s_with_metadata = to_svg(s; show_metadata = true)
-    s_without_metadata = to_svg(s; show_metadata = false)
-    @test occursin("Metadata: ", s_with_metadata)
-    @test !occursin("Metadata: ", s_without_metadata)
-    @test occursin("(:test, 1)", s_with_metadata)
-    @test !occursin("(:test, 1)", s_without_metadata)
+    # Test show_variant option
+    s_with_variant = to_svg(s; show_variant = true)
+    s_without_variant = to_svg(s; show_variant = false)
+    @test occursin("Variant: ", s_with_variant)
+    @test !occursin("Variant: ", s_without_variant)
+    @test occursin("(:test, 1)", s_with_variant)
+    @test !occursin("(:test, 1)", s_without_variant)
 
-    # Test show_type option
-    s_with_type = to_svg(s; show_type = true, type_to_string_fn = repr)
-    s_without_type = to_svg(s; show_type = false, type_to_string_fn = repr)
-    @test occursin("Type: ", s_with_type)
-    @test !occursin("Type: ", s_without_type)
-    @test occursin("0x01", s_with_type)
-    @test !occursin("0x01", s_without_type)
+    # Test variant_to_string_fn option
+    s_with_repr = to_svg(s; variant_to_string_fn = (variant) -> "CUSTOM_$(variant)")
+    s_with_string = to_svg(s; variant_to_string_fn = string)
+    @test s_with_repr != s_with_string  # Should be different representations
 
     # Test that options propagate to dependencies
-    source = Cortex.Signal(1, metadata = (:src, 1), type = 0x02)
-    dependent = Cortex.Signal(2, metadata = (:dep, 2), type = 0x03)
+    source = Cortex.Signal(1, variant = (:src, 1))
+    dependent = Cortex.Signal(2, variant = (:dep, 2))
     Cortex.add_dependency!(dependent, source)
 
     # Check with all options disabled
-    s_minimal = to_svg(
-        dependent; show_value = false, show_metadata = false, show_type = false, type_to_string_fn = repr
-    )
+    s_minimal = to_svg(dependent; show_value = false, show_variant = false)
     @test !occursin("Current value: ", s_minimal)
-    @test !occursin("Metadata: ", s_minimal)
-    @test !occursin("Type: ", s_minimal)
+    @test !occursin("Variant: ", s_minimal)
     @test !occursin("(:src, 1)", s_minimal)
     @test !occursin("(:dep, 2)", s_minimal)
-    @test !occursin("0x02", s_minimal)
-    @test !occursin("0x03", s_minimal)
 
     # Check with all options enabled
-    s_full = to_svg(dependent; show_value = true, show_metadata = true, show_type = true, type_to_string_fn = repr)
+    s_full = to_svg(dependent; show_value = true, show_variant = true)
     @test occursin("Current value: ", s_full)
-    @test occursin("Metadata: ", s_full)
-    @test occursin("Type: ", s_full)
+    @test occursin("Variant: ", s_full)
     @test occursin("(:src, 1)", s_full)
     @test occursin("(:dep, 2)", s_full)
-    @test occursin("0x02", s_full)
-    @test occursin("0x03", s_full)
+
+    # Check that variant_to_string_fn propagates to dependencies
+    s_custom_variant = to_svg(dependent; variant_to_string_fn = x -> "CUSTOM_$(x)")
+    @test occursin("CUSTOM_", s_custom_variant)
 end
 
 @testitem "Signal visualization should respect max_dependencies limit" setup = [GraphVizUtils] begin

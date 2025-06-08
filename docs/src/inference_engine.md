@@ -42,23 +42,22 @@ Cortex.get_connected_variable_ids(::Cortex.InferenceEngine, ::Int)
 Cortex.get_connected_factor_ids(::Cortex.InferenceEngine, ::Int)
 ```
 
-### Signal Types
+### Signal Variants
 
-The engine uses different signal types to manage various aspects of inference:
-
-```@docs
-Cortex.InferenceSignalTypes
-```
-
-#### Available Signal Types
+The engine uses different signal variants to manage various aspects of inference:
 
 ```@docs
-Cortex.InferenceSignalTypes.MessageToVariable
-Cortex.InferenceSignalTypes.MessageToFactor
-Cortex.InferenceSignalTypes.ProductOfMessages
-Cortex.InferenceSignalTypes.IndividualMarginal
-Cortex.InferenceSignalTypes.JointMarginal
-Cortex.prepare_signals_metadata!
+Cortex.InferenceSignalVariants
+Cortex.InferenceSignalVariants.Unspecified
+Cortex.InferenceSignalVariants.MessageToFactor
+Cortex.InferenceSignalVariants.MessageToVariable
+Cortex.InferenceSignalVariants.ProductOfMessages
+Cortex.InferenceSignalVariants.IndividualMarginal
+Cortex.InferenceSignalVariants.JointMarginal
+Cortex.InferenceSignalVariant
+Cortex.InferenceSignal
+Cortex.create_inference_signal
+Cortex.set_signals_variants!
 ```
 
 ### Running Inference
@@ -68,9 +67,14 @@ Cortex.request_inference_for
 Cortex.InferenceRequest
 Cortex.scan_inference_request
 Cortex.InferenceRequestScanner
+Cortex.AbstractInferenceRequestProcessor
+Cortex.compute_message_to_variable!
+Cortex.compute_message_to_factor!
+Cortex.compute_individual_marginal!
+Cortex.compute_product_of_messages!
+Cortex.compute_joint_marginal!
 Cortex.process_inference_request
 Cortex.process!
-Cortex.CallbackInferenceRequestProcessor
 Cortex.update_marginals!
 ```
 

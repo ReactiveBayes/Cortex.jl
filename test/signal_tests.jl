@@ -8,37 +8,61 @@
     # Update signal value using set_value!
     set_value!(s, 100)
     @test get_value(s) == 100
+
+    # Create a signal with a custom value type
+    s = Signal(Int, Int, 42, 1)
+    @test get_value(s) == 42
+
+    set_value!(s, 100)
+    @test get_value(s) == 100
+
+    @test_throws Exception set_value!(s, "100")
+    @test_throws Exception set_value!(s, 100.1)
 end
 
-@testitem "Signal Type and Metadata" begin
-    import Cortex: Signal, get_type, get_metadata, UndefMetadata
+@testitem "Signal Variant" begin
+    import Cortex: Signal, get_value, get_variant, set_variant!, UndefVariant, isa_variant
 
     @testset "Default Values" begin
         s = Signal(42)
-        @test get_type(s) === 0x00
-        @test get_metadata(s) === UndefMetadata()
+        @test get_variant(s) === UndefVariant()
         s_empty = Signal()
-        @test get_type(s_empty) === 0x00
-        @test get_metadata(s_empty) === UndefMetadata()
+        @test get_variant(s_empty) === UndefVariant()
+
+        set_variant!(s, 1)
+        @test get_variant(s) === 1
+        @test isa_variant(s, Int)
+        @test !isa_variant(s, String)
+
+        set_variant!(s, "2")
+        @test get_variant(s) === "2"
+        @test isa_variant(s, String)
+        @test !isa_variant(s, Int)
     end
 
-    @testset "Custom Type" begin
-        s = Signal(42; type = 0x05)
-        @test get_type(s) === 0x05
-        @test get_metadata(s) === UndefMetadata()
+    @testset "Custom Variant" begin
+        s = Signal(42; variant = 1)
+        @test get_variant(s) === 1
+
+        set_variant!(s, 2)
+        @test get_variant(s) === 2
+
+        set_variant!(s, "3")
+        @test get_variant(s) === "3"
     end
 
-    @testset "Custom Metadata" begin
-        s = Signal(42; metadata = Dict{Symbol, Any}(:info => "extra data"))
-        @test get_type(s) === 0x00
-        @test get_metadata(s) == Dict{Symbol, Any}(:info => "extra data")
-        @test get_metadata(s)[:info] == "extra data"
-    end
+    @testset "Custom Variant with a Specified Type" begin
+        s = Signal(Int, Int, 42, 1)
+        @test get_variant(s) === 1
+        @test get_value(s) === 42
+        @test isa_variant(s, Int)
+        @test !isa_variant(s, String)
 
-    @testset "Custom Type and Metadata" begin
-        s = Signal(42; type = 0xff, metadata = 1)
-        @test get_type(s) === 0xff
-        @test get_metadata(s) === 1
+        set_variant!(s, 2)
+        @test get_variant(s) === 2
+
+        @test_throws Exception set_variant!(s, "1")
+        @test_throws Exception set_variant!(s, 1.1)
     end
 end
 
@@ -46,19 +70,17 @@ end
     import Cortex:
         Signal,
         UndefValue,
-        UndefMetadata,
+        UndefVariant,
         get_value,
         get_dependencies,
         get_listeners,
-        get_type,
-        get_metadata,
+        get_variant,
         is_pending,
         is_computed
 
     s = Signal()
     @test get_value(s) === UndefValue()
-    @test get_type(s) === 0x00
-    @test get_metadata(s) === UndefMetadata()
+    @test get_variant(s) === UndefVariant()
     @test isempty(get_dependencies(s))
     @test isempty(get_listeners(s))
     @test !is_pending(s)
@@ -110,6 +132,33 @@ end
         @test is_pending(sig_a)
         @test !is_pending(sig_b)
     end
+end
+
+@testitem "Add Dependency of Different Variant" begin
+    import Cortex: Signal, add_dependency!
+
+    sig_a = Signal(Int, Int, 1, 1)
+    sig_b = Signal(Int, String, 2, "2")
+
+    @test_throws Exception add_dependency!(sig_a, sig_b)
+    @test_throws Exception add_dependency!(sig_a, sig_b; weak = true)
+    @test_throws Exception add_dependency!(sig_a, sig_b; weak = false)
+    @test_throws Exception add_dependency!(sig_a, sig_b; listen = true)
+    @test_throws Exception add_dependency!(sig_a, sig_b; listen = false)
+    @test_throws Exception add_dependency!(sig_a, sig_b; check_computed = false)
+    @test_throws Exception add_dependency!(sig_a, sig_b; check_computed = true)
+    @test_throws Exception add_dependency!(sig_a, sig_b; intermediate = true)
+    @test_throws Exception add_dependency!(sig_a, sig_b; intermediate = false)
+
+    @test_throws Exception add_dependency!(sig_b, sig_a)
+    @test_throws Exception add_dependency!(sig_b, sig_a; weak = true)
+    @test_throws Exception add_dependency!(sig_b, sig_a; weak = false)
+    @test_throws Exception add_dependency!(sig_b, sig_a; listen = true)
+    @test_throws Exception add_dependency!(sig_b, sig_a; listen = false)
+    @test_throws Exception add_dependency!(sig_b, sig_a; check_computed = false)
+    @test_throws Exception add_dependency!(sig_b, sig_a; check_computed = true)
+    @test_throws Exception add_dependency!(sig_b, sig_a; intermediate = true)
+    @test_throws Exception add_dependency!(sig_b, sig_a; intermediate = false)
 end
 
 @testitem "Add Dependency (Initialized)" begin
@@ -700,41 +749,41 @@ end
 end
 
 @testitem "Signal Representation" begin
-    import Cortex: Signal, set_value!, add_dependency!, get_type, get_metadata
+    import Cortex: Signal, set_value!, add_dependency!, get_variant, set_variant!
 
     @testset "Uninitialized Signal" begin
         s_no_meta = Signal()
         @test repr(s_no_meta) == "Signal(value=#undef, pending=false)"
 
-        s_meta = Signal(metadata = (test = 1,))
-        @test repr(s_meta) == "Signal(value=#undef, pending=false, metadata=(test = 1,))"
+        s_meta = Signal(variant = (test = 1,))
+        @test repr(s_meta) == "Signal(value=#undef, pending=false, variant=(test = 1,))"
 
-        s_type = Signal(type = 0x01)
-        @test repr(s_type) == "Signal(value=#undef, pending=false, type=0x01)"
+        s_type = Signal(variant = 0x01)
+        @test repr(s_type) == "Signal(value=#undef, pending=false, variant=0x01)"
 
-        s_both = Signal(type = 0xab, metadata = 2.3)
-        @test repr(s_both) == "Signal(value=#undef, pending=false, type=0xab, metadata=2.3)"
+        s_both = Signal(variant = 2.3)
+        @test repr(s_both) == "Signal(value=#undef, pending=false, variant=2.3)"
     end
 
     @testset "Initialized Signal" begin
         s_int = Signal(123)
         @test repr(s_int) == "Signal(value=123, pending=false)"
 
-        s_str_meta = Signal("test"; metadata = "some info")
-        @test repr(s_str_meta) == "Signal(value=\"test\", pending=false, metadata=\"some info\")"
+        s_str_meta = Signal("test"; variant = "some info")
+        @test repr(s_str_meta) == "Signal(value=\"test\", pending=false, variant=\"some info\")"
     end
 
     @testset "Pending Signal" begin
         s1 = Signal(1)
-        s_pending = Signal(type = 0x1f, metadata = 1)
+        s_pending = Signal(variant = 0x1f)
         add_dependency!(s_pending, s1)
-        @test repr(s_pending) == "Signal(value=#undef, pending=true, type=0x1f, metadata=1)"
+        @test repr(s_pending) == "Signal(value=#undef, pending=true, variant=0x1f)"
 
         set_value!(s_pending, 50)
-        @test repr(s_pending) == "Signal(value=50, pending=false, type=0x1f, metadata=1)"
+        @test repr(s_pending) == "Signal(value=50, pending=false, variant=0x1f)"
 
         set_value!(s1, 2)
-        @test repr(s_pending) == "Signal(value=50, pending=true, type=0x1f, metadata=1)"
+        @test repr(s_pending) == "Signal(value=50, pending=true, variant=0x1f)"
     end
 end
 
@@ -747,11 +796,11 @@ end
     JET.@test_opt Cortex.Signal(1)
     JET.@test_opt Cortex.Signal("1")
     # Test constructors with keywords
-    JET.@test_opt Cortex.Signal(type = 0x01)
-    JET.@test_opt Cortex.Signal(metadata = :meta)
-    JET.@test_opt Cortex.Signal(metadata = Dict{Symbol, Any}())
-    JET.@test_opt Cortex.Signal(1; type = 0x02, metadata = "meta")
-    JET.@test_opt Cortex.Signal(1; metadata = Dict{Symbol, Any}())
+    JET.@test_opt Cortex.Signal(variant = 0x01)
+    JET.@test_opt Cortex.Signal(variant = :meta)
+    JET.@test_opt Cortex.Signal(variant = Dict{Symbol, Any}())
+    JET.@test_opt Cortex.Signal(1; variant = "meta")
+    JET.@test_opt Cortex.Signal(1; variant = Dict{Symbol, Any}())
 
     # Test getters
     JET.@test_opt Cortex.is_pending(Cortex.Signal())
@@ -777,9 +826,8 @@ end
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); weak = true)
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); check_computed = false)
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
-    JET.@test_opt Cortex.get_type(Cortex.Signal())
-    JET.@test_opt Cortex.get_metadata(Cortex.Signal())
-    JET.@test_opt Cortex.get_metadata(Cortex.Signal(metadata = Dict{Symbol, Any}(:a => 1)))
+    JET.@test_opt Cortex.get_variant(Cortex.Signal())
+    JET.@test_opt Cortex.get_variant(Cortex.Signal(variant = Dict{Symbol, Any}(:a => 1)))
     JET.@test_opt Cortex.add_dependency!(Cortex.Signal(1), Cortex.Signal(2); listen = false)
 end
 
