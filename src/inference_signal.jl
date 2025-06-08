@@ -1,7 +1,4 @@
 
-using Moshi.Data: @data
-using Moshi.Derive: @derive
-
 """
     InferenceSignalVariants
 
@@ -29,48 +26,52 @@ These variants are used to identify the role and context of a signal in the infe
 
 See also: [`InferenceSignal`](@ref), [`create_inference_signal`](@ref)
 """
-@data InferenceSignalVariants begin
-    # A variant that is used by default when no other variant is specified
-    Unspecified
+module InferenceSignalVariants
+# A variant that is used by default when no other variant is specified
+struct Unspecified end
 
-    # A message from a factor to a variable
-    struct MessageToFactor
-        variable_id::Int
-        factor_id::Int
-    end
-
-    # A message from a variable to a factor
-    struct MessageToVariable
-        variable_id::Int
-        factor_id::Int
-    end
-
-    # A product of messages from a variable to a factor
-    struct ProductOfMessages
-        variable_id::Int
-        range::UnitRange{Int}
-        factors_connected_to_variable::Vector{Int}
-    end
-
-    # An individual marginal of a variable
-    struct IndividualMarginal
-        variable_id::Int
-    end
-
-    # A joint marginal of a factor
-    struct JointMarginal
-        factor_id::Int
-        variable_ids::Vector{Int}
-    end
+# A message from a factor to a variable
+struct MessageToFactor
+    variable_id::Int
+    factor_id::Int
 end
 
-# Automatically derive the hash, equality, and show methods for the inference signal variant data type
-@derive InferenceSignalVariants[Hash, Eq, Show]
+# A message from a variable to a factor
+struct MessageToVariable
+    variable_id::Int
+    factor_id::Int
+end
+
+# A product of messages from a variable to a factor
+struct ProductOfMessages
+    variable_id::Int
+    range::UnitRange{Int}
+    factors_connected_to_variable::Vector{Int}
+end
+
+# An individual marginal of a variable
+struct IndividualMarginal
+    variable_id::Int
+end
+
+# A joint marginal of a factor
+struct JointMarginal
+    factor_id::Int
+    variable_ids::Vector{Int}
+end
+end
 
 """
 The type representing all possible variants of an inference signal.
 """
-const InferenceSignalVariant = InferenceSignalVariants.Type
+const InferenceSignalVariant = Union{
+    InferenceSignalVariants.Unspecified,
+    InferenceSignalVariants.MessageToFactor,
+    InferenceSignalVariants.MessageToVariable,
+    InferenceSignalVariants.ProductOfMessages,
+    InferenceSignalVariants.IndividualMarginal,
+    InferenceSignalVariants.JointMarginal
+}
 
 """
 A special type of signal that is used to represent signals that are used in inference.
@@ -87,8 +88,4 @@ See also [`InferenceSignalVariants`](@ref) for the possible variants.
 """
 function create_inference_signal()::InferenceSignal
     return Signal(Any, InferenceSignalVariant, UndefValue(), InferenceSignalVariants.Unspecified())
-end
-
-function isa_variant(s::InferenceSignal, ::Type{T}) where {T}
-    return Moshi.Data.isa_variant(s.variant, T)
 end

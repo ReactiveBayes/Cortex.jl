@@ -293,7 +293,7 @@ end
 function request_inference_for(engine::InferenceEngine, variable_ids::Union{AbstractVector, Tuple})
 
     # Initialize the container for the marginals
-    marginals = Vector{Signal}(undef, length(variable_ids))
+    marginals = Vector{InferenceSignal}(undef, length(variable_ids))
 
     # For each variable, we flip the `is_potentially_pending` flag to `true`
     # for all of the dependencies of its marginal and the corresponding linked signals
@@ -319,8 +319,6 @@ end
 
 abstract type AbstractInferenceRequestProcessor end
 
-import Moshi.Match: @match
-
 function process_message_to_variable end
 function process_message_to_factor end
 function process_individual_marginal end
@@ -328,22 +326,33 @@ function process_product_of_messages end
 function process_joint_marginal end
 
 function process!(
-    processor::AbstractInferenceRequestProcessor, engine::InferenceEngine, variable_id, dependency::Signal
+    processor::AbstractInferenceRequestProcessor, engine::InferenceEngine, variable_id, dependency::InferenceSignal
 )
     compute!(dependency) do signal, dependencies
-        return @match signal.variant begin
-            InferenceSignalVariants.MessageToVariable(variable_id, factor_id) =>
-                process_message_to_variable(processor, engine, variable_id, factor_id, signal, dependencies)
-            InferenceSignalVariants.MessageToFactor(variable_id, factor_id) =>
-                process_message_to_factor(processor, engine, variable_id, factor_id, signal, dependencies)
-            InferenceSignalVariants.IndividualMarginal(variable_id) =>
-                process_individual_marginal(processor, engine, variable_id, signal, dependencies)
-            InferenceSignalVariants.ProductOfMessages(variable_id, range, factor_ids) =>
-                process_product_of_messages(processor, engine, variable_id, range, factor_ids, signal, dependencies)
-            InferenceSignalVariants.JointMarginal(factor_id, variable_ids) =>
-                process_joint_marginal(processor, engine, factor_id, variable_ids, signal, dependencies)
-            InferenceSignalVariants.Unspecified => error(lazy"The variant of the signal $signal is unspecified.")
-            _ => error(lazy"Unprocessed signal variant: $(signal.variant)")
+        variant = signal.variant::InferenceSignalVariant
+
+        if isa(variant, InferenceSignalVariants.MessageToVariable)
+            process_message_to_variable(
+                processor, engine, variant::InferenceSignalVariants.MessageToVariable, signal, dependencies
+            )
+        elseif isa(variant, InferenceSignalVariants.MessageToFactor)
+            process_message_to_factor(
+                processor, engine, variant::InferenceSignalVariants.MessageToFactor, signal, dependencies
+            )
+        elseif isa(variant, InferenceSignalVariants.IndividualMarginal)
+            process_individual_marginal(
+                processor, engine, variant::InferenceSignalVariants.IndividualMarginal, signal, dependencies
+            )
+        elseif isa(variant, InferenceSignalVariants.ProductOfMessages)
+            process_product_of_messages(
+                processor, engine, variant::InferenceSignalVariants.ProductOfMessages, signal, dependencies
+            )
+        elseif isa(variant, InferenceSignalVariants.JointMarginal)
+            process_joint_marginal(
+                processor, engine, variant::InferenceSignalVariants.JointMarginal, signal, dependencies
+            )
+        else
+            error(lazy"Unprocessed signal variant: $(signal.variant)")
         end
     end
 end
@@ -366,13 +375,13 @@ end
 
 "Internal struct used to scan and collect pending signals from an inference request."
 struct InferenceRequestScanner <: AbstractInferenceRequestProcessor
-    signals::Vector{Signal}
+    signals::Vector{InferenceSignal}
 
-    InferenceRequestScanner() = new(Signal[])
+    InferenceRequestScanner() = new(InferenceSignal[])
 end
 
 "Internal functor for `InferenceTaskScanner` to collect dependencies."
-function process!(scanner::InferenceRequestScanner, engine::InferenceEngine, variable_id, dependency::Signal)
+function process!(scanner::InferenceRequestScanner, engine::InferenceEngine, variable_id, dependency::InferenceSignal)
     push!(scanner.signals, dependency)
 end
 
@@ -397,7 +406,9 @@ function update_marginals!(engine::InferenceEngine, variable_ids)
 end
 
 function update_marginals!(engine::InferenceEngine, variable_ids::Union{AbstractVector, Tuple})
-    should_continue = true
+    # This is a reference because we create a lambda callback with the `trace_inference_round`
+    # JET reports an type-unstable capture error otherwise
+    should_continue::Base.RefValue{Bool} = Ref(true)
 
     request = request_inference_for(engine, variable_ids)
     processor = get_inference_request_processor(engine)
@@ -410,13 +421,15 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
         # After each pass, we alternate the order
         is_reverse = false
 
-        while should_continue
-            _should_continue = false
+        while should_continue[]
+            _should_continue::Base.RefValue{Bool} = Ref(false)
 
             current_order = is_reverse ? indices_reverse : indices
 
             # These rounds compute mostly the messages needed to compute the marginals
             trace_inference_round(inference_request_trace) do inference_round_trace
+                __should_continue = false
+
                 @inbounds for i in current_order
                     if !request.readines_status[i]
                         variable_id = variable_ids[i]
@@ -430,15 +443,17 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
                             request.readines_status[i] = true
                         end
 
-                        _should_continue = _should_continue || has_been_processed_at_least_once
+                        __should_continue = __should_continue || has_been_processed_at_least_once
                     end
                 end
+
+                _should_continue[] = __should_continue::Bool
             end
 
             # Alternate between forward and backward order
             is_reverse = !is_reverse
 
-            should_continue = _should_continue
+            should_continue[] = _should_continue[]::Bool
         end
 
         trace_inference_round(inference_request_trace) do inference_round_trace
@@ -476,7 +491,7 @@ A record of a single signal computation during inference.
 
 - `engine::InferenceEngine`: The inference engine instance.
 - `variable_id`: The identifier of the variable being processed.
-- `signal::Signal`: The signal that was computed.
+- `signal::InferenceSignal`: The signal that was computed.
 - `total_time_in_ns::UInt64`: Total computation time in nanoseconds.
 - `value_before_execution`: Signal value before computation.
 - `value_after_execution`: Signal value after computation.
@@ -484,7 +499,7 @@ A record of a single signal computation during inference.
 struct TracedInferenceExecution
     engine::InferenceEngine
     variable_id::Any
-    signal::Cortex.Signal
+    signal::InferenceSignal
     total_time_in_ns::UInt64
     value_before_execution::Any
     value_after_execution::Any
@@ -494,29 +509,29 @@ function Base.show(io::IO, execution::TracedInferenceExecution)
     variable_data = get_variable(execution.engine, execution.variable_id)
 
     signal = execution.signal
-    signal_type = signal.type
 
-    print(io, "TracedInferenceExecution(for = $(variable_data), type = ")
+    print(io, "TracedInferenceExecution(for = $(variable_data), variant = ")
 
-    if signal_type === Cortex.InferenceSignalTypes.MessageToVariable
-        (v_id, f_id) = signal.metadata
-        v_data = get_variable(execution.engine, v_id)
-        f_data = get_factor(execution.engine, f_id)
+    if isa(signal.variant, InferenceSignalVariants.MessageToVariable)
+        v_data = get_variable(execution.engine, signal.variant.variable_id)
+        f_data = get_factor(execution.engine, signal.variant.factor_id)
         print(io, "MessageToVariable(from = $(f_data), to = $(v_data))")
-    elseif signal_type === Cortex.InferenceSignalTypes.MessageToFactor
-        (v_id, f_id) = signal.metadata
-        v_data = get_variable(execution.engine, v_id)
-        f_data = get_factor(execution.engine, f_id)
+    elseif isa(signal.variant, InferenceSignalVariants.MessageToFactor)
+        v_data = get_variable(execution.engine, signal.variant.variable_id)
+        f_data = get_factor(execution.engine, signal.variant.factor_id)
         print(io, "MessageToFactor(from = $(v_data), to = $(f_data))")
-    elseif signal_type === Cortex.InferenceSignalTypes.ProductOfMessages
+    elseif isa(signal.variant, InferenceSignalVariants.ProductOfMessages)
         print(io, "ProductOfMessages(?)")
-    elseif signal_type === Cortex.InferenceSignalTypes.IndividualMarginal
-        (v_id,) = signal.metadata
-        v_data = get_variable(execution.engine, v_id)
+    elseif isa(signal.variant, InferenceSignalVariants.IndividualMarginal)
+        v_data = get_variable(execution.engine, signal.variant.variable_id)
         print(io, "IndividualMarginal($(v_data))")
-    elseif signal_type === Cortex.InferenceSignalTypes.JointMarginal
+    elseif isa(signal.variant, InferenceSignalVariants.JointMarginal)
         print(io, "JointMarginal(?)")
+    else
+        error("Unknown signal variant: $(signal.variant)")
     end
+
+    print(io, ")")
 
     print(
         io,
@@ -656,7 +671,7 @@ function trace_inference_round(
     return nothing
 end
 
-function trace_inference_execution(f::F, ::Nothing, variable_id, dependency::Signal) where {F}
+function trace_inference_execution(f::F, ::Nothing, variable_id, dependency::InferenceSignal) where {F}
     return f()
 end
 
@@ -664,7 +679,7 @@ function trace_inference_execution(
     f::F,
     trace::Tuple{InferenceEngine, InferenceEngineTracer, Vector{TracedInferenceExecution}},
     variable_id,
-    dependency::Signal
+    dependency::InferenceSignal
 ) where {F}
     engine, tracer, executions = trace
 

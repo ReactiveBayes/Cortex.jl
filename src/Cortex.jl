@@ -1,7 +1,5 @@
 module Cortex
 
-using Moshi
-
 include("utils.jl")
 include("signal.jl")
 

@@ -3,9 +3,6 @@ uuid = "39612bbb-57ff-4bee-a8f8-6b0371679005"
 authors = ["Bagaev Dmitry <bvdmitri@gmail.com> and contributors"]
 version = "0.2.0"
 
-[deps]
-Moshi = "2e0e35c7-a2e4-4343-998d-7ef72827ed2d"
-
 [weakdeps]
 BipartiteFactorGraphs = "b30351d1-6332-4c89-82f4-633fdf76981a"
 GraphViz = "f526b714-d49f-11e8-06ff-31ed36ee7ee0"
@@ -20,7 +17,6 @@ BenchmarkTools = "1.6"
 BipartiteFactorGraphs = "1.0.0"
 GraphViz = "0.2.0"
 JET = "0.9, 0.10"
-Moshi = "0.3.5"
 Random = "1.10"
 Reexport = "1.2"
 StableRNGs = "1.0"
