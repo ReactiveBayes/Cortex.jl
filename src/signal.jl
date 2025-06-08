@@ -52,11 +52,12 @@ end
 
 """
     Signal()
-    Signal(value; type::UInt8 = 0x00, metadata::Any = UndefMetadata())
+    Signal(value; variant::Any = UndefVariant())
+    Signal(::Type{D}, ::Type{V}, value::D, variant::V) where {D, V}
 
 A reactive signal that holds a value and tracks dependencies as well as notifies listeners when the value changes.
 If created without an initial value, the signal is initialized with [`UndefValue()`](@ref).
-The `metadata` field can be used to store arbitrary metadata about the signal. Default value is [`UndefMetadata()`](@ref).
+The `variant` field can be used to store arbitrary variant information about the signal. Default value is [`UndefVariant()`](@ref).
 
 A signal has two type parameters:
 - `D` is the type of the value, which can be stored in the signal
@@ -209,7 +210,7 @@ function get_listeners(s::Signal)
 end
 
 """
-    set_value!(s::Signal, value::Any)
+    set_value!(s::Signal, value)
 
 Set the `value` of the signal `s`. Notifies all the active listeners of the signal.
 
@@ -243,7 +244,7 @@ function set_value!(signal::Signal, @nospecialize(value))
 end
 
 """
-    add_dependency!(signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true, intermediate::Bool = false)
+    add_dependency!(signal::Signal, dependency::Signal; weak::Bool = false, listen::Bool = true, intermediate::Bool = false, check_computed::Bool = true)
 
 Add `dependency` to the list of dependencies for signal `signal`.
 Also adds `signal` to the list of listeners for `dependency`.
@@ -268,6 +269,10 @@ further updates to `dependency` will not trigger notifications to `signal`.
 
 The same dependency should not be added multiple times. Doing so will result in wrong notification behaviour and likely will lead to incorrect results.
 Note that this function does nothing if `signal === dependency`.
+
+!!! note
+    Signals can only depend on other signals with the same type parameters `{D, V}`. Attempting to add a dependency 
+    with different type parameters will result in an error.
 """
 function add_dependency!(
     signal::Signal,

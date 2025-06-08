@@ -8,13 +8,12 @@ Think of a [`Signal`](@ref Cortex.Signal) as a container for a value that can ch
 
 An every day example would be a spreadsheet cell. When you change the value in one cell (like `A1`), other cells that use `A1` in their formulas (like `B1 = A1 * 2`) automatically update. A [`Signal`](@ref Cortex.Signal) is like that cell – it holds a value, and changes can trigger updates elsewhere.
 
-More technically, [`Signal`](@ref Cortex.Signal)s form a directed graph (potentially cyclic). Each [`Signal`](@ref Cortex.Signal) node stores a value, an optional `type` identifier (`UInt8`), optional `metadata`, and maintains lists of its dependencies and listeners. When a signal is updated via [`set_value!`](@ref Cortex.set_value!) or [`compute!`](@ref Cortex.compute!), it propagates a notification to its direct listeners, potentially marking them as 'pending'. This ['pending' state](@ref signal-pending-state) indicates that the signal's value might be stale and needs recomputation. The actual recomputation logic is defined externally via the [`compute!`](@ref Cortex.compute!) function. A signal may become 'pending' if all its dependencies meet the criteria: weak dependencies are computed, and strong dependencies are computed and **fresh** (i.e., have new, unused values). This also means that a signal never recomputes its own value, as it must be done externally.
+More technically, [`Signal`](@ref Cortex.Signal)s form a directed graph (potentially cyclic). Each [`Signal`](@ref Cortex.Signal) node stores a value, an optional `variant`, and maintains lists of its dependencies and listeners. When a signal is updated via [`set_value!`](@ref Cortex.set_value!) or [`compute!`](@ref Cortex.compute!), it propagates a notification to its direct listeners, potentially marking them as 'pending'. This ['pending' state](@ref signal-pending-state) indicates that the signal's value might be stale and needs recomputation. The actual recomputation logic is defined externally via the [`compute!`](@ref Cortex.compute!) function. A signal may become 'pending' if all its dependencies meet the criteria: weak dependencies are computed, and strong dependencies are computed and **fresh** (i.e., have new, unused values). This also means that a signal never recomputes its own value, as it must be done externally.
 
 ## Key Features
 
 *   **Value Storage:** Holds the current value (or `UndefValue()` if the value is not set).
-*   **Type Identifier:** Stores an optional `UInt8` type ([`get_type`](@ref Cortex.get_type)), defaulting to `0x00`. This might be particularly useful for choosing different computation strategies for different types of signals within the [`compute!`](@ref Cortex.compute!) function.
-*   **Optional Metadata:** Can store arbitrary metadata ([`get_metadata`](@ref Cortex.get_metadata)), defaulting to `UndefMetadata()`. Metadata can also be used to choose different computation strategies for different types of signals within the [`compute!`](@ref Cortex.compute!) function.
+*   **Variant:** Can store an arbitrary variant ([`get_variant`](@ref Cortex.get_variant)), defaulting to `UndefVariant()`. Variants can be used to choose different computation strategies for different types of signals within the [`compute!`](@ref Cortex.compute!) function and provide type-safe signal classification.
 *   **Dependency Tracking:** Knows which other signals it depends on (see [`get_dependencies`](@ref Cortex.get_dependencies)) and which signals depend on it (see  [`get_listeners`](@ref Cortex.get_listeners)).
 *   **Notification:** When updated via [`set_value!`](@ref Cortex.set_value!), it notifies its active listeners.
 *   **Pending State:** Can be marked as [`is_pending`](@ref Cortex.is_pending) if its dependencies have updated appropriately, signaling a need for recomputation via [`compute!`](@ref Cortex.compute!). Read more about the pending state in the [Pending State](@ref signal-pending-state) section.
@@ -27,7 +26,9 @@ More technically, [`Signal`](@ref Cortex.Signal)s form a directed graph (potenti
 ```@docs
 Cortex.Signal
 Cortex.UndefValue
-Cortex.UndefMetadata
+Cortex.UndefVariant
+Cortex.value_type
+Cortex.variant_type
 ```
 
 ## Core Operations
@@ -118,40 +119,41 @@ Cortex.get_value(some_signal)
 !!! warning
     **Important:** Normally, it is implied that [`set_value!`](@ref Cortex.set_value!) must be called only on signals that are pending. Also see the [`compute!`](@ref Cortex.compute!) function for a more general way to update signal values.
 
-#### Signal Type and Metadata
+#### Signal Variant
 
-You can optionally specify a `type` identifier and `metadata`. Specifying the type identifier and metadata is useful when you want to choose different computation strategies for different types of signals within the [`compute!`](@ref Cortex.compute!) function.
+You can optionally specify a `variant`. Specifying a variant is useful when you want to choose different computation strategies for different types of signals within the [`compute!`](@ref Cortex.compute!) function.
 
 ```@example signal_examples
-# Signal with type and metadata
-signal_with_type_and_metadata = Cortex.Signal(type=0x01, metadata=Dict(:info => "flag", :some_value => 10))
+# Signal with variant
+signal_with_variant = Cortex.Signal(10, variant=Dict(:info => "flag", :some_value => 10))
 ```
 
-The type can be accessed with the [`Cortex.get_type`](@ref Cortex.get_type) function and the metadata can be accessed with the [`Cortex.get_metadata`](@ref Cortex.get_metadata) function.
+The variant can be accessed with the [`Cortex.get_variant`](@ref Cortex.get_variant) function and modified with the [`Cortex.set_variant!`](@ref Cortex.set_variant!) function.
 
 ```@example signal_examples
-Cortex.get_type(signal_with_type_and_metadata)
+Cortex.get_variant(signal_with_variant)
 ```
 
 ```@example signal_examples
-Cortex.get_metadata(signal_with_type_and_metadata)
+Cortex.set_variant!(signal_with_variant, "hello world!")
+Cortex.get_variant(signal_with_variant)
 ```
 
-The metadata can be any object, not just a dictionary.
+The variant can be any object, including complex algebraic data types for type-safe signal classification.
 
 ```@example signal_examples
-signal_with_metadata = Cortex.Signal(metadata="hello world!")
+signal_with_simple_variant = Cortex.Signal(variant="simple_string_variant")
 ```
 
 #### API Reference
 
 ```@docs
 Cortex.get_value(::Cortex.Signal)
-Cortex.get_type(::Cortex.Signal)
-Cortex.get_metadata(::Cortex.Signal)
+Cortex.get_variant(::Cortex.Signal)
+Cortex.set_variant!(::Cortex.Signal, Any)
 Cortex.is_computed(::Cortex.Signal)
 Cortex.is_pending(::Cortex.Signal)
-Cortex.set_value!(::Cortex.Signal, value)
+Cortex.set_value!(::Cortex.Signal, Any)
 ```
 
 ## [Adding Dependencies](@id signal-adding-dependencies)
@@ -446,10 +448,10 @@ Then, implement the [`compute_value!`](@ref Cortex.compute_value!) method for yo
 
 ```@example signal_examples
 function Cortex.compute_value!(strategy::CustomStrategy, signal::Cortex.Signal, dependencies)
-    # Example: Use signal's metadata if available
-    meta = Cortex.get_metadata(signal)
+    # Example: Use signal's variant if available
+    variant = Cortex.get_variant(signal)
     base_sum = sum(Cortex.get_value, dependencies)
-    offset = meta isa Dict && haskey(meta, :offset) ? meta[:offset] : 0
+    offset = variant isa Dict && haskey(variant, :offset) ? variant[:offset] : 0
     return strategy.multiplier * base_sum + offset
 end
 ```
@@ -459,28 +461,28 @@ Now, you can use this strategy with your signals:
 ```@example signal_examples
 strategy = CustomStrategy(2)
 
-signal_with_meta = Cortex.Signal(metadata=Dict(:offset => 10))
+signal_with_variant = Cortex.Signal(variant=Dict(:offset => 10))
 
-Cortex.add_dependency!(signal_with_meta, signal_1)
-Cortex.add_dependency!(signal_with_meta, signal_2)
-@test Cortex.is_pending(signal_with_meta) # hide
+Cortex.add_dependency!(signal_with_variant, signal_1)
+Cortex.add_dependency!(signal_with_variant, signal_2)
+@test Cortex.is_pending(signal_with_variant) # hide
 
-Cortex.compute!(strategy, signal_with_meta)
+Cortex.compute!(strategy, signal_with_variant)
 
-@test Cortex.get_value(signal_with_meta) == 2 * (1 + 41) + 10 # hide
-Cortex.get_value(signal_with_meta) # 94
+@test Cortex.get_value(signal_with_variant) == 2 * (1 + 41) + 10 # hide
+Cortex.get_value(signal_with_variant) # 94
 ```
 
 ```@example signal_examples
-Cortex.compute!(CustomStrategy(3), signal_with_meta; force=true)
+Cortex.compute!(CustomStrategy(3), signal_with_variant; force=true)
 
-@test Cortex.get_value(signal_with_meta) == 3 * (1 + 41) + 10 # hide
-Cortex.get_value(signal_with_meta) # 136
+@test Cortex.get_value(signal_with_variant) == 3 * (1 + 41) + 10 # hide
+Cortex.get_value(signal_with_variant) # 136
 ```
 
 ```@docs
 Cortex.compute!(Any, ::Cortex.Signal)
-Cortex.compute_value!(Any, ::Cortex.Signal, ::Vector{Cortex.Signal})
+Cortex.compute_value!(Any, ::Cortex.Signal, ::AbstractVector)
 ```
 
 ## Processing/Traversal of Dependencies
@@ -500,25 +502,25 @@ The function recursively applies a user-defined function `f` to each dependency.
 Imagine you want to traverse the dependency graph of a signal and you want to log which ones were already computed and which ones are not.
 
 ```@example signal_examples
-signal1 = Cortex.Signal(1; metadata = :signal1) # computed
-signal2 = Cortex.Signal(; metadata = :signal2)  # not computed
-signal3 = Cortex.Signal(3; metadata = :signal3)  # computed
+signal1 = Cortex.Signal(1; variant = :signal1) # computed
+signal2 = Cortex.Signal(; variant = :signal2)  # not computed
+signal3 = Cortex.Signal(3; variant = :signal3)  # computed
 
-intermediate_signal = Cortex.Signal(metadata = :intermediate_signal)
+intermediate_signal = Cortex.Signal(variant = :intermediate_signal)
 
 Cortex.add_dependency!(intermediate_signal, signal2)
 Cortex.add_dependency!(intermediate_signal, signal3)
 
-derived = Cortex.Signal(metadata = :derived)
+derived = Cortex.Signal(variant = :derived)
 
 Cortex.add_dependency!(derived, signal1)
 Cortex.add_dependency!(derived, intermediate_signal; intermediate=true)
 
 function my_processing_function(dependency_signal::Cortex.Signal)
     if !Cortex.is_computed(dependency_signal)
-        println("The dependency signal: ", Cortex.get_metadata(dependency_signal), " is not computed")
+        println("The dependency signal: ", Cortex.get_variant(dependency_signal), " is not computed")
     else 
-        println("The dependency signal: ", Cortex.get_metadata(dependency_signal), " is computed. The value is: ", Cortex.get_value(dependency_signal))
+        println("The dependency signal: ", Cortex.get_variant(dependency_signal), " is computed. The value is: ", Cortex.get_value(dependency_signal))
     end
     # always return false to process all the dependencies
     return false
@@ -537,23 +539,23 @@ GraphViz.load(derived)
 This example illustrates how you can inject custom logic into the dependency traversal. The actual computation or state change would happen within `my_processing_function`. For example, here how can we `compute!` the signal if it is not computed:
 
 ```@example signal_examples
-signal1 = Cortex.Signal(1; metadata = :signal1)
-signal2 = Cortex.Signal(2; metadata = :signal2)
-signal3 = Cortex.Signal(3; metadata = :signal3)
+signal1 = Cortex.Signal(1; variant = :signal1)
+signal2 = Cortex.Signal(2; variant = :signal2)
+signal3 = Cortex.Signal(3; variant = :signal3)
 
-intermediate_signal = Cortex.Signal(metadata = :intermediate_signal)
+intermediate_signal = Cortex.Signal(variant = :intermediate_signal)
 
 Cortex.add_dependency!(intermediate_signal, signal2)
 Cortex.add_dependency!(intermediate_signal, signal3)
 
-derived = Cortex.Signal(metadata = :derived)
+derived = Cortex.Signal(variant = :derived)
 
 Cortex.add_dependency!(derived, signal1)
 Cortex.add_dependency!(derived, intermediate_signal; intermediate=true)
 
 function compute_if_not_computed(signal::Cortex.Signal)
     if Cortex.is_pending(signal)
-        println("Computing the signal: ", Cortex.get_metadata(signal))
+        println("Computing the signal: ", Cortex.get_variant(signal))
         Cortex.compute!((signal, deps) -> sum(Cortex.get_value, deps), signal)
         return true
     end
@@ -605,7 +607,7 @@ s = Cortex.Signal()
 
 # Direct dependencies of `s`
 dep1 = Cortex.Signal()
-dep2 = Cortex.Signal()
+dep2 = Cortex.Signal(; variant = "dep2")
 
 Cortex.add_dependency!(s, dep1; intermediate = true, weak = true)
 Cortex.add_dependency!(s, dep2; weak = true)

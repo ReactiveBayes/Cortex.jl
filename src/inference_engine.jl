@@ -205,9 +205,9 @@ get_connected_factor_ids(engine::InferenceEngine, variable_id::Int) =
 Initializes the `variant` field for relevant signals within the `InferenceEngine`.
 
 This function iterates through variables and factors in the model backend, setting:
-- Marginals: `variant` to [`IndividualMarginal`](@ref Cortex.InferenceSignalVariants.IndividualMarginal).
-- Messages to Factors: `variant` to [`MessageToFactor`](@ref Cortex.InferenceSignalVariants.MessageToFactor).
-- Messages to Variables: `variant` to [`MessageToVariable`](@ref Cortex.InferenceSignalVariants.MessageToVariable).
+- Marginals: `variant` to [`IndividualMarginal`](@ref Cortex.InferenceSignalVariants).
+- Messages to Factors: `variant` to [`MessageToFactor`](@ref Cortex.InferenceSignalVariants).
+- Messages to Variables: `variant` to [`MessageToVariable`](@ref Cortex.InferenceSignalVariants).
 
 This setup is typically done once upon engine creation and is crucial for dispatching appropriate computation rules during inference.
 
@@ -218,7 +218,7 @@ This setup is typically done once upon engine creation and is crucial for dispat
 ## See Also
 
 - [`InferenceEngine`](@ref)
-- [`InferenceSignalTypes`](@ref)
+- [`InferenceSignalVariants`](@ref)
 """
 function set_signals_variants!(engine::InferenceEngine)
     for variable_id in get_variable_ids(engine)

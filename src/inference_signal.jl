@@ -2,6 +2,33 @@
 using Moshi.Data: @data
 using Moshi.Derive: @derive
 
+"""
+    InferenceSignalVariants
+
+A data type that represents different variants of signals used in inference.
+These variants are used to identify the role and context of a signal in the inference process.
+
+# Variants
+
+- `Unspecified`: A variant that is used by default when no other variant is specified.
+- `MessageToFactor`: A message from a factor to a variable, containing:
+  - `variable_id::Int`: The ID of the target variable
+  - `factor_id::Int`: The ID of the source factor
+- `MessageToVariable`: A message from a variable to a factor, containing:
+  - `variable_id::Int`: The ID of the source variable
+  - `factor_id::Int`: The ID of the target factor
+- `ProductOfMessages`: A product of messages from a variable to multiple factors, containing:
+  - `variable_id::Int`: The ID of the source variable
+  - `range::UnitRange{Int}`: The range of factor IDs
+  - `factors_connected_to_variable::Vector{Int}`: The IDs of factors connected to the variable
+- `IndividualMarginal`: An individual marginal of a variable, containing:
+  - `variable_id::Int`: The ID of the variable
+- `JointMarginal`: A joint marginal of a factor, containing:
+  - `factor_id::Int`: The ID of the factor
+  - `variable_ids::Vector{Int}`: The IDs of variables connected to the factor
+
+See also: [`InferenceSignal`](@ref), [`create_inference_signal`](@ref)
+"""
 @data InferenceSignalVariants begin
     # A variant that is used by default when no other variant is specified
     Unspecified

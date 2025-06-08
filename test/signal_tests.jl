@@ -743,7 +743,7 @@ end
 end
 
 @testitem "Signal Representation" begin
-    import Cortex: Signal, set_value!, add_dependency!, get_type, get_metadata
+    import Cortex: Signal, set_value!, add_dependency!, get_variant, set_variant!
 
     @testset "Uninitialized Signal" begin
         s_no_meta = Signal()
@@ -790,11 +790,11 @@ end
     JET.@test_opt Cortex.Signal(1)
     JET.@test_opt Cortex.Signal("1")
     # Test constructors with keywords
-    JET.@test_opt Cortex.Signal(type = 0x01)
-    JET.@test_opt Cortex.Signal(metadata = :meta)
-    JET.@test_opt Cortex.Signal(metadata = Dict{Symbol, Any}())
-    JET.@test_opt Cortex.Signal(1; type = 0x02, metadata = "meta")
-    JET.@test_opt Cortex.Signal(1; metadata = Dict{Symbol, Any}())
+    JET.@test_opt Cortex.Signal(variant = 0x01)
+    JET.@test_opt Cortex.Signal(variant = :meta)
+    JET.@test_opt Cortex.Signal(variant = Dict{Symbol, Any}())
+    JET.@test_opt Cortex.Signal(1; variant = "meta")
+    JET.@test_opt Cortex.Signal(1; variant = Dict{Symbol, Any}())
 
     # Test getters
     JET.@test_opt Cortex.is_pending(Cortex.Signal())

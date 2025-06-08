@@ -42,23 +42,16 @@ Cortex.get_connected_variable_ids(::Cortex.InferenceEngine, ::Int)
 Cortex.get_connected_factor_ids(::Cortex.InferenceEngine, ::Int)
 ```
 
-### Signal Types
+### Signal Variants
 
-The engine uses different signal types to manage various aspects of inference:
-
-```@docs
-Cortex.InferenceSignalTypes
-```
-
-#### Available Signal Types
+The engine uses different signal variants to manage various aspects of inference:
 
 ```@docs
-Cortex.InferenceSignalTypes.MessageToVariable
-Cortex.InferenceSignalTypes.MessageToFactor
-Cortex.InferenceSignalTypes.ProductOfMessages
-Cortex.InferenceSignalTypes.IndividualMarginal
-Cortex.InferenceSignalTypes.JointMarginal
-Cortex.prepare_signals_metadata!
+Cortex.InferenceSignalVariants
+Cortex.InferenceSignalVariant
+Cortex.InferenceSignal
+Cortex.create_inference_signal
+Cortex.set_signals_variants!
 ```
 
 ### Running Inference
