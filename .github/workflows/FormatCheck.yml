@@ -22,7 +22,7 @@ jobs:
       issues: write  # Needed to create PRs and write comments
       pull-requests: write  # Needed to create PRs and write comments
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
