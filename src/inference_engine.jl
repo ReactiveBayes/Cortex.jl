@@ -258,7 +258,7 @@ Internal structure representing a request to perform inference for a set of vari
 - `engine::E`: The inference engine instance.
 - `variable_ids::V`: Collection of variable identifiers to compute marginals for.
 - `marginals::M`: Collection of marginal signals corresponding to the variables.
-- `readines_status::BitVector`: Tracks which variables have been processed.
+- `readiness_status::BitVector`: Tracks which variables have been processed.
 
 See also: [`request_inference_for`](@ref), [`update_marginals!`](@ref)
 """
@@ -266,7 +266,7 @@ struct InferenceRequest{E, V, M}
     engine::E
     variable_ids::V
     marginals::M
-    readines_status::BitVector
+    readiness_status::BitVector
 end
 
 """
@@ -317,9 +317,9 @@ function request_inference_for(engine::InferenceEngine, variable_ids::Union{Abst
         marginals[i] = marginal
     end
 
-    readines_status = falses(length(variable_ids))
+    readiness_status = falses(length(variable_ids))
 
-    return InferenceRequest(engine, variable_ids, marginals, readines_status)
+    return InferenceRequest(engine, variable_ids, marginals, readiness_status)
 end
 
 """
@@ -582,7 +582,7 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
                 __should_continue = false
 
                 @inbounds for i in current_order
-                    if !request.readines_status[i]
+                    if !request.readiness_status[i]
                         variable_id = variable_ids[i]
                         marginal = request.marginals[i]
 
@@ -591,7 +591,7 @@ function update_marginals!(engine::InferenceEngine, variable_ids::Union{Abstract
                         )
 
                         if is_pending(marginal)
-                            request.readines_status[i] = true
+                            request.readiness_status[i] = true
                         end
 
                         __should_continue = __should_continue || has_been_processed_at_least_once
