@@ -372,7 +372,7 @@ end
 # --- Compute Interface ---
 
 """
-    compute!(s::Signal, strategy; force::Bool = false, skip_if_no_listeners::Bool = true)
+    compute!(strategy, s::Signal; force::Bool = false, skip_if_no_listeners::Bool = false)
 
 Compute the value of the signal `s` using the given `strategy`. 
 The strategy must implement [`compute_value!`](@ref) method.
@@ -382,12 +382,12 @@ Be sure to call `compute!` only on signals that are pending.
 Calling `compute!` on a non-pending signal will result in an error.
 
 When `skip_if_no_listeners` is set to `true`, the function will not compute the signal if it has no listeners.
-If `skip_if_no_listeners` is set to `false`, the function will compute the signal even if it has no listeners.
-This is useful for signals that are computed on demand with no listeners.
+When `skip_if_no_listeners` is set to `false` (the default), the function will compute the signal
+even if it has no listeners. This is useful for signals that are computed on demand with no listeners.
 
 Keyword Arguments:
 - `force::Bool = false`: If `true`, the signal will be computed even if it is not pending.
-- `skip_if_no_listeners::Bool = true`: If `true`, the function will not compute the signal if it has no listeners.
+- `skip_if_no_listeners::Bool = false`: If `true`, the function will not compute the signal if it has no listeners.
 """
 function compute!(strategy, signal::Signal; force::Bool = false, skip_if_no_listeners::Bool = false)
     listeners = get_listeners(signal)
